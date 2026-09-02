@@ -14,6 +14,7 @@ import {
   signRefreshToken,
   verifyRefreshToken,
   hashRefreshToken,
+  getRefreshTokenLifetimeMs,
 } from "./auth-tokens.js";
 
 /**
@@ -119,24 +120,13 @@ async function issueTokenPair(userId) {
 // sync with the refresh token's own actual expiry, per the
 // implementation plan's Phase B note ("kept in sync by the service
 // layer at creation/rotation time — not derived redundantly from the
-// JWT itself"). Supports the same duration-string forms
-// jsonwebtoken/JWT_REFRESH_EXPIRES already uses in this project
-// (`server/README.md`'s existing "7d" example) via a minimal parser
-// covering the forms actually used in this codebase, rather than
-// pulling in a date-math dependency for one conversion.
+// JWT itself"). Phase F review correction: this now calls the single
+// shared duration parser in auth-tokens.js (`getRefreshTokenLifetimeMs`)
+// instead of maintaining its own independent regex — see that
+// function's own comment for why having two parsers for the same env
+// var was a real drift risk, not just a style nit.
 function refreshExpiryDate() {
-  const raw = process.env.JWT_REFRESH_EXPIRES || "7d";
-  const match = /^(\d+)([smhd])$/.exec(raw);
-  if (!match) {
-    throw new Error(
-      `JWT_REFRESH_EXPIRES has an unrecognized format: "${raw}". ` +
-        'Expected a number followed by s/m/h/d, e.g. "7d".'
-    );
-  }
-  const [, amountStr, unit] = match;
-  const amount = Number(amountStr);
-  const unitMs = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[unit];
-  return new Date(Date.now() + amount * unitMs);
+  return new Date(Date.now() + getRefreshTokenLifetimeMs());
 }
 
 /**
@@ -279,6 +269,13 @@ export async function login(payload) {
  * with a generic message. A more specific error would require a
  * second, non-atomic diagnostic read that this project has explicitly
  * declined to add.
+ *
+ * Phase F review correction: now also resolves and returns the User,
+ * matching register()/login()'s response shape exactly — the route
+ * layer needs `{ user }` in its response body, and the only source of
+ * that data is a DB read (nothing earlier in this function's flow ever
+ * had the full User document in memory, only its id). This is one
+ * additional `findById`, not a duplicate of anything already done.
  */
 export async function refresh(rawRefreshToken) {
   let decoded;
@@ -319,13 +316,29 @@ export async function refresh(rawRefreshToken) {
     throw refreshFailed("Refresh failed");
   }
 
+  // The consumed Session is proof `sub` was a real, valid user at the
+  // time this refresh token was issued — but per L11's fresh-role
+  // principle applied consistently, the User is still read fresh here
+  // rather than trusting anything cached from token issuance.
+  const user = await User.findById(sub);
+  if (!user) {
+    // The user was deleted between issuing this refresh token and using
+    // it. The old session is already correctly consumed above (single-
+    // use upheld); there is no user left to issue new tokens to.
+    throw refreshFailed("Refresh failed");
+  }
+
   const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(sub);
 
-  return { accessToken, refreshToken: newRefreshToken };
+  return {
+    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    accessToken,
+    refreshToken: newRefreshToken,
+  };
 }
 
 /**
- * logout(sid)
+ * logout(rawRefreshToken)
  *
  * Deletes the current Session, immediately invalidating the refresh
  * token. Per L17 (locked), this does NOT and cannot invalidate an
@@ -333,22 +346,47 @@ export async function refresh(rawRefreshToken) {
  * JWT with no session lookup in its verification path, and this is the
  * accepted, intended trade-off, not a gap to close by adding one.
  *
- * Idempotent by design: deleting an already-deleted or nonexistent
- * session is not an error. Logout should never fail visibly to the
- * client for "there was nothing to log out of."
+ * Phase F review correction: accepts the RAW refresh token (what a
+ * route actually has, straight from the refresh cookie), not a bare
+ * `sid`. Extracting `sid` requires verifying the refresh JWT — a
+ * token-layer concern — and doing that in the route itself would leak
+ * JWT-handling into the routing layer, breaking the "routes are thin,
+ * HTTP-only" boundary this project has kept everywhere else. This
+ * function is now the one place that decodes the token, exactly like
+ * refresh() already does.
  *
- * @param {string} sid
+ * Idempotent by design, and this must hold for every one of these
+ * inputs, not just a genuinely-missing session: no token at all, a
+ * malformed token, an expired token, a token whose session was already
+ * deleted (e.g. a prior logout, or a refresh that already rotated it
+ * away). None of these are errors — logout should never fail visibly
+ * to the client for "there was nothing left to log out of." The client
+ * clears its cookies regardless of what this function returns.
+ *
+ * @param {string | undefined | null} rawRefreshToken
  */
-export async function logout(sid) {
-  if (!sid) {
+export async function logout(rawRefreshToken) {
+  if (!rawRefreshToken) {
     return { success: true };
   }
+
+  let sid;
+  try {
+    ({ sid } = verifyRefreshToken(rawRefreshToken));
+  } catch {
+    // Malformed, tampered, or expired refresh JWT — nothing to look up.
+    // Still a successful (no-op) logout, per the idempotent contract
+    // above.
+    return { success: true };
+  }
+
   try {
     await Session.deleteOne({ _id: sid });
   } catch {
-    // A malformed sid (not a valid ObjectId) throws a CastError here —
-    // logout's idempotent contract means this is still a no-op success
-    // from the caller's perspective, not an error to surface.
+    // A malformed sid inside an otherwise well-formed token (shouldn't
+    // happen in practice, since this service is the only issuer of
+    // `sid` values, but defended anyway) throws a CastError here —
+    // still a no-op success, same reasoning as above.
   }
   return { success: true };
 }

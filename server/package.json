@@ -16,6 +16,8 @@
     "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\""
   },
   "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",

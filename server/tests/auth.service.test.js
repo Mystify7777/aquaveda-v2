@@ -147,6 +147,17 @@ describe("auth.service — refresh", () => {
     assert.equal(String(newSession.userId), String(user.id));
   });
 
+  it("returns { user, accessToken, refreshToken }, matching register()/login()'s response shape exactly", async () => {
+    const { user, refreshToken } = await register(registerPayload());
+
+    const rotated = await refresh(refreshToken);
+
+    assert.deepEqual(Object.keys(rotated).sort(), ["accessToken", "refreshToken", "user"]);
+    assert.equal(String(rotated.user.id), String(user.id));
+    assert.equal(rotated.user.email, user.email);
+    assert.equal(rotated.user.role, user.role);
+  });
+
   it("rejects a refresh with REFRESH_FAILED for an expired session, even though the document still physically exists (TTL is not the enforcement mechanism)", async () => {
     const { refreshToken } = await register(registerPayload());
     const decoded = verifyRefreshToken(refreshToken);
@@ -220,7 +231,7 @@ describe("auth.service — logout", () => {
     const { refreshToken } = await register(registerPayload());
     const decoded = verifyRefreshToken(refreshToken);
 
-    await logout(decoded.sid);
+    await logout(refreshToken);
 
     const session = await Session.findById(decoded.sid);
     assert.equal(session, null);
@@ -234,13 +245,27 @@ describe("auth.service — logout", () => {
     );
   });
 
-  it("is idempotent: logging out twice, or logging out a nonexistent session, does not throw", async () => {
+  it("is idempotent: logging out twice, an already-consumed token, a malformed token, or no token at all — none of these throw", async () => {
+    const { refreshToken } = await register(registerPayload());
+
+    await logout(refreshToken);
+    await assert.doesNotReject(() => logout(refreshToken)); // second call, same (now-orphaned) token
+    await assert.doesNotReject(() => logout("not-a-real-jwt")); // malformed
+    await assert.doesNotReject(() => logout(undefined)); // no token at all
+    await assert.doesNotReject(() => logout(null));
+  });
+
+  it("logout with a well-formed but expired refresh token still succeeds as a no-op", async () => {
+    const jwt = (await import("jsonwebtoken")).default;
     const { refreshToken } = await register(registerPayload());
     const decoded = verifyRefreshToken(refreshToken);
+    const expiredToken = jwt.sign(
+      { sub: decoded.sub, sid: decoded.sid },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: -10 }
+    );
 
-    await logout(decoded.sid);
-    await assert.doesNotReject(() => logout(decoded.sid)); // second call
-    await assert.doesNotReject(() => logout("507f1f77bcf86cd799439011")); // never existed
+    await assert.doesNotReject(() => logout(expiredToken));
   });
 });
 
