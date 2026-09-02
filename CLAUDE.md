@@ -6,12 +6,13 @@
 
 Authentication — implementation in progress. Architecture fully locked
 (`docs/architecture/decision-register.md` §"Locked — Authentication").
-Implementation plan Phases A–D **complete and verified for real**, not
+Implementation plan Phases A–E **complete and verified for real**, not
 just written: `npm run verify:models` **44/44**, `npm run
-verify:validation` **44/44**, `npm test` **88/88** — full suite green
+verify:validation` **44/44**, `npm test` **96/96** — full suite green
 against real MongoDB, including every concurrency test (Issue, Knowledge,
-and the new refresh-token single-use race). Phases E–H (middleware,
-routes, validation, cookies) not started.
+and the new refresh-token single-use race). Phase E (middleware) also
+complete and verified. Phases F–H (routes, validation, cookies) not
+started.
 
 ## Completed
 
@@ -76,7 +77,7 @@ design from proceeding.
 - Full detail: `docs/architecture/decision-register.md` §Persistence Design,
   §Phase D
 
-### Authentication — Architecture (locked) and Implementation Phases A–D
+### Authentication — Architecture (locked) and Implementation Phases A–E
 
 **Architecture**, reviewed and locked across four rounds of proposal →
 correction (see `docs/architecture/decision-register.md` §"Locked —
@@ -90,7 +91,7 @@ fresh-DB role resolution, hashed-only refresh-credential storage, TTL ≠
 runtime enforcement, single-use refresh rotation, and the L17
 logout-vs-access-token-expiry trade-off.
 
-**Implementation, Phases A–D of `authentication-implementation-plan.md`**:
+**Implementation, Phases A–E of `authentication-implementation-plan.md`**:
 - `server/src/config/env.js` — canonical, shared environment
   configuration entry point; `server/src/config/db.js` refactored to
   consume it (mechanical, `connectDB()`'s behavior and `{ envVar }`
@@ -125,6 +126,18 @@ logout-vs-access-token-expiry trade-off.
   invalid scrypt params) instead of safely returning `false` — fixed
   with explicit hex and parameter validation, plus 12 new tests proving
   each malformed case is rejected without throwing
+- `server/src/middleware/auth.js` (Phase E) — the sole, exclusive owner
+  of request-actor resolution: cookie extraction → `verifyAccessToken`
+  → fresh `User` lookup by `sub` → `{ id, role }`. Advisory, never
+  rejects a request itself — missing/invalid/expired tokens all resolve
+  to `actorContext = null`, preserving Product Invariant 5 (anonymous
+  browsing). Role is read fresh from the database on every request,
+  never trusted from the token — verified directly with a test that
+  changes a user's role mid-session and confirms the *same*, still-valid
+  access token reflects the new role on the next request. Not yet wired
+  into `app.js` or the real Express request pipeline — that's Phase F
+  (`cookie-parser` isn't installed yet either); reviewed and confirmed
+  as an intentional, non-blocking integration gap, not a Phase E defect
 - D-3a untouched: no file in this phase reads, writes, or reasons about
   Issue status/lifecycle
 - Full detail: `docs/architecture/decision-register.md` §"Locked —
@@ -235,22 +248,28 @@ logout-vs-access-token-expiry trade-off.
   (Issue/Knowledge/Comment/Project) — only reachable from tests.
   Intentional; a future Routes milestone, deliberately separate from
   Authentication's own five-endpoint auth API (Phase F).
-- No auth routes/middleware/cookies exist yet either (Phases E–H of the
-  implementation plan) — `auth.service.js` is currently only reachable
-  from tests, same as the domain services.
+- Auth middleware exists and is verified (`server/src/middleware/auth.js`,
+  96/96 tests) but is not yet wired into the real Express pipeline — no
+  auth routes, no `cookie-parser`, `app.js` untouched (Phases F–H of the
+  implementation plan). `auth.service.js` and `authMiddleware` are
+  currently only reachable from tests, same as the domain services.
 
 ## Next Milestone
 
-Authentication implementation, continuing with the plan's Phase E
-(middleware — producing `actorContext` from a request), then Phase F
-(the five auth routes), then Phase G (Zod validation for register/login
+Authentication implementation, continuing with the plan's Phase F (the
+five auth routes + `app.js` wiring: `cookie-parser`, `cors`, mounting
+`authMiddleware`), then Phase G (Zod validation for register/login
 payloads). Phase H (cookie configuration) has two items already locked
 (`HttpOnly`, `Secure` in production) and two genuinely deployment-
 dependent items (`SameSite`, `Domain`) that can't be finalized until
 real hosting targets are chosen.
 
-D-3a remains explicitly **not** in scope for any of Phases E–H — they
-produce/consume identity, not remediation authority.
+D-3a remains explicitly **not** in scope for any of Phases F–H — they
+produce/consume identity, not remediation authority. Per explicit
+reviewer sequencing note: Phase F wiring in the auth router and
+`app.js` is in scope; inventing general Issue/Knowledge/Comment/Project
+route authorization is not — that stays deferred to the separate future
+Routes milestone.
 
 ## Reviewer Notes
 
@@ -291,10 +310,23 @@ Phases A–D then went through their own focused review pass, which
 caught two real bugs (a registration partial-failure ordering issue and
 an unguarded `verifyPassword` crash path on a malformed stored hash) —
 both fixed and covered by new tests before this phase was accepted as
-done, not after. Final verification, run against real MongoDB on the
-developer's own machine after two secrets were missing from local
-`.env` on the first attempt: **88/88 tests, 44/44 model checks, 44/44
-validation checks** — all actually green, not assumed.
+done, not after. Verification after Phases A–D, run against real
+MongoDB on the developer's own machine after two secrets were missing
+from local `.env` on the first attempt: **88/88 tests, 44/44 model
+checks, 44/44 validation checks** — all actually green, not assumed.
 
-Next: Phase E (middleware), building on this now-verified Phase A–D
+Phase E (middleware) reviewed separately: approved with no required
+changes — one style suggestion explicitly marked optional (a
+try/catch-based restructure of the branch logic) and one architectural
+observation explicitly marked non-blocking (database failures during
+role lookup currently look identical to "not authenticated"; flagged
+for a future milestone, not this one). Confirmed non-blocking: the
+middleware is unit-tested but not yet wired into the real Express
+pipeline (no `cookie-parser`, `app.js` untouched) — explicitly called
+out by the reviewer as an intentional Phase F dependency, not a Phase E
+defect. Verified for real after review: **96/96 tests** (88 + 8 new
+middleware tests) against real MongoDB.
+
+Next: Phase F (routes + `app.js` wiring), building on this now-verified
+Phase A–E
 foundation.

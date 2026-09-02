@@ -24,10 +24,10 @@ against real MongoDB, not just written — see below.
 Authentication milestone: architecture reviewed and locked through four
 rounds of proposal → correction (deployment topology, cookie transport,
 security posture, scope boundary, session storage, JWT design, rotation
-guarantee, logout semantics). Implementation Phases A–D (config
-foundation, Session persistence, auth service layer, token utilities)
-are complete and verified against real MongoDB (88/88 tests). Phases
-E–H (middleware, routes, validation, cookies) have **not** started —
+guarantee, logout semantics). Implementation Phases A–E (config
+foundation, Session persistence, auth service layer, token utilities,
+middleware) are complete and verified against real MongoDB (96/96
+tests). Phases F–H (routes, validation, cookies) have **not** started —
 see the "🟠 Proposed — not yet locked" section for what remains.
 
 D-3a remains unresolved (see below) and is unaffected by Persistence
@@ -187,7 +187,7 @@ suite green, including all three concurrency tests (Issue
   helpers (e.g. `tests/helpers/testDb.js`) are excluded by the glob,
   not by naming discipline alone.
 
-## 🔒 Locked — Authentication (architecture locked; implementation Phases A–D complete and verified, Phases E–H not started)
+## 🔒 Locked — Authentication (architecture locked; implementation Phases A–E complete and verified, Phases F–H not started)
 
 Full derivation, options considered, and rejected alternatives:
 `docs/architecture/authentication-milestone-review-draft.md`,
@@ -198,19 +198,30 @@ narrative in `authentication-implementation-plan.md`.
 
 **Implementation status**: `authentication-implementation-plan.md`'s
 Phases A (dependency/config foundation), B (Session persistence), C
-(auth service layer), and D (token/credential utilities) are complete
-and verified against real MongoDB — `npm run verify:models` 44/44,
-`npm run verify:validation` 44/44, `npm test` **88/88**, including the
-strict single-use-refresh concurrency test (exactly one of two
-simultaneous identical-token refresh attempts succeeds). Two real bugs
-were found and fixed during a focused post-implementation review before
-this was accepted as done: a registration partial-failure ordering
-issue (token signing could fail after the User/Session were already
-persisted, risking a permanently-stuck account) and an unguarded
-`verifyPassword` crash path on a malformed/corrupted stored hash (fixed
-with explicit hex and scrypt-parameter validation, covered by 12 new
-tests). Phases E (middleware), F (routes), G (validation), and H
-(cookie configuration) are not started.
+(auth service layer), D (token/credential utilities), and E (middleware)
+are complete and verified against real MongoDB — `npm run
+verify:models` 44/44, `npm run verify:validation` 44/44, `npm test`
+**96/96**, including the strict single-use-refresh concurrency test
+(exactly one of two simultaneous identical-token refresh attempts
+succeeds) and the middleware's changed-role-reflected-freshly test
+(the same, still-valid access token reflects a role change made after
+issuance — the concrete proof role is never trusted from the token).
+Two real bugs were found and fixed during a focused post-implementation
+review of Phases A–D before they were accepted as done: a registration
+partial-failure ordering issue (token signing could fail after the
+User/Session were already persisted, risking a permanently-stuck
+account) and an unguarded `verifyPassword` crash path on a
+malformed/corrupted stored hash (fixed with explicit hex and
+scrypt-parameter validation, covered by 12 new tests). Phase E's own
+review found no defects requiring correction — one style suggestion and
+one architectural observation (database failures during role lookup
+currently look identical to "not authenticated") were both explicitly
+marked non-blocking, deferred to a future milestone if ever pursued.
+`server/src/middleware/auth.js` is unit-tested but **not yet wired into
+the real Express request pipeline** — no `cookie-parser`, `app.js`
+untouched — confirmed as an intentional Phase F dependency, not a Phase
+E gap. Phases F (routes), G (validation), and H (cookie configuration)
+are not started.
 
 - **Deployment topology**: Topology B — frontend and backend deploy
   independently; the browser talks to the API over HTTPS as a separate
@@ -387,15 +398,16 @@ EXPERT/ADMIN-only, or a combination.
 
 ## 🟠 Proposed — not yet locked
 
-**Authentication implementation, Phases E–H.** The Authentication
+**Authentication implementation, Phases F–H.** The Authentication
 milestone's *architecture* is locked (see "🔒 Locked — Authentication"
-above), and Phases A–D of the implementation plan are complete and
-verified (88/88 tests). What remains proposed, not yet built, is
-Phase E (middleware — producing `actorContext` from a request), Phase F
-(the five auth routes), Phase G (Zod validation for register/login
-payloads), and Phase H (cookie configuration — `HttpOnly`/`Secure` are
-already locked, `SameSite`/`Domain` remain genuinely deployment-
-dependent until real hosting targets are chosen). Exact
-`DomainErrorCode` names for Phases E–H's own needs, exact Zod schemas,
-and any remaining cookie-attribute specifics are implementation-level
+above), and Phases A–E of the implementation plan are complete and
+verified (96/96 tests). What remains proposed, not yet built, is
+Phase F (the five auth routes + `app.js` wiring: `cookie-parser`,
+`cors`, mounting `authMiddleware`), Phase G (Zod validation for
+register/login payloads), and Phase H (cookie configuration —
+`HttpOnly`/`Secure` are already locked, `SameSite`/`Domain` remain
+genuinely deployment-dependent until real hosting targets are chosen).
+Exact `DomainErrorCode` names for Phases F–H's own needs, exact Zod
+schemas, and any remaining cookie-attribute specifics are
+implementation-level
 choices to be made when those phases begin, not decided here.
