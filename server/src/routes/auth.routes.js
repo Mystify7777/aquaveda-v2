@@ -33,10 +33,15 @@ import { ACCESS_TOKEN_COOKIE_NAME } from "../middleware/auth.js";
 
 export const REFRESH_TOKEN_COOKIE_NAME = "refresh_token";
 
-// Refresh cookie is scoped narrowly to the two routes that actually
-// read it, rather than sent on every request like the access cookie —
-// a small, non-deployment-dependent hardening step the implementation
-// plan explicitly said could be locked now (Phase H).
+// Refresh cookie is scoped to the auth API namespace (/api/v1/auth —
+// every route this router defines: register, login, logout, me,
+// refresh), rather than sent on every request like the access cookie.
+// It is not scoped only to the two routes that actually read it
+// (refresh, logout) — Express cookie paths are prefix-based, not a
+// per-route allowlist, so the narrowest correct prefix covering both
+// consumers is the shared router mount point itself. Still meaningfully
+// narrower than "/", which is the actual hardening this achieves: the
+// browser never attaches this cookie to any non-auth request.
 const REFRESH_COOKIE_PATH = "/api/v1/auth";
 
 /**
@@ -111,12 +116,41 @@ const ERROR_STATUS_MAP = {
   [DomainErrorCode.NOT_FOUND]: 404,
 };
 
+/**
+ * Review-pass correction: only errors with a KNOWN, mapped
+ * DomainErrorCode get their message forwarded to the client — those
+ * messages are intentionally written to be client-safe (e.g.
+ * "Invalid email or password"). Anything else (an unmapped
+ * DomainErrorCode, a raw Mongoose/driver error, a bug) is NOT a
+ * message this router wrote for public consumption — it could contain
+ * internal details (a Mongo connection string fragment, a stack-trace
+ * fragment, a library-specific message) that must never reach a
+ * client. Unknown errors are logged server-side in full and always
+ * get the same generic 500 body, never their own `.message`.
+ *
+ * This is a narrow, auth-router-local fix — not a generic/global
+ * error-handling module. A future Routes milestone may want a shared
+ * version of this same principle; that's a separate decision.
+ */
 function sendDomainError(res, err) {
-  const status = ERROR_STATUS_MAP[err?.code] || 500;
-  res.status(status).json({
+  const status = ERROR_STATUS_MAP[err?.code];
+
+  if (status !== undefined) {
+    res.status(status).json({
+      success: false,
+      code: err.code,
+      message: err.message,
+    });
+    return;
+  }
+
+  // Unmapped/unknown error: log the real thing server-side, never
+  // forward it to the client.
+  console.error("[auth.routes] Unexpected error:", err);
+  res.status(500).json({
     success: false,
-    code: err?.code || "INTERNAL_ERROR",
-    message: err?.message || "Internal server error",
+    code: "INTERNAL_ERROR",
+    message: "Internal server error",
   });
 }
 

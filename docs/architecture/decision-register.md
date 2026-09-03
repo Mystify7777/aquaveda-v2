@@ -27,8 +27,13 @@ security posture, scope boundary, session storage, JWT design, rotation
 guarantee, logout semantics). Implementation Phases A–E (config
 foundation, Session persistence, auth service layer, token utilities,
 middleware) are complete and verified against real MongoDB (96/96
-tests). Phases F–H (routes, validation, cookies) have **not** started —
-see the "🟠 Proposed — not yet locked" section for what remains.
+tests). Phase F (routes + `app.js` wiring) is implemented and reviewed,
+with all required corrections applied; final local re-confirmation of
+the full suite is still pending (the most recent real run caught two
+bugs in newly-added tests themselves, both fixed, not yet re-run — see
+below). Phases G–H (validation, cookie deployment specifics) have
+**not** started — see the "🟠 Proposed — not yet locked" section for
+what remains.
 
 D-3a remains unresolved (see below) and is unaffected by Persistence
 Design's, Phase D's, or Authentication's completion — this register is
@@ -187,7 +192,7 @@ suite green, including all three concurrency tests (Issue
   helpers (e.g. `tests/helpers/testDb.js`) are excluded by the glob,
   not by naming discipline alone.
 
-## 🔒 Locked — Authentication (architecture locked; implementation Phases A–E complete and verified, Phases F–H not started)
+## 🔒 Locked — Authentication (architecture locked; implementation Phases A–F complete and reviewed, final Phase F re-confirmation pending, Phases G–H not started)
 
 Full derivation, options considered, and rejected alternatives:
 `docs/architecture/authentication-milestone-review-draft.md`,
@@ -217,11 +222,59 @@ review found no defects requiring correction — one style suggestion and
 one architectural observation (database failures during role lookup
 currently look identical to "not authenticated") were both explicitly
 marked non-blocking, deferred to a future milestone if ever pursued.
-`server/src/middleware/auth.js` is unit-tested but **not yet wired into
-the real Express request pipeline** — no `cookie-parser`, `app.js`
-untouched — confirmed as an intentional Phase F dependency, not a Phase
-E gap. Phases F (routes), G (validation), and H (cookie configuration)
-are not started.
+`server/src/middleware/auth.js` was unit-tested but not yet wired into
+the real Express request pipeline at the end of Phase E — confirmed as
+an intentional Phase F dependency, not a Phase E gap.
+
+**Phase F (routes + `app.js` wiring)** is implemented and reviewed.
+`server/src/routes/auth.routes.js` provides the five-endpoint auth API,
+grep-verified self-contained (a regex matching actual `from "..."`
+import specifiers, not naive substring search — the naive version
+false-positived on this router's own documentation prose) against
+`issue.service.js`/`knowledge.service.js`/`comment.service.js`/
+`project.service.js`. `app.js` now wires
+`cookie-parser → cors → authMiddleware (global) → routes`. Two new
+dependencies added: `cookie-parser`, `cors`.
+
+Two service-contract gaps were found and fixed *before* wiring, not
+patched around afterward: `refresh()` returned only tokens but the
+route needs `{ user }` in its response (fixed by resolving the user
+fresh, consistent with L11); `logout()` took a bare `sid` but a route
+only ever has the raw refresh-token cookie (fixed to accept the raw
+token and verify internally, staying idempotent for every failure
+mode). Duration parsing (JWT lifetimes, `Session.expiresAt`, cookie
+`maxAge`) was consolidated into one shared function rather than three
+independently-written regexes that could silently drift apart.
+
+Phase F's review required one fix: `sendDomainError()` originally
+forwarded `err.message` for ANY error, including unmapped/unexpected
+ones — a real risk of leaking raw Mongoose/library/internal detail to
+a client. Fixed so only errors with a known, mapped `DomainErrorCode`
+have their message forwarded; anything else is logged in full
+server-side and always returns a fixed generic body. Verified with a
+real, currently-reachable scenario (a non-string password reaching
+`crypto.scrypt` with no Zod validation in front of it yet — that's
+Phase G). Two smaller cleanup items were also applied: a misleading
+cookie-path comment (`Path=/api/v1/auth` scopes the refresh cookie to
+the whole auth namespace, not just the two routes that read it — cookie
+paths are prefix-based, not a per-route allowlist) and three dedicated
+CORS regression tests (allowed origin gets credentialed headers,
+disallowed origin gets none, no-Origin requests aren't blocked).
+
+**Verification status, stated precisely rather than assumed**: the
+first real local run after the required fix (114 tests discovered)
+caught two bugs — in the *newly-added tests themselves*, not the
+implementation: an `/me` test asserted a field `actorContext` never
+carries (by design, only `{ id, role }` — the test was wrong), and a
+self-containment test's naive substring search false-positived on the
+router's own explanatory comment (fixed to match only real import
+statements, re-verified to still catch a genuine violation). Both test
+fixes were verified standalone. **A full local re-run confirming all
+114 pass has not yet been reported — do not treat Phase F as fully
+closed until it is.**
+
+Phases G (validation) and H (cookie deployment specifics — `SameSite`,
+`Domain`) are not started.
 
 - **Deployment topology**: Topology B — frontend and backend deploy
   independently; the browser talks to the API over HTTPS as a separate
@@ -398,16 +451,15 @@ EXPERT/ADMIN-only, or a combination.
 
 ## 🟠 Proposed — not yet locked
 
-**Authentication implementation, Phases F–H.** The Authentication
+**Authentication implementation, Phases G–H.** The Authentication
 milestone's *architecture* is locked (see "🔒 Locked — Authentication"
-above), and Phases A–E of the implementation plan are complete and
-verified (96/96 tests). What remains proposed, not yet built, is
-Phase F (the five auth routes + `app.js` wiring: `cookie-parser`,
-`cors`, mounting `authMiddleware`), Phase G (Zod validation for
-register/login payloads), and Phase H (cookie configuration —
-`HttpOnly`/`Secure` are already locked, `SameSite`/`Domain` remain
-genuinely deployment-dependent until real hosting targets are chosen).
-Exact `DomainErrorCode` names for Phases F–H's own needs, exact Zod
-schemas, and any remaining cookie-attribute specifics are
-implementation-level
-choices to be made when those phases begin, not decided here.
+above), Phases A–E are complete and verified (96/96 tests), and Phase F
+is implemented and reviewed pending final local re-confirmation (see
+above). What remains proposed, not yet built, is Phase G (Zod
+validation for register/login payloads — password policy already
+resolved: 8-char minimum, no composition rules) and Phase H (cookie
+configuration — `HttpOnly`/`Secure`/`Path` are already locked,
+`SameSite`/`Domain` remain genuinely deployment-dependent until real
+hosting targets are chosen). Exact Zod schemas and any remaining
+cookie-attribute specifics are implementation-level choices to be made
+when those phases begin, not decided here.

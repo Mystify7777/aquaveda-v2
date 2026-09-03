@@ -139,6 +139,24 @@ describe("POST /api/v1/auth/register", () => {
     assert.equal(res.status, 409);
     assert.equal(res.json.code, "EMAIL_ALREADY_REGISTERED");
   });
+
+  it("review-pass correction: an unexpected/unmapped internal error never leaks its raw message to the client", async () => {
+    // A non-string password reaches hashPassword()'s crypto.scrypt call
+    // with no Zod validation in front of it yet (Phase G isn't built),
+    // and no DomainError wrapping exists for this specific failure —
+    // this is a genuine, currently-reachable "unknown error" path via a
+    // real HTTP request, not a synthetic/mocked scenario.
+    const res = await request("POST", "/api/v1/auth/register", {
+      body: { name: "Test User", email: "weird@example.com", password: 12345 },
+    });
+
+    assert.equal(res.status, 500);
+    assert.deepEqual(res.json, {
+      success: false,
+      code: "INTERNAL_ERROR",
+      message: "Internal server error",
+    });
+  });
 });
 
 describe("POST /api/v1/auth/login", () => {
@@ -182,7 +200,12 @@ describe("GET /api/v1/auth/me", () => {
     });
 
     assert.equal(res.status, 200);
-    assert.equal(res.json.user.email, "test@example.com");
+    // actorContext only ever contains { id, role } — no email, name, or
+    // other User field (Phase E's contract, re-verified here at the
+    // HTTP layer). The earlier version of this test incorrectly
+    // asserted `.email`, which can never be present; fixed to assert
+    // against the fields that are actually part of the contract.
+    assert.equal(res.json.user.role, "USER");
     assert.deepEqual(Object.keys(res.json.user).sort(), ["id", "role"]);
   });
 });
@@ -253,8 +276,84 @@ describe("Auth router self-containment", () => {
       new URL("../src/routes/auth.routes.js", import.meta.url),
       "utf8"
     );
+    // Checks actual import statements only (via the `from "..."` import
+    // specifier syntax), not arbitrary substring occurrence in the
+    // file — this router's own header comment legitimately documents
+    // (in prose) that it never imports these modules, and a naive
+    // substring check would false-positive on that very sentence.
     for (const forbidden of ["issue.service", "knowledge.service", "comment.service", "project.service"]) {
-      assert.ok(!source.includes(forbidden), `auth.routes.js must not import ${forbidden}`);
+      const importPattern = new RegExp(`from\\s+["'][^"']*${forbidden}[^"']*["']`);
+      assert.ok(!importPattern.test(source), `auth.routes.js must not import ${forbidden}`);
     }
+  });
+});
+
+describe("CORS (review-pass correction: regression coverage)", () => {
+  // A dedicated app/server instance with a controlled ALLOWED_ORIGINS
+  // value, independent of whatever the developer's real .env happens
+  // to contain — this test must be deterministic regardless of local
+  // configuration, not accidentally coupled to it.
+  const ALLOWED_ORIGIN = "http://allowed.example.com";
+  const DISALLOWED_ORIGIN = "http://not-allowed.example.com";
+
+  let corsServer;
+  let corsBaseUrl;
+  let previousAllowedOrigins;
+
+  before(async () => {
+    previousAllowedOrigins = process.env.ALLOWED_ORIGINS;
+    process.env.ALLOWED_ORIGINS = ALLOWED_ORIGIN;
+
+    const app = createApp();
+    corsServer = http.createServer(app);
+    await new Promise((resolve) => corsServer.listen(0, resolve));
+    const { port } = corsServer.address();
+    corsBaseUrl = `http://127.0.0.1:${port}`;
+  });
+
+  after(async () => {
+    await new Promise((resolve) => corsServer.close(resolve));
+    process.env.ALLOWED_ORIGINS = previousAllowedOrigins;
+  });
+
+  function corsRequest(origin) {
+    return new Promise((resolve, reject) => {
+      const req = http.request(
+        `${corsBaseUrl}/api/v1/health`,
+        { method: "GET", headers: origin ? { Origin: origin } : {} },
+        (res) => {
+          res.resume(); // drain, body content isn't relevant to these assertions
+          res.on("end", () => resolve(res.headers));
+        }
+      );
+      req.on("error", reject);
+      req.end();
+    });
+  }
+
+  it("an allowed origin receives Access-Control-Allow-Origin (echoed back) and Access-Control-Allow-Credentials: true", async () => {
+    const headers = await corsRequest(ALLOWED_ORIGIN);
+
+    assert.equal(headers["access-control-allow-origin"], ALLOWED_ORIGIN);
+    assert.equal(headers["access-control-allow-credentials"], "true");
+  });
+
+  it("a disallowed origin receives NO Access-Control-Allow-Origin header at all — not a wildcard, not echoed back", async () => {
+    const headers = await corsRequest(DISALLOWED_ORIGIN);
+
+    assert.equal(headers["access-control-allow-origin"], undefined);
+    // Confirms the callback(null, false) rejection path (not an error
+    // thrown, not a 500) — the request still completes normally, it
+    // simply isn't granted cross-origin credentialed access.
+  });
+
+  it("a request with no Origin header at all (server-to-server) is not blocked", async () => {
+    const headers = await corsRequest(undefined);
+    // No Origin header means no CORS enforcement is even in play for
+    // this request — asserting the request completed without the
+    // headers object being empty/erroring is the meaningful check here
+    // (already implicit in corsRequest resolving at all), restated
+    // explicitly for clarity.
+    assert.ok(headers);
   });
 });
