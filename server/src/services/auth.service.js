@@ -42,6 +42,25 @@ import {
  * produces identity; it does not touch authorization policy.
  */
 
+/**
+ * Canonicalizes an email the same way for every caller of this service,
+ * regardless of whether they came through Zod-validated HTTP routes or
+ * called register()/login() directly (as every test in this project
+ * does). auth.validation.js's Zod schemas ALSO canonicalize — that is
+ * deliberate defense-in-depth, not redundant duplication: a normalization
+ * rule that only lived in Zod would leave every direct service caller
+ * with the case-sensitivity bug this function exists to close (found
+ * during Phase G — see decision-register.md). Kept local to this file,
+ * not extracted into a shared module, since nothing else in this
+ * project currently needs it.
+ *
+ * @param {string} email
+ * @returns {string}
+ */
+function canonicalizeEmail(email) {
+  return typeof email === "string" ? email.trim().toLowerCase() : email;
+}
+
 function wrapMongooseValidationError(err) {
   if (err.name === "ValidationError" || err.name === "CastError") {
     return new DomainError(DomainErrorCode.VALIDATION_FAILED, err.message, {
@@ -151,7 +170,8 @@ function refreshExpiryDate() {
  *    left as a raw Mongo error or misreported as VALIDATION_FAILED.
  */
 export async function register(payload) {
-  const { name, email, password } = payload;
+  const { name, password } = payload;
+  const email = canonicalizeEmail(payload.email);
 
   const existing = await User.findOne({ email });
   if (existing) {
@@ -221,7 +241,8 @@ export async function register(payload) {
  * posture, decision-register.md L3 / implementation-plan Phase I).
  */
 export async function login(payload) {
-  const { email, password } = payload;
+  const { password } = payload;
+  const email = canonicalizeEmail(payload.email);
 
   const user = await User.findOne({ email }).select("+passwordHash");
   if (!user) {

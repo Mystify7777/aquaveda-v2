@@ -99,6 +99,30 @@ describe("auth.service — login", () => {
     assert.ok(result.refreshToken);
   });
 
+  it("Phase G fix: direct service call (bypassing Zod/routes entirely) still succeeds with a differently-cased email — canonicalization lives in the service itself, not only in the Zod layer", async () => {
+    await register(registerPayload({ email: "test@example.com" }));
+
+    // Called directly, exactly like every other test in this file —
+    // no HTTP request, no Zod schema involved. If canonicalization only
+    // existed in auth.validation.js, this would fail with
+    // INVALID_CREDENTIALS despite the password being correct, which is
+    // the exact bug this fix closes.
+    const result = await login({ email: "TEST@EXAMPLE.COM", password: VALID_PASSWORD });
+    assert.equal(result.user.email, "test@example.com");
+  });
+
+  it("Phase G fix: register() also canonicalizes email directly — a differently-cased duplicate is still caught as EMAIL_ALREADY_REGISTERED even calling the service directly", async () => {
+    await register(registerPayload({ email: "test@example.com" }));
+
+    await assert.rejects(
+      () => register(registerPayload({ email: "TEST@EXAMPLE.COM", name: "Someone Else" })),
+      (err) => {
+        assert.equal(err.code, DomainErrorCode.EMAIL_ALREADY_REGISTERED);
+        return true;
+      }
+    );
+  });
+
   it("fails with INVALID_CREDENTIALS and an identical message for a wrong password vs. a nonexistent email (no information leak)", async () => {
     await register(registerPayload());
 

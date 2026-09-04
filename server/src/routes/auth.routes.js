@@ -7,6 +7,7 @@ import {
   getRefreshTokenLifetimeMs,
 } from "../services/auth-tokens.js";
 import { ACCESS_TOKEN_COOKIE_NAME } from "../middleware/auth.js";
+import { registerSchema, loginSchema } from "../validation/auth.validation.js";
 
 /**
  * Authentication routes — the five-endpoint minimal auth API surface
@@ -154,11 +155,40 @@ function sendDomainError(res, err) {
   });
 }
 
+/**
+ * Zod validation-failure translator (Phase G), kept local to this
+ * router — not a generic/global validation middleware, per the same
+ * scope discipline as `sendDomainError`. Only `/register` and `/login`
+ * use this; `/refresh`, `/logout`, and `/me` have no request-body shape
+ * to validate (cookie/context-driven), so no schema exists for them.
+ *
+ * Response shape matches `sendDomainError`'s exactly
+ * (`{ success, code, message }`), even though this isn't a thrown
+ * `DomainError` — consistency for API consumers, not a coincidence.
+ */
+function sendValidationError(res, zodError) {
+  res.status(400).json({
+    success: false,
+    code: DomainErrorCode.VALIDATION_FAILED,
+    message: zodError.issues[0]?.message || "Invalid request body",
+  });
+}
+
 export const authRouter = Router();
 
 authRouter.post("/register", async (req, res) => {
+  const parsed = registerSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+
   try {
-    const { user, accessToken, refreshToken } = await register(req.body ?? {});
+    // parsed.data, not req.body — this is what actually carries the
+    // Zod-canonicalized (trimmed, lowercased) email forward. The
+    // service ALSO canonicalizes independently (see auth.service.js's
+    // canonicalizeEmail) for callers that bypass this route entirely.
+    const { user, accessToken, refreshToken } = await register(parsed.data);
     setAuthCookies(res, { accessToken, refreshToken });
     res.status(201).json({ success: true, user });
   } catch (err) {
@@ -167,8 +197,14 @@ authRouter.post("/register", async (req, res) => {
 });
 
 authRouter.post("/login", async (req, res) => {
+  const parsed = loginSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+
   try {
-    const { user, accessToken, refreshToken } = await login(req.body ?? {});
+    const { user, accessToken, refreshToken } = await login(parsed.data);
     setAuthCookies(res, { accessToken, refreshToken });
     res.status(200).json({ success: true, user });
   } catch (err) {

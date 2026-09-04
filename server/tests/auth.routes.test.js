@@ -140,22 +140,19 @@ describe("POST /api/v1/auth/register", () => {
     assert.equal(res.json.code, "EMAIL_ALREADY_REGISTERED");
   });
 
-  it("review-pass correction: an unexpected/unmapped internal error never leaks its raw message to the client", async () => {
-    // A non-string password reaches hashPassword()'s crypto.scrypt call
-    // with no Zod validation in front of it yet (Phase G isn't built),
-    // and no DomainError wrapping exists for this specific failure —
-    // this is a genuine, currently-reachable "unknown error" path via a
-    // real HTTP request, not a synthetic/mocked scenario.
+  it("Phase G superseded this scenario: a non-string password is now caught by Zod validation (400) before it can ever reach the fragile internal path that used to produce a raw 500", async () => {
+    // Before Phase G, this exact payload reached hashPassword()'s
+    // crypto.scrypt call with an invalid type and produced an unmapped
+    // 500 — which sendDomainError's safety net correctly sanitized (see
+    // the Phase F review's own verification of that mechanism). Zod
+    // validation now closes this specific hole earlier and more
+    // precisely: the request never reaches the service at all.
     const res = await request("POST", "/api/v1/auth/register", {
       body: { name: "Test User", email: "weird@example.com", password: 12345 },
     });
 
-    assert.equal(res.status, 500);
-    assert.deepEqual(res.json, {
-      success: false,
-      code: "INTERNAL_ERROR",
-      message: "Internal server error",
-    });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
   });
 });
 
@@ -180,6 +177,108 @@ describe("POST /api/v1/auth/login", () => {
 
     assert.equal(res.status, 401);
     assert.equal(res.json.code, "INVALID_CREDENTIALS");
+  });
+
+  it("email normalization: registering with lowercase and logging in with a differently-cased email both succeed (route-level case-insensitivity)", async () => {
+    await request("POST", "/api/v1/auth/register", { body: registerBody({ email: "test@example.com" }) });
+
+    const res = await request("POST", "/api/v1/auth/login", {
+      body: { email: "Test@Example.COM", password: "correcthorsebatterystaple" },
+    });
+
+    assert.equal(res.status, 200, "login must succeed despite different email casing than at registration");
+  });
+
+  it("does not enforce registration password-length rules — a short password still reaches credential verification and fails on WRONG credentials, not shape", async () => {
+    await request("POST", "/api/v1/auth/register", { body: registerBody() });
+
+    const res = await request("POST", "/api/v1/auth/login", {
+      body: { email: "test@example.com", password: "x" }, // 1 char — would fail registerSchema's min(8), must not fail loginSchema
+    });
+
+    assert.equal(res.status, 401, "a too-short password must reach credential verification and fail as wrong credentials, not as a validation error");
+    assert.equal(res.json.code, "INVALID_CREDENTIALS");
+  });
+});
+
+describe("Phase G — request-shape validation (400 VALIDATION_FAILED)", () => {
+  it("register: empty/whitespace-only name is rejected with 400 VALIDATION_FAILED", async () => {
+    const res = await request("POST", "/api/v1/auth/register", {
+      body: registerBody({ name: "   " }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("register: a name longer than 100 characters is rejected", async () => {
+    const res = await request("POST", "/api/v1/auth/register", {
+      body: registerBody({ name: "a".repeat(101) }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("register: an invalid email format is rejected", async () => {
+    const res = await request("POST", "/api/v1/auth/register", {
+      body: registerBody({ email: "not-an-email" }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("register: email is trimmed and lowercased before reaching the service — the STORED/returned user reflects the canonical form, not the raw input", async () => {
+    const res = await request("POST", "/api/v1/auth/register", {
+      body: registerBody({ email: "  Test@Example.COM  " }),
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.json.user.email, "test@example.com", "response should reflect the canonicalized email, proving parsed.data (not raw req.body) reached the service");
+  });
+
+  it("register: name is trimmed before reaching the service", async () => {
+    const res = await request("POST", "/api/v1/auth/register", {
+      body: registerBody({ name: "  Trimmed Name  " }),
+    });
+    assert.equal(res.status, 201);
+    // Confirmed indirectly: registration succeeded (a non-trimmed,
+    // still-valid name would also succeed on its own, so the
+    // meaningful proof of trimming is the email case above and the
+    // schema-level unit assertions in verify-validation.js — this test
+    // exists mainly to confirm the route doesn't reject a
+    // legitimately-padded name outright).
+  });
+
+  it("register: password shorter than 8 characters is rejected", async () => {
+    const res = await request("POST", "/api/v1/auth/register", {
+      body: registerBody({ password: "short1" }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("register: password longer than 128 characters is rejected", async () => {
+    const res = await request("POST", "/api/v1/auth/register", {
+      body: registerBody({ password: "a".repeat(129) }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("login: an invalid email format is rejected with 400, distinct from a credentials failure", async () => {
+    const res = await request("POST", "/api/v1/auth/login", {
+      body: { email: "not-an-email", password: "whatever" },
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("no validation schema exists for /refresh, /logout, or /me — a missing body never produces a VALIDATION_FAILED response from these routes", async () => {
+    const refreshRes = await request("POST", "/api/v1/auth/refresh");
+    const logoutRes = await request("POST", "/api/v1/auth/logout");
+    const meRes = await request("GET", "/api/v1/auth/me");
+
+    assert.notEqual(refreshRes.json?.code, "VALIDATION_FAILED");
+    assert.notEqual(logoutRes.json?.code, "VALIDATION_FAILED");
+    assert.notEqual(meRes.json?.code, "VALIDATION_FAILED");
   });
 });
 
