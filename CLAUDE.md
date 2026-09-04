@@ -6,17 +6,12 @@
 
 Authentication — implementation in progress. Architecture fully locked
 (`docs/architecture/decision-register.md` §"Locked — Authentication").
-Implementation plan Phases A–F **implemented and reviewed**.
-Phases A–E verified for real against real MongoDB: `npm run
-verify:models` **44/44**, `npm run verify:validation` **44/44**, `npm
-test` **96/96**, including every concurrency test (Issue, Knowledge,
-and the refresh-token single-use race). Phase F (routes + `app.js`
-wiring) implemented, reviewed with one required fix (error-message
-leak) plus two cleanup items, all applied — **114 tests now
-discovered, final local re-confirmation of all 114 passing not yet
-reported** (the prior run at 112/114 caught two bugs in the *tests
-themselves*, both fixed; not yet re-run). Phases G–H (validation,
-cookie deployment specifics) not started.
+Implementation plan Phases A–F **implemented, reviewed, and verified
+for real**: `npm run verify:models` **44/44**, `npm run
+verify:validation` **44/44**, `npm test` **113/113** against real
+MongoDB, including every concurrency test (Issue, Knowledge, and the
+refresh-token single-use race). Phases G–H (validation, cookie
+deployment specifics) not started.
 
 ## Completed
 
@@ -300,11 +295,9 @@ logout-vs-access-token-expiry trade-off.
 - Auth middleware and routes now exist (`server/src/middleware/auth.js`,
   `server/src/routes/auth.routes.js`) and are wired into the real
   Express pipeline (`app.js`: `cookie-parser → cors → authMiddleware →
-  routes`). Implemented and reviewed; **final local re-confirmation of
-  the full 114-test suite is still pending** (see Reviewer Notes) — do
-  not treat this as fully closed until that comes back clean. Phase G
-  (Zod validation) and Phase H (cookie deployment specifics) remain
-  genuinely not started.
+  routes`). Implemented, reviewed, and **verified for real: 113/113**
+  against real MongoDB. Phase G (Zod validation) and Phase H (cookie
+  deployment specifics) remain genuinely not started.
 
 ## Next Milestone
 
@@ -391,9 +384,20 @@ first real local run after the required fix caught **two bugs in the
 new tests themselves** (an `/me` test asserting a field `actorContext`
 never carries, and a scope-boundary test whose naive substring search
 false-positived on the router's own documentation comment) — both
-fixed and re-verified standalone, but **not yet re-confirmed with a
-full local run**. Do not treat Phase F as fully closed until that
-re-run comes back clean.
+fixed and re-verified standalone. Final local re-run: **113/113,
+0 failures** — confirmed against real MongoDB.
 
-Next: Phase G (Zod validation), building on this now-implemented-and-
-reviewed, pending-final-reconfirmation Phase A–F foundation.
+Note on test-count bookkeeping: Claude's own sandbox (no `mongod`
+available there) had reported "114 tests discovered" from a
+connection-failure run, which turned out to be a red herring — when a
+suite's setup hook throws before any of its children can run, Node's
+test runner counts that suite's own failure as one aggregate entry
+distinct from how it tallies `cancelled` children in later suites,
+producing an off-by-one artifact specific to a broken-DB environment.
+Both environments report the same `suites: 28` (identical file/test
+structure), confirming nothing was actually missing — 113 is the real,
+correct total, verified by an actual successful run rather than by
+counting discovered-but-unexecuted tests in a broken environment.
+
+Next: Phase G (Zod validation), building on this now-fully-verified
+Phase A–F foundation.

@@ -24,15 +24,12 @@ against real MongoDB, not just written — see below.
 Authentication milestone: architecture reviewed and locked through four
 rounds of proposal → correction (deployment topology, cookie transport,
 security posture, scope boundary, session storage, JWT design, rotation
-guarantee, logout semantics). Implementation Phases A–E (config
+guarantee, logout semantics). Implementation Phases A–F (config
 foundation, Session persistence, auth service layer, token utilities,
-middleware) are complete and verified against real MongoDB (96/96
-tests). Phase F (routes + `app.js` wiring) is implemented and reviewed,
-with all required corrections applied; final local re-confirmation of
-the full suite is still pending (the most recent real run caught two
-bugs in newly-added tests themselves, both fixed, not yet re-run — see
-below). Phases G–H (validation, cookie deployment specifics) have
-**not** started — see the "🟠 Proposed — not yet locked" section for
+middleware, routes + `app.js` wiring) are complete, reviewed, and
+verified against real MongoDB — **113/113 tests**. Phases G–H
+(validation, cookie deployment specifics) have **not** started — see
+the "🟠 Proposed — not yet locked" section for
 what remains.
 
 D-3a remains unresolved (see below) and is unaffected by Persistence
@@ -192,7 +189,7 @@ suite green, including all three concurrency tests (Issue
   helpers (e.g. `tests/helpers/testDb.js`) are excluded by the glob,
   not by naming discipline alone.
 
-## 🔒 Locked — Authentication (architecture locked; implementation Phases A–F complete and reviewed, final Phase F re-confirmation pending, Phases G–H not started)
+## 🔒 Locked — Authentication (architecture locked; implementation Phases A–F complete, reviewed, and verified — 113/113 tests; Phases G–H not started)
 
 Full derivation, options considered, and rejected alternatives:
 `docs/architecture/authentication-milestone-review-draft.md`,
@@ -203,14 +200,16 @@ narrative in `authentication-implementation-plan.md`.
 
 **Implementation status**: `authentication-implementation-plan.md`'s
 Phases A (dependency/config foundation), B (Session persistence), C
-(auth service layer), D (token/credential utilities), and E (middleware)
-are complete and verified against real MongoDB — `npm run
-verify:models` 44/44, `npm run verify:validation` 44/44, `npm test`
-**96/96**, including the strict single-use-refresh concurrency test
-(exactly one of two simultaneous identical-token refresh attempts
-succeeds) and the middleware's changed-role-reflected-freshly test
-(the same, still-valid access token reflects a role change made after
-issuance — the concrete proof role is never trusted from the token).
+(auth service layer), D (token/credential utilities), E (middleware),
+and F (routes + `app.js` wiring) are complete, reviewed, and verified
+against real MongoDB — `npm run verify:models` 44/44, `npm run
+verify:validation` 44/44, `npm test` **113/113**, including the strict
+single-use-refresh concurrency test (exactly one of two simultaneous
+identical-token refresh attempts succeeds) and the middleware's
+changed-role-reflected-freshly test (the same, still-valid access token
+reflects a role change made after issuance — the concrete proof role is
+never trusted from the token). Phase F's own review details, including
+its required error-leak fix, are recorded further below.
 Two real bugs were found and fixed during a focused post-implementation
 review of Phases A–D before they were accepted as done: a registration
 partial-failure ordering issue (token signing could fail after the
@@ -262,16 +261,24 @@ CORS regression tests (allowed origin gets credentialed headers,
 disallowed origin gets none, no-Origin requests aren't blocked).
 
 **Verification status, stated precisely rather than assumed**: the
-first real local run after the required fix (114 tests discovered)
-caught two bugs — in the *newly-added tests themselves*, not the
-implementation: an `/me` test asserted a field `actorContext` never
-carries (by design, only `{ id, role }` — the test was wrong), and a
-self-containment test's naive substring search false-positived on the
-router's own explanatory comment (fixed to match only real import
-statements, re-verified to still catch a genuine violation). Both test
-fixes were verified standalone. **A full local re-run confirming all
-114 pass has not yet been reported — do not treat Phase F as fully
-closed until it is.**
+first real local run after the required fix caught two bugs — in the
+*newly-added tests themselves*, not the implementation: an `/me` test
+asserted a field `actorContext` never carries (by design, only
+`{ id, role }` — the test was wrong), and a self-containment test's
+naive substring search false-positived on the router's own explanatory
+comment (fixed to match only real import statements, re-verified to
+still catch a genuine violation). Both fixes verified standalone, then
+confirmed with a full local re-run: **113/113, 0 failures, against real
+MongoDB.**
+
+(Bookkeeping note: an earlier claim of "114 tests" came from Claude's
+own sandbox, which has no `mongod` — a connection-failure run there
+counts a suite whose setup hook throws as one aggregate entry, distinct
+from how later suites' children are tallied as `cancelled`, producing
+an off-by-one artifact specific to that broken environment. Both
+environments report identical `suites: 28`, confirming no test was
+actually missing — 113 is the correct, real total, established by an
+actual successful run.)
 
 Phases G (validation) and H (cookie deployment specifics — `SameSite`,
 `Domain`) are not started.
@@ -453,9 +460,8 @@ EXPERT/ADMIN-only, or a combination.
 
 **Authentication implementation, Phases G–H.** The Authentication
 milestone's *architecture* is locked (see "🔒 Locked — Authentication"
-above), Phases A–E are complete and verified (96/96 tests), and Phase F
-is implemented and reviewed pending final local re-confirmation (see
-above). What remains proposed, not yet built, is Phase G (Zod
+above), and Phases A–F are complete, reviewed, and verified (113/113
+tests). What remains proposed, not yet built, is Phase G (Zod
 validation for register/login payloads — password policy already
 resolved: 8-char minimum, no composition rules) and Phase H (cookie
 configuration — `HttpOnly`/`Secure`/`Path` are already locked,
