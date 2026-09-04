@@ -234,17 +234,12 @@ describe("Phase G — request-shape validation (400 VALIDATION_FAILED)", () => {
     assert.equal(res.json.user.email, "test@example.com", "response should reflect the canonicalized email, proving parsed.data (not raw req.body) reached the service");
   });
 
-  it("register: name is trimmed before reaching the service", async () => {
+  it("register: name is trimmed before reaching the service — proven by asserting the returned (trimmed) name, not merely that registration succeeded", async () => {
     const res = await request("POST", "/api/v1/auth/register", {
       body: registerBody({ name: "  Trimmed Name  " }),
     });
     assert.equal(res.status, 201);
-    // Confirmed indirectly: registration succeeded (a non-trimmed,
-    // still-valid name would also succeed on its own, so the
-    // meaningful proof of trimming is the email case above and the
-    // schema-level unit assertions in verify-validation.js — this test
-    // exists mainly to confirm the route doesn't reject a
-    // legitimately-padded name outright).
+    assert.equal(res.json.user.name, "Trimmed Name", "response should reflect the trimmed name, proving parsed.data (not raw req.body) reached the service — an untrimmed value reaching the service would fail this exact assertion");
   });
 
   it("register: password shorter than 8 characters is rejected", async () => {

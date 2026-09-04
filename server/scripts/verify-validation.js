@@ -1,12 +1,12 @@
 /**
- * Phase C validation-layer verification script.
+ * Validation-layer verification script.
  *
- * Verifies the Zod request-shape schemas in isolation — pure input/output
- * checks via `.safeParse()`, no Mongoose, no MongoDB, no network. Mirrors
- * the style/discipline of scripts/verify-models.js.
+ * Verifies the repository's Zod request-shape schemas in isolation —
+ * pure input/output checks via `.safeParse()`, no Mongoose, no MongoDB,
+ * no network. Mirrors the style/discipline of scripts/verify-models.js.
  *
  * This is a manual diagnostic script, not part of the formal test suite
- * (that's Phase F, per the implementation plan §21). Run with:
+ * (that's the node:test files under server/tests/). Run with:
  *
  *   npm run verify:validation
  *
@@ -445,7 +445,7 @@ check("10f. Missing password fails (still requires the field to be present and a
 // ---------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------
-console.log("\nPhase C + Phase G validation-layer verification\n" + "=".repeat(40));
+console.log("\nValidation-layer verification\n" + "=".repeat(40));
 for (const r of results) {
   console.log(`${r.ok ? "✔" : "✘"} ${r.label}${r.ok ? "" : `\n    ${r.error}`}`);
 }

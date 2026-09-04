@@ -27,9 +27,13 @@ import { registerSchema, loginSchema } from "../validation/auth.validation.js";
  * `/me` simply reads `req.actorContext`, already populated before this
  * router ever runs.
  *
- * No Zod validation yet — that's Phase G. Routes call the service with
- * raw `req.body`; `auth.service.js`'s existing Mongoose-validation-error
- * wrapping provides a reasonable interim fallback.
+ * Request-shape validation (Phase G) is applied only to `/register` and
+ * `/login`, through their local Zod schemas in `auth.validation.js`.
+ * The successfully-parsed output (`parsed.data`, not raw `req.body`) is
+ * what reaches `auth.service.js` — this is what actually delivers Zod's
+ * email canonicalization forward, not merely validates shape.
+ * `/refresh`, `/logout`, and `/me` are cookie/context-driven and
+ * deliberately have no request-body schema.
  */
 
 export const REFRESH_TOKEN_COOKIE_NAME = "refresh_token";

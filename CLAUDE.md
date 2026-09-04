@@ -6,12 +6,16 @@
 
 Authentication — implementation in progress. Architecture fully locked
 (`docs/architecture/decision-register.md` §"Locked — Authentication").
-Implementation plan Phases A–F **implemented, reviewed, and verified
-for real**: `npm run verify:models` **44/44**, `npm run
-verify:validation` **44/44**, `npm test` **113/113** against real
-MongoDB, including every concurrency test (Issue, Knowledge, and the
-refresh-token single-use race). Phases G–H (validation, cookie
-deployment specifics) not started.
+Implementation plan Phases A–G **implemented and reviewed**. Phases A–F
+verified for real against real MongoDB: `npm run verify:models`
+**44/44**, `npm run verify:validation` **44/44**, `npm test`
+**113/113**, including every concurrency test (Issue, Knowledge, and
+the refresh-token single-use race). Phase G (Zod validation) implemented
+and reviewed with three minor cleanup items applied — `npm run
+verify:validation` now **63/63** (offline, confirmed) — **full local
+`npm test` re-confirmation against real MongoDB with the new Phase G
+tests included has not yet been reported.** Phase H (cookie deployment
+specifics) not started.
 
 ## Completed
 
@@ -76,7 +80,7 @@ design from proceeding.
 - Full detail: `docs/architecture/decision-register.md` §Persistence Design,
   §Phase D
 
-### Authentication — Architecture (locked) and Implementation Phases A–F
+### Authentication — Architecture (locked) and Implementation Phases A–G
 
 **Architecture**, reviewed and locked across four rounds of proposal →
 correction (see `docs/architecture/decision-register.md` §"Locked —
@@ -90,7 +94,7 @@ fresh-DB role resolution, hashed-only refresh-credential storage, TTL ≠
 runtime enforcement, single-use refresh rotation, and the L17
 logout-vs-access-token-expiry trade-off.
 
-**Implementation, Phases A–F of `authentication-implementation-plan.md`**:
+**Implementation, Phases A–G of `authentication-implementation-plan.md`**:
 - `server/src/config/env.js` — canonical, shared environment
   configuration entry point; `server/src/config/db.js` refactored to
   consume it (mechanical, `connectDB()`'s behavior and `{ envVar }`
@@ -177,11 +181,45 @@ logout-vs-access-token-expiry trade-off.
   `.message` to the client for a **known, mapped** `DomainErrorCode` —
   any unmapped/unexpected error (a bug, a raw Mongoose/library error)
   is logged in full server-side and always returns a fixed generic
-  body, never its own message. Verified with a real, currently-
-  reachable scenario (a non-string password reaching `crypto.scrypt`
-  with no Zod validation in front of it yet — that's Phase G).
-- No Zod validation yet (Phase G); routes call services with raw
-  `req.body`.
+  body, never its own message. Originally verified with a
+  currently-reachable scenario (a non-string password reaching
+  `crypto.scrypt` with no Zod validation in front of it yet); Phase G
+  has since closed that specific hole earlier and more precisely (see
+  below) — the test was updated to reflect the improved behavior, not
+  deleted.
+- **Phase G (Zod validation)**: `server/src/validation/auth.validation.js`
+  — `registerSchema` (name: trimmed, 1–100 chars; email: trimmed,
+  lowercased, valid format; password: 8–128 chars, no composition
+  rules) and `loginSchema` (email same canonicalization; password only
+  checked for presence — deliberately does NOT enforce registration
+  password-length rules, since a login attempt must still reach
+  credential verification regardless of whether the password would
+  satisfy today's registration policy). Wired into `/register` and
+  `/login` only, via `parsed.data` (not raw `req.body`) — this is what
+  actually delivers Zod's canonicalization forward, not just validates
+  shape. No schema for `/refresh`, `/logout`, or `/me` (cookie/context-
+  driven, nothing to validate).
+- **Real bug found and fixed during Phase G gathering, not hypothetical**:
+  `login()`'s `User.findOne({ email })` never normalized casing — Mongoose's
+  `lowercase: true` schema option only fires when *saving* a document,
+  not on a plain query filter, so a user registering as
+  `Test@Example.com` (stored correctly as lowercase) who later typed the
+  same casing at login would get a false `INVALID_CREDENTIALS`. Fixed
+  with a local `canonicalizeEmail()` helper applied in **both**
+  `register()` and `login()` directly — not only in Zod — specifically
+  because every service function in this project is also called
+  directly by tests, bypassing Zod/routes entirely; a fix living only
+  in Zod would have left that direct-call path still broken. Proven with
+  a test that calls `login()` directly (no HTTP, no Zod) with a
+  differently-cased email against an already-registered lowercase one.
+- Reviewed with three minor cleanup items, all applied: a stale
+  "No Zod validation yet" comment in `auth.routes.js` (Phase G had
+  since been implemented in that same file), stale "Phase C" labeling
+  in `verify-validation.js`'s header/output (removed — a verification
+  script shouldn't permanently encode milestone numbering), and one
+  route-level test that claimed to prove name-trimming but only checked
+  that registration succeeded — strengthened to assert the actual
+  returned (trimmed) name.
 - D-3a untouched: no file in this phase reads, writes, or reasons about
   Issue status/lifecycle
 - Full detail: `docs/architecture/decision-register.md` §"Locked —
@@ -301,16 +339,15 @@ logout-vs-access-token-expiry trade-off.
 
 ## Next Milestone
 
-Authentication implementation, continuing with the plan's Phase G (Zod
-validation for register/login payloads — password policy already
-resolved: 8-char minimum, reasonable max, no composition rules). Phase H
-(cookie configuration) has two items already locked (`HttpOnly`,
-`Secure` in production, plus `Path` for both cookies) and two genuinely
-deployment-dependent items (`SameSite`, `Domain`) that can't be
-finalized until real hosting targets are chosen.
+Authentication implementation, continuing with the plan's Phase H
+(cookie configuration). `HttpOnly`, `Secure` in production, and `Path`
+for both cookies are already locked; `SameSite` and `Domain` remain
+genuinely deployment-dependent and can't be finalized until real
+hosting targets are chosen — expect this phase to be about confirming
+env-var wiring, not making new architectural decisions.
 
-D-3a remains explicitly **not** in scope for Phase G or H — they
-produce/consume identity, not remediation authority.
+D-3a remains explicitly **not** in scope for Phase H — it produces/
+consumes identity, not remediation authority.
 
 ## Reviewer Notes
 
@@ -399,5 +436,16 @@ structure), confirming nothing was actually missing — 113 is the real,
 correct total, verified by an actual successful run rather than by
 counting discovered-but-unexecuted tests in a broken environment.
 
-Next: Phase G (Zod validation), building on this now-fully-verified
-Phase A–F foundation.
+Phase G (Zod validation) reviewed: approved, no architectural violation
+or blocking bug found. Three minor cleanup items required (a stale
+Phase-F-era comment in `auth.routes.js`, stale "Phase C" labeling in
+`verify-validation.js`, and one route-level test that didn't actually
+prove what its name claimed) — all applied. `npm run verify:validation`
+confirmed **63/63** offline after cleanup. **Full local `npm test`
+re-confirmation against real MongoDB, with the new Phase G tests
+included, has not yet been reported** — do not treat Phase G as fully
+closed until that comes back clean, same discipline as every prior
+phase.
+
+Next: Phase H (cookie configuration), building on this now-implemented-
+and-reviewed, pending-final-reconfirmation Phase A–G foundation.
