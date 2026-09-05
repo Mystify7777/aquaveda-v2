@@ -16,8 +16,11 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col items-start gap-4 px-4 py-24 sm:px-6">
-      <p className="text-destructive font-mono text-xs tracking-widest uppercase">
+    <div className="mx-auto flex max-w-6xl flex-col items-start gap-4 px-4 py-16 sm:px-6 sm:py-24">
+      <p
+        role="alert"
+        className="text-destructive font-mono text-xs tracking-widest uppercase"
+      >
         Something broke
       </p>
       <h1 className="font-display text-3xl font-semibold tracking-tight">
