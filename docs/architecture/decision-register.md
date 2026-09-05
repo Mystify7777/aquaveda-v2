@@ -24,16 +24,12 @@ against real MongoDB, not just written — see below.
 Authentication milestone: architecture reviewed and locked through four
 rounds of proposal → correction (deployment topology, cookie transport,
 security posture, scope boundary, session storage, JWT design, rotation
-guarantee, logout semantics). Implementation Phases A–F (config
+guarantee, logout semantics). Implementation Phases A–G (config
 foundation, Session persistence, auth service layer, token utilities,
-middleware, routes + `app.js` wiring) are complete, reviewed, and
-verified against real MongoDB — **113/113 tests**. Phase G (Zod
-validation) is implemented and reviewed, with three minor cleanup items
-applied; `npm run verify:validation` confirmed 63/63 offline, but full
-local `npm test` re-confirmation against real MongoDB with the new
-Phase G tests has not yet been reported. Phase H (cookie deployment
-specifics) has **not** started — see the "🟠 Proposed — not yet locked"
-section for what remains.
+middleware, routes + `app.js` wiring, Zod validation) are complete,
+reviewed, and verified against real MongoDB — **126/126 tests**.
+Phase H (cookie deployment specifics) has **not** started — see the
+"🟠 Proposed — not yet locked" section for what remains.
 
 D-3a remains unresolved (see below) and is unaffected by Persistence
 Design's, Phase D's, or Authentication's completion — this register is
@@ -192,7 +188,7 @@ suite green, including all three concurrency tests (Issue
   helpers (e.g. `tests/helpers/testDb.js`) are excluded by the glob,
   not by naming discipline alone.
 
-## 🔒 Locked — Authentication (architecture locked; Phases A–F complete/reviewed/verified — 113/113; Phase G implemented/reviewed, final re-confirmation pending; Phase H not started)
+## 🔒 Locked — Authentication (architecture locked; Phases A–G complete, reviewed, and verified — 126/126 tests; Phase H not started)
 
 Full derivation, options considered, and rejected alternatives:
 `docs/architecture/authentication-milestone-review-draft.md`,
@@ -311,11 +307,9 @@ verification script shouldn't permanently encode milestone numbering),
 and one route-level test that claimed to prove name-trimming but only
 checked that registration succeeded — strengthened to assert the actual
 returned (trimmed) name. `npm run verify:validation` confirmed
-**63/63** offline after cleanup (44 original + 19 new). **Full local
-`npm test` re-confirmation against real MongoDB, with the new Phase G
-tests included, has not yet been reported — do not treat Phase G as
-fully closed until it is**, same discipline already applied to every
-prior phase in this project.
+**63/63** offline after cleanup (44 original + 19 new), and the full
+local suite confirmed **126/126** against real MongoDB. Phase G is
+fully closed.
 
 Phase H (cookie deployment specifics — `SameSite`, `Domain`) is not
 started.
@@ -497,11 +491,10 @@ EXPERT/ADMIN-only, or a combination.
 
 **Authentication implementation, Phase H.** The Authentication
 milestone's *architecture* is locked (see "🔒 Locked — Authentication"
-above), Phases A–F are complete, reviewed, and verified (113/113
-tests), and Phase G is implemented and reviewed pending final local
-re-confirmation (see above). What remains proposed, not yet built, is
-Phase H (cookie configuration — `HttpOnly`/`Secure`/`Path` are already
-locked, `SameSite`/`Domain` remain genuinely deployment-dependent until
-real hosting targets are chosen). Any remaining cookie-attribute
-specifics are implementation-level choices to be made when that phase
-begins, not decided here.
+above), and Phases A–G are complete, reviewed, and verified (126/126
+tests). What remains proposed, not yet built, is Phase H (cookie
+configuration — `HttpOnly`/`Secure`/`Path` are already locked,
+`SameSite`/`Domain` remain genuinely deployment-dependent until real
+hosting targets are chosen). Any remaining cookie-attribute specifics
+are implementation-level choices to be made when that phase begins,
+not decided here.

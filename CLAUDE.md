@@ -6,16 +6,12 @@
 
 Authentication — implementation in progress. Architecture fully locked
 (`docs/architecture/decision-register.md` §"Locked — Authentication").
-Implementation plan Phases A–G **implemented and reviewed**. Phases A–F
-verified for real against real MongoDB: `npm run verify:models`
-**44/44**, `npm run verify:validation` **44/44**, `npm test`
-**113/113**, including every concurrency test (Issue, Knowledge, and
-the refresh-token single-use race). Phase G (Zod validation) implemented
-and reviewed with three minor cleanup items applied — `npm run
-verify:validation` now **63/63** (offline, confirmed) — **full local
-`npm test` re-confirmation against real MongoDB with the new Phase G
-tests included has not yet been reported.** Phase H (cookie deployment
-specifics) not started.
+Implementation plan Phases A–G **implemented, reviewed, and verified
+for real against real MongoDB**: `npm run verify:models` **44/44**,
+`npm run verify:validation` **63/63**, `npm test` **126/126**,
+including every concurrency test (Issue, Knowledge, and the
+refresh-token single-use race). Phase H (cookie deployment specifics —
+`SameSite`, `Domain`) not started.
 
 ## Completed
 
@@ -330,12 +326,13 @@ logout-vs-access-token-expiry trade-off.
   (Issue/Knowledge/Comment/Project) — only reachable from tests.
   Intentional; a future Routes milestone, deliberately separate from
   Authentication's own five-endpoint auth API (Phase F).
-- Auth middleware and routes now exist (`server/src/middleware/auth.js`,
-  `server/src/routes/auth.routes.js`) and are wired into the real
-  Express pipeline (`app.js`: `cookie-parser → cors → authMiddleware →
-  routes`). Implemented, reviewed, and **verified for real: 113/113**
-  against real MongoDB. Phase G (Zod validation) and Phase H (cookie
-  deployment specifics) remain genuinely not started.
+- Auth middleware, routes, and Zod validation now exist
+  (`server/src/middleware/auth.js`, `server/src/routes/auth.routes.js`,
+  `server/src/validation/auth.validation.js`) and are wired into the
+  real Express pipeline (`app.js`: `cookie-parser → cors →
+  authMiddleware → routes`). Implemented, reviewed, and **verified for
+  real: 126/126** against real MongoDB. Phase H (cookie deployment
+  specifics — `SameSite`, `Domain`) remains genuinely not started.
 
 ## Next Milestone
 
@@ -441,11 +438,8 @@ or blocking bug found. Three minor cleanup items required (a stale
 Phase-F-era comment in `auth.routes.js`, stale "Phase C" labeling in
 `verify-validation.js`, and one route-level test that didn't actually
 prove what its name claimed) — all applied. `npm run verify:validation`
-confirmed **63/63** offline after cleanup. **Full local `npm test`
-re-confirmation against real MongoDB, with the new Phase G tests
-included, has not yet been reported** — do not treat Phase G as fully
-closed until that comes back clean, same discipline as every prior
-phase.
+confirmed **63/63** offline after cleanup, and the full local suite
+confirmed **126/126** against real MongoDB — Phase G is fully closed.
 
-Next: Phase H (cookie configuration), building on this now-implemented-
-and-reviewed, pending-final-reconfirmation Phase A–G foundation.
+Next: Phase H (cookie configuration), building on this now-fully-
+verified Phase A–G foundation.
