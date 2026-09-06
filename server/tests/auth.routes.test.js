@@ -340,6 +340,44 @@ describe("POST /api/v1/auth/refresh", () => {
   });
 });
 
+describe("Phase H — cross-site cookie attributes", () => {
+  it("sets SameSite=None and Secure on both cookies regardless of NODE_ENV", async () => {
+    // Locked topology: frontend/backend are different registrable
+    // domains. COOKIE_SAME_SITE defaults to "lax" only when unset —
+    // this test asserts the deployment-real value. Set explicitly here
+    // in case the developer's local .env hasn't been updated yet.
+    const originalSameSite = process.env.COOKIE_SAME_SITE;
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.COOKIE_SAME_SITE = "none";
+    process.env.NODE_ENV = "development"; // deliberately NOT production
+
+    try {
+      const res = await request("POST", "/api/v1/auth/register", {
+        body: registerBody({ email: "cross-site@example.com" }),
+      });
+      const cookies = parseSetCookies(res.setCookieHeaders);
+
+      assert.ok(
+        cookies.access_token.attrs.some((a) => a === "samesite=none"),
+        "access_token must be SameSite=None in cross-site topology"
+      );
+      assert.ok(
+        cookies.access_token.attrs.includes("secure"),
+        "SameSite=None requires Secure, even outside production"
+      );
+      assert.ok(
+        cookies.refresh_token.attrs.some((a) => a === "samesite=none")
+      );
+      assert.ok(cookies.refresh_token.attrs.includes("secure"));
+    } finally {
+      if (originalSameSite === undefined) delete process.env.COOKIE_SAME_SITE;
+      else process.env.COOKIE_SAME_SITE = originalSameSite;
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+});
+
 describe("POST /api/v1/auth/logout", () => {
   it("200s, clears cookies, and invalidates the refresh token", async () => {
     const registerRes = await request("POST", "/api/v1/auth/register", { body: registerBody() });

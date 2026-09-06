@@ -7,6 +7,7 @@ import {
   getRefreshTokenLifetimeMs,
 } from "../services/auth-tokens.js";
 import { ACCESS_TOKEN_COOKIE_NAME } from "../middleware/auth.js";
+import { resolveCookieSameSite, resolveCookieDomain } from "../config/env.js";
 import { registerSchema, loginSchema } from "../validation/auth.validation.js";
 
 /**
@@ -62,19 +63,31 @@ const REFRESH_COOKIE_PATH = "/api/v1/auth";
  *   about registrable domains, which aren't known until real hosting
  *   targets are chosen (see COOKIE_SAME_SITE's default below).
  */
+/**
+ * Phase H resolution: this deployment is genuinely cross-site (frontend
+ * and backend on different registrable domains, confirmed), so
+ * `sameSite` is "none" and `secure` MUST be true unconditionally —
+ * `SameSite=None` without `Secure` is rejected outright by browsers,
+ * independent of NODE_ENV. The prior prod-only `secure` gate is kept as
+ * an additional OR term (not replaced) so a future non-cross-site
+ * deployment reusing "lax"/"strict" still gets today's prod-only
+ * behavior without touching this function again.
+ *
+ * resolveCookieSameSite()/resolveCookieDomain() throw at first call if
+ * misconfigured — deliberately not caught here, so a bad env var fails
+ * loudly (first request, or import-time in tests) rather than shipping
+ * a silently-broken cookie.
+ */
 function baseCookieOptions() {
+  const sameSite = resolveCookieSameSite();
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    // Defaults to "lax", the more restrictive/simpler choice, correct
-    // for sibling-subdomain deployments. Only a genuinely cross-site
-    // deployment (different registrable domains) needs "none" — that
-    // requires `secure: true` regardless, which is already forced above
-    // in production. Not guessed automatically from Topology B alone.
-    sameSite: process.env.COOKIE_SAME_SITE || "lax",
-    // Unset (undefined) defaults to the request's own host — only set
-    // this once real hosting targets require cross-subdomain sharing.
-    domain: process.env.COOKIE_DOMAIN || undefined,
+    secure: process.env.NODE_ENV === "production" || sameSite === "none",
+    sameSite,
+    // Unset (undefined) is correct for this deployment's topology — see
+    // resolveCookieDomain()'s own comment. Only set COOKIE_DOMAIN if a
+    // genuine future subdomain-sharing requirement emerges.
+    domain: resolveCookieDomain(),
   };
 }
 
