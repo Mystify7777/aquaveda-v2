@@ -24,6 +24,28 @@ export const DomainErrorCode = Object.freeze({
   TARGET_NOT_FOUND: "TARGET_NOT_FOUND", // Comment's refType/refId does not resolve
   STATE_RACE: "STATE_RACE", // conditional update matched zero docs; document still exists
   AUTHORIZATION_POLICY_UNRESOLVED: "AUTHORIZATION_POLICY_UNRESOLVED", // D-3a
+
+  // --- Authentication milestone additions (see decision-register.md
+  // "Locked — Authentication" and authentication-implementation-plan.md
+  // Phase I) ---
+  INVALID_CREDENTIALS: "INVALID_CREDENTIALS", // login failure — covers
+  // both "email not found" and "password wrong" under one identical code
+  // and message, deliberately, so a response never discloses which one
+  // occurred
+  EMAIL_ALREADY_REGISTERED: "EMAIL_ALREADY_REGISTERED", // registration
+  // with an email that already exists. Deliberately distinct from
+  // VALIDATION_FAILED: the input is syntactically valid, it conflicts
+  // with existing application state, which is a different kind of
+  // failure than a shape/format problem
+  REFRESH_FAILED: "REFRESH_FAILED", // any reason a refresh attempt could
+  // not produce a new token pair (malformed/tampered/expired refresh
+  // JWT, session not found, session expired, wrong-user mismatch,
+  // already-consumed/race). These collapse to one code and one generic
+  // message on purpose: the atomic single-use-consume mechanism
+  // (Session.findOneAndDelete with a compound filter) cannot honestly
+  // distinguish these cases from its result without a second, non-atomic
+  // diagnostic read this project has deliberately declined to add — see
+  // authentication-implementation-plan.md's Phase C correction
 });
 
 export class DomainError extends Error {
@@ -65,6 +87,15 @@ export const targetNotFound = (message, details) =>
 export const stateRace = (message, details) =>
   new DomainError(DomainErrorCode.STATE_RACE, message, details);
 
+export const invalidCredentials = (message, details) =>
+  new DomainError(DomainErrorCode.INVALID_CREDENTIALS, message, details);
+
+export const emailAlreadyRegistered = (message, details) =>
+  new DomainError(DomainErrorCode.EMAIL_ALREADY_REGISTERED, message, details);
+
+export const refreshFailed = (message, details) =>
+  new DomainError(DomainErrorCode.REFRESH_FAILED, message, details);
+
 /**
  * D-3a marker error. Thrown by changeStatus() for the two transitions
  * whose authorization mechanism does not exist yet
@@ -77,8 +108,4 @@ export const stateRace = (message, details) =>
  * check, which is exactly what this project has been careful not to do.
  */
 export const authorizationPolicyUnresolved = (message, details) =>
-  new DomainError(
-    DomainErrorCode.AUTHORIZATION_POLICY_UNRESOLVED,
-    message,
-    details,
-  );
+  new DomainError(DomainErrorCode.AUTHORIZATION_POLICY_UNRESOLVED, message, details);

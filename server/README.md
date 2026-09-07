@@ -72,6 +72,13 @@ RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=200
 AUTH_RATE_LIMIT_WINDOW_MS=900000
 AUTH_RATE_LIMIT_MAX=20
+COOKIE_SAME_SITE=none  # locked: frontend/backend are different registrable
+                        # domains (genuine cross-site). "none" is mandatory —
+                        # "lax"/"strict" would silently drop auth cookies on
+                        # cross-site requests. Forces Secure regardless of
+                        # NODE_ENV (browser requirement for SameSite=None).
+COOKIE_DOMAIN=          # leave unset. No cross-registrable-domain use case
+                        # exists for the Domain attribute in this topology.
 ```
 
 Env vars are loaded by `src/config/db.js` itself (via `dotenv/config`),

@@ -24,8 +24,16 @@ against real MongoDB, not just written — see below.
 Authentication milestone: architecture reviewed and locked through four
 rounds of proposal → correction (deployment topology, cookie transport,
 security posture, scope boundary, session storage, JWT design, rotation
-guarantee, logout semantics). Implementation has **not** started —
-see the "🟠 Proposed — not yet locked" section for what remains.
+guarantee, logout semantics). Implementation Phases A–H are **complete,
+reviewed, and verified for real against real MongoDB: 127/127 tests,
+30 suites, 0 failures**. Phase G (Zod validation) added Zod schemas for
+`register`/`login`. Phase H (cookie deployment config) resolved the
+final deployment-dependent question: this deployment's topology is
+genuine cross-site (frontend/backend on different registrable domains)
+→ `SameSite=None` as the code default (corrected from an initial `lax`
+default during review — see "🔒 Locked — Authentication, Phase H"
+below), `Secure` forced whenever `SameSite=None`, `COOKIE_DOMAIN`
+unset. Authentication is fully closed.
 
 D-3a remains unresolved (see below) and is unaffected by Persistence
 Design's, Phase D's, or Authentication's completion — this register is
@@ -184,13 +192,134 @@ suite green, including all three concurrency tests (Issue
   helpers (e.g. `tests/helpers/testDb.js`) are excluded by the glob,
   not by naming discipline alone.
 
-## 🔒 Locked — Authentication (architecture; implementation not yet started)
+## 🔒 Locked — Authentication (architecture locked; Phases A–H complete, reviewed, and verified for real — 127/127 tests, 30 suites)
 
 Full derivation, options considered, and rejected alternatives:
 `docs/architecture/authentication-milestone-review-draft.md`,
 `authentication-scope-boundary-analysis.md`,
-`authentication-session-storage-design.md`, and
-`authentication-architecture-decision-report.md`.
+`authentication-session-storage-design.md`,
+`authentication-architecture-decision-report.md`, and the implementation
+narrative in `authentication-implementation-plan.md`.
+
+**Implementation status**: `authentication-implementation-plan.md`'s
+Phases A (dependency/config foundation), B (Session persistence), C
+(auth service layer), D (token/credential utilities), E (middleware),
+and F (routes + `app.js` wiring) are complete, reviewed, and verified
+against real MongoDB — `npm run verify:models` 44/44, `npm run
+verify:validation` 44/44, `npm test` **113/113**, including the strict
+single-use-refresh concurrency test (exactly one of two simultaneous
+identical-token refresh attempts succeeds) and the middleware's
+changed-role-reflected-freshly test (the same, still-valid access token
+reflects a role change made after issuance — the concrete proof role is
+never trusted from the token). Phase F's own review details, including
+its required error-leak fix, are recorded further below.
+Two real bugs were found and fixed during a focused post-implementation
+review of Phases A–D before they were accepted as done: a registration
+partial-failure ordering issue (token signing could fail after the
+User/Session were already persisted, risking a permanently-stuck
+account) and an unguarded `verifyPassword` crash path on a
+malformed/corrupted stored hash (fixed with explicit hex and
+scrypt-parameter validation, covered by 12 new tests). Phase E's own
+review found no defects requiring correction — one style suggestion and
+one architectural observation (database failures during role lookup
+currently look identical to "not authenticated") were both explicitly
+marked non-blocking, deferred to a future milestone if ever pursued.
+`server/src/middleware/auth.js` was unit-tested but not yet wired into
+the real Express request pipeline at the end of Phase E — confirmed as
+an intentional Phase F dependency, not a Phase E gap.
+
+**Phase F (routes + `app.js` wiring)** is implemented and reviewed.
+`server/src/routes/auth.routes.js` provides the five-endpoint auth API,
+grep-verified self-contained (a regex matching actual `from "..."`
+import specifiers, not naive substring search — the naive version
+false-positived on this router's own documentation prose) against
+`issue.service.js`/`knowledge.service.js`/`comment.service.js`/
+`project.service.js`. `app.js` now wires
+`cookie-parser → cors → authMiddleware (global) → routes`. Two new
+dependencies added: `cookie-parser`, `cors`.
+
+Two service-contract gaps were found and fixed *before* wiring, not
+patched around afterward: `refresh()` returned only tokens but the
+route needs `{ user }` in its response (fixed by resolving the user
+fresh, consistent with L11); `logout()` took a bare `sid` but a route
+only ever has the raw refresh-token cookie (fixed to accept the raw
+token and verify internally, staying idempotent for every failure
+mode). Duration parsing (JWT lifetimes, `Session.expiresAt`, cookie
+`maxAge`) was consolidated into one shared function rather than three
+independently-written regexes that could silently drift apart.
+
+Phase F's review required one fix: `sendDomainError()` originally
+forwarded `err.message` for ANY error, including unmapped/unexpected
+ones — a real risk of leaking raw Mongoose/library/internal detail to
+a client. Fixed so only errors with a known, mapped `DomainErrorCode`
+have their message forwarded; anything else is logged in full
+server-side and always returns a fixed generic body. Verified with a
+real, currently-reachable scenario (a non-string password reaching
+`crypto.scrypt` with no Zod validation in front of it yet — that's
+Phase G). Two smaller cleanup items were also applied: a misleading
+cookie-path comment (`Path=/api/v1/auth` scopes the refresh cookie to
+the whole auth namespace, not just the two routes that read it — cookie
+paths are prefix-based, not a per-route allowlist) and three dedicated
+CORS regression tests (allowed origin gets credentialed headers,
+disallowed origin gets none, no-Origin requests aren't blocked).
+
+**Verification status, stated precisely rather than assumed**: the
+first real local run after the required fix caught two bugs — in the
+*newly-added tests themselves*, not the implementation: an `/me` test
+asserted a field `actorContext` never carries (by design, only
+`{ id, role }` — the test was wrong), and a self-containment test's
+naive substring search false-positived on the router's own explanatory
+comment (fixed to match only real import statements, re-verified to
+still catch a genuine violation). Both fixes verified standalone, then
+confirmed with a full local re-run: **113/113, 0 failures, against real
+MongoDB.**
+
+(Bookkeeping note: an earlier claim of "114 tests" came from Claude's
+own sandbox, which has no `mongod` — a connection-failure run there
+counts a suite whose setup hook throws as one aggregate entry, distinct
+from how later suites' children are tallied as `cancelled`, producing
+an off-by-one artifact specific to that broken environment. Both
+environments report identical `suites: 28`, confirming no test was
+actually missing — 113 is the correct, real total, established by an
+actual successful run.)
+
+**Phase G (Zod validation)** is implemented and reviewed.
+`server/src/validation/auth.validation.js` provides `registerSchema`
+(name: trimmed, 1–100 chars; email: trimmed, lowercased, valid format;
+password: 8–128 chars, no composition rules) and `loginSchema` (same
+email canonicalization; password checked only for presence — does NOT
+enforce registration password-length rules, since a login attempt must
+still reach credential verification regardless of whether the password
+satisfies today's registration policy). Wired into `/register` and
+`/login` only, via `parsed.data` — not raw `req.body` — which is what
+actually delivers the canonicalization forward. No schema added for
+`/refresh`, `/logout`, or `/me`.
+
+A real, currently-reachable bug was found and fixed during this phase,
+not invented: `login()`'s `User.findOne({ email })` never normalized
+casing (Mongoose's `lowercase: true` only fires on save, not on a query
+filter), so a user could register with one casing and fail to log in
+with another. Fixed with a local `canonicalizeEmail()` helper applied
+in **both** `register()` and `login()` directly, not only in Zod —
+necessary because every service function in this project is also
+callable directly by tests, bypassing Zod/routes entirely.
+
+Reviewed with three minor cleanup items, all applied: a stale
+Phase-F-era "No Zod validation yet" comment in `auth.routes.js`, stale
+"Phase C" labeling in `verify-validation.js`'s header/output (a
+verification script shouldn't permanently encode milestone numbering),
+and one route-level test that claimed to prove name-trimming but only
+checked that registration succeeded — strengthened to assert the actual
+returned (trimmed) name. `npm run verify:validation` confirmed
+**63/63** offline after cleanup (44 original + 19 new). **Closed**:
+full local `npm test` re-confirmation against real MongoDB came back
+clean as part of the Phase H run below (127/127) — no Phase-G-specific
+regression found.
+
+Phase H (cookie deployment specifics — `SameSite`, `Domain`) is
+implemented, locked, and **verified for real: 127/127 tests, 30 suites,
+against real MongoDB**. See "🔒 Locked — Authentication, Phase H" above
+for the resolved values.
 
 - **Deployment topology**: Topology B — frontend and backend deploy
   independently; the browser talks to the API over HTTPS as a separate
@@ -201,14 +330,17 @@ Full derivation, options considered, and rejected alternatives:
   and refresh tokens. No `localStorage`, no `sessionStorage`, no
   frontend-managed bearer headers, ever.
 - **Cookie attributes**: `HttpOnly: true` (all environments) and
-  `Secure: true` (production) are locked outright. `SameSite`, `Domain`,
-  and `Path` are deployment-dependent and deliberately left open until
-  actual hosting targets are chosen. **`SameSite` does not default to
-  "cross-site" merely because Topology B separates the deployments** —
-  the relevant fact is *registrable domain*, not deployment
-  independence. Sibling subdomains under one parent domain are same-site
-  and use `SameSite=Lax`; only genuinely different registrable domains
-  require `SameSite=None` (with mandatory `Secure`).
+  `Secure: true` (production, and now also whenever `SameSite=None`)
+  are locked outright. `Path` is locked (`/` for access, the auth
+  namespace for refresh). `SameSite`/`Domain` were deployment-dependent
+  and are now resolved (Phase H, above): **`SameSite` does not default
+  to "cross-site" merely because Topology B separates the
+  deployments** — the relevant fact is *registrable domain*, not
+  deployment independence. This deployment's frontend/backend are
+  confirmed to be on genuinely different registrable domains, so
+  `SameSite=None` (with mandatory `Secure`) applies. Had they instead
+  been sibling subdomains of one parent domain, `SameSite=Lax` would
+  have applied instead.
 - **Security posture**: proportionate to a low-friction community
   platform — correctness, reasonable security, maintainability, low
   friction, operational simplicity, in that order. Not banking-grade
@@ -365,17 +497,57 @@ Candidate models on record for that future design session (none selected):
 automatic-by-creator, automatic-by-contributor, explicit assignment,
 EXPERT/ADMIN-only, or a combination.
 
-## 🟠 Proposed — not yet locked
+## 🔒 Locked — Authentication, Phase H (cookie deployment config)
 
-**Authentication implementation.** The Authentication milestone's
-*architecture* is now locked (see "🔒 Locked — Authentication" above) —
-deployment topology, cookie transport, security posture, scope
-boundary, session storage, JWT payload design, rotation guarantee, and
-logout semantics have all been through the project's review →
-correction → lock cycle. What remains proposed, not yet locked, is the
-**implementation plan** itself: exact file-by-file build order, exact
-`DomainErrorCode` names, exact Zod schemas, and the concrete rotation
-atomicity mechanism (see the four remaining implementation-level items
-in `authentication-architecture-decision-report.md` §2). No code has
-been written yet.
+**Resolved topology: genuine cross-site.** Frontend and backend are
+confirmed to sit on different registrable domains — not sibling
+subdomains. This resolves the deployment-dependent question left open
+since Phase F/G:
 
+- **`SameSite=None`, mandatory.** `Lax` (the prior silent default)
+  never sends the cookie on cross-site requests; this deployment's
+  auth would appear to fail only in production. `resolveCookieSameSite()`
+  (`server/src/config/env.js`) validates `COOKIE_SAME_SITE` against
+  `{strict, lax, none}` at first read and throws on anything else —
+  no unvalidated string reaches Express's cookie serializer.
+- **`Secure` forced whenever `sameSite === "none"`**, independent of
+  `NODE_ENV`. The prior production-only gate is kept as an additional
+  OR term (not replaced), so a hypothetical future non-cross-site
+  deployment using `lax`/`strict` keeps today's prod-only behavior
+  unchanged.
+- **`COOKIE_DOMAIN` stays unset (host-only).** The `Domain` attribute
+  only enables sharing across subdomains of the *same* registrable
+  domain — irrelevant here, since frontend/backend are different
+  registrable domains entirely. `resolveCookieDomain()` validates the
+  value only if one is explicitly provided (rejects whitespace or a
+  domain with no dot); no forced default.
+- `baseCookieOptions()` in `auth.routes.js` now calls both resolvers
+  directly — no new abstraction added; `setAuthCookies`/
+  `clearAuthCookies` already shared this function before Phase H and
+  continue to.
+- CORS (`ALLOWED_ORIGINS`, `credentials: true`) unchanged — already
+  required an exact-origin allowlist (no wildcard) for credentialed
+  cross-origin requests to work at all; cross-site topology makes this
+  requirement load-bearing rather than incidental, but no code change
+  was needed.
+- D-3a untouched, as with every prior Authentication phase.
+
+**Review correction applied before closure:** `resolveCookieSameSite()`
+originally defaulted a missing `COOKIE_SAME_SITE` to `"lax"` — a
+same-site default that would have silently broken production auth on
+this deployment's confirmed cross-site topology, directly contradicting
+Phase H's own fail-fast intent. Corrected to default to `"none"` (this
+deployment's locked value); `verify-cookie-config.js`'s corresponding
+check updated to match. This is a hardcoded deployment-specific
+default, acceptable because this codebase serves one locked topology,
+not a reusable package.
+
+**Verification:** `npm run verify:cookie-config` — **10/10**, offline
+(`resolveCookieSameSite`/`resolveCookieDomain` validation logic in
+isolation, no DB). `node --check` clean on all touched files. Full
+`npm test` re-run against real MongoDB, on the developer's machine,
+after the default fix: **127/127 tests, 30 suites, 0 failures** —
+closing Phase H and the previously-open Phase G re-confirmation
+together in the same run. (An earlier draft cited 128 tests; that was
+an arithmetic error against the actual reported run — 126 tests/29
+suites before Phase H, +1 test/+1 suite added, 127/30 is correct.)

@@ -4,6 +4,8 @@ import { Issue } from "../../src/models/Issue.js";
 import { Knowledge } from "../../src/models/Knowledge.js";
 import { Comment } from "../../src/models/Comment.js";
 import { Project } from "../../src/models/Project.js";
+import { User } from "../../src/models/User.js";
+import { Session } from "../../src/models/Session.js";
 
 /**
  * Test helper for service-layer tests.
@@ -35,7 +37,7 @@ export async function setupTestDb() {
   ) {
     throw new Error(
       "TEST_MONGO_URI must not be the same as MONGO_URI — refusing to " +
-        "run tests against the development database.",
+        "run tests against the development database."
     );
   }
 
@@ -52,6 +54,8 @@ export async function clearCollections() {
     Knowledge.deleteMany({}),
     Comment.deleteMany({}),
     Project.deleteMany({}),
+    User.deleteMany({}),
+    Session.deleteMany({}),
   ]);
 }
 
