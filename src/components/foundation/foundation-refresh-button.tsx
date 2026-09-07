@@ -3,13 +3,9 @@
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import { getSystemSnapshot } from "@/lib/api/system";
 import type { SystemSnapshot } from "@/lib/system";
 
-interface ApiEnvelope {
-  success: boolean;
-  data: SystemSnapshot | null;
-  message: string;
-}
 
 export function FoundationRefreshButton({
   onRefreshed,
@@ -21,18 +17,16 @@ export function FoundationRefreshButton({
 
   const handleRefresh = () => {
     setError(null);
+
     startTransition(async () => {
       try {
-        const res = await fetch("/api/system", { cache: "no-store" });
-        const body = (await res.json()) as ApiEnvelope;
+        const snapshot = await getSystemSnapshot();
 
-        if (!res.ok || !body.success || !body.data) {
-          throw new Error(body.message || "System check failed");
-        }
-
-        onRefreshed(body.data);
+        onRefreshed(snapshot);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        setError(
+          err instanceof Error ? err.message : "Something went wrong",
+        );
       }
     });
   };
@@ -47,6 +41,7 @@ export function FoundationRefreshButton({
       >
         {isPending ? "Checking..." : "Refresh"}
       </Button>
+
       {error && (
         <p role="alert" className="text-destructive text-xs">
           {error}
