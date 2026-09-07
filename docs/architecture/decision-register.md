@@ -2,11 +2,12 @@
 
 This is the single canonical decision register for AquaVeda v2,
 consolidating decisions from the Domain Model, Persistence Design,
-Phase D (service implementation), and Authentication (architecture)
-milestones. It was previously split across two files
-(`docs/domain/decision-register.md` and this file); that split was
-accidental, not an intentional two-register architecture, and the files
-had begun to drift. This document supersedes both.
+Phase D (service implementation), Authentication (architecture), and
+Authorization & Ownership Policy milestones. It was previously split
+across two files (`docs/domain/decision-register.md` and this file);
+that split was accidental, not an intentional two-register
+architecture, and the files had begun to drift. This document
+supersedes both.
 
 Domain Model milestone: produced through a staged review — full
 entity-by-entity analysis → four decision clusters (Issue lifecycle,
@@ -497,6 +498,11 @@ Candidate models on record for that future design session (none selected):
 automatic-by-creator, automatic-by-contributor, explicit assignment,
 EXPERT/ADMIN-only, or a combination.
 
+**Re-confirmed, not reopened, by the Authorization & Ownership Policy
+milestone** — see AUTH-L5 below for the concrete evidence (no
+membership/join/assignment mechanism exists anywhere in the codebase
+today) gathered during that milestone's investigation.
+
 ## 🔒 Locked — Authentication, Phase H (cookie deployment config)
 
 **Resolved topology: genuine cross-site.** Frontend and backend are
@@ -551,3 +557,97 @@ closing Phase H and the previously-open Phase G re-confirmation
 together in the same run. (An earlier draft cited 128 tests; that was
 an arithmetic error against the actual reported run — 126 tests/29
 suites before Phase H, +1 test/+1 suite added, 127/30 is correct.)
+
+## 🔒 Locked — Authorization & Ownership Policy (implemented, reviewed, and verified for real — 138/138 tests, 32 suites)
+
+**Status: implementation complete and verified.** Promoted from
+`authorization-architecture-decision-report.md`, implementation plan
+in `authorization-implementation-plan.md`, both reviewed. Full suite
+re-run against real MongoDB after implementation: **138/138 tests, 32
+suites, 0 failures** (127 prior + 11 new in `authorization.service.test.js`,
+1 new suite). Offline verify scripts unaffected: `verify:models` 44/44,
+`verify:validation` 63/63, `verify:cookie-config` 10/10.
+
+Full derivation, inventory table, and rejected alternatives:
+`docs/architecture/authorization-architecture-decision-report.md`.
+Restated here only as locked conclusions.
+
+- **AUTH-L1 — `requireActor(actorContext)` is a shared primitive.
+  Implemented.** Was duplicated byte-for-byte across all four domain
+  services (`issue.service.js`, `knowledge.service.js`,
+  `comment.service.js`, `project.service.js`). Now extracted into
+  `server/src/services/authorization.js`, imported by all four, with
+  no behavior change — throws `UNAUTHORIZED` iff `!actorContext?.id`,
+  exactly as before. Pure deduplication, no new policy.
+
+- **AUTH-L2 — `requireRole(actorContext, role)` is single-role-only,
+  permanently. Implemented.** Signature takes exactly one role string,
+  never an array or set. Not an implementation detail deferred for
+  later convenience — locked specifically so Product Invariant 9
+  ("Experts verify. Admins govern. Neither substitutes for the other.")
+  stays structurally impossible to violate at any call site. Now live
+  at all 5 call sites (corrected from an initially-missed count of 4 —
+  see below): `issue.service.js`'s `authorizeTransition()` at
+  `open→acknowledged`, `resolved→verified`, `resolved→in_progress`
+  (the first of these was found only during implementation, not in the
+  original investigation report's inventory — corrected retroactively
+  in both this entry and `authorization-implementation-plan.md`), and
+  `knowledge.service.js`'s `approve()`/`reject()`. The thrown message
+  is intentionally canonical ("Forbidden: insufficient role
+  privileges") rather than the 5 previously-distinct sentences — a
+  deliberate, reviewed normalization; the specific role and actor's
+  actual role are carried in `details.requiredRole`/`details.actualRole`,
+  not in prose. A future request to widen this to accept multiple
+  roles (e.g. `["EXPERT", "ADMIN"]`) is a reopening of this decision,
+  not an extension of it, and requires its own review.
+
+- **AUTH-L3 — Ownership is operation-specific authority, not a
+  universal rule.** Confirmed by direct inspection: only Knowledge's
+  `author` field currently grants any right (`submitForReview`,
+  `revise` — both author-only, both narrow). Issue's `reportedBy`,
+  Project's `creator`, and Comment's `author` grant **zero** rights
+  today; no operation reads them for authorization purposes at all.
+  "Ownership automatically grants authority" is explicitly **rejected**
+  as a general project rule — Issue's own design already contradicts
+  it (a reporter has no special status-change authority over their own
+  report; that authority is role-based or D-3a-gated, never
+  reporter-based). No generic `requireOwner(doc, actorContext, field)`
+  is introduced. If `knowledge.service.js` grows a third ownership
+  check, a same-file, Knowledge-specific helper may be justified then —
+  that is not decided here, and is explicitly not the same thing as a
+  cross-entity generic.
+
+- **AUTH-L4 — ADMIN's lack of a concrete capability is an
+  acknowledged, open gap — not resolved, not manufactured.** Every
+  existing operation that could plausibly be governance-shaped
+  (Issue's transitions, Knowledge's `approve`/`reject`) already has a
+  settled EXPERT-based or D-3a-gated authority story under ADR-0003/
+  ADR-0004; re-purposing any of them to ADMIN would contradict an
+  already-locked decision, not extend one. The one deferred item that
+  actually matches "governance over something existing" — admin
+  governance of already-approved Knowledge — remains in the ⏸️
+  Deferred table below, unsolved, pending a concrete shape (unpublish?
+  flag? re-review trigger?) that does not exist yet. No ADMIN-only
+  operation is added as part of this milestone. Invariant 9's
+  governance half remains asserted in product docs and
+  unimplemented in code — stated here explicitly so it is not mistaken
+  for an oversight.
+
+- **AUTH-L5 — D-3a remains explicitly unresolved.** Re-confirmed by
+  this milestone's own investigation, not merely carried forward
+  unexamined: `Project.contributors` is written once (empty array, at
+  creation) and never read or written by any other service function —
+  there is no join operation, no assignment mechanism, no membership
+  concept for D-3a's candidate models
+  (`automatic-by-creator`/`automatic-by-contributor`/`explicit
+  assignment`) to attach to. `AUTHORIZATION_POLICY_UNRESOLVED` in
+  `issue.service.js` is untouched by this milestone, exactly as it was
+  before. See "🟡 The only unresolved domain dependency" above for the
+  full standing decision — this entry does not restate or supersede
+  it, only confirms it survived this milestone's review unchanged.
+
+**Explicitly not locked here** (no evidence found to justify locking):
+a generic `requireOwner()`, any multi-role/role-set authorization API,
+any ADMIN-gated operation, any edit/delete operation on any entity, any
+Project membership model. See the decision report's §7 "Out of scope"
+for the complete list.

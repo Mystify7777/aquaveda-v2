@@ -1,7 +1,6 @@
 import { Issue } from "../models/Issue.js";
 import {
   notFound,
-  unauthorized,
   forbidden,
   invalidState,
   stateRace,
@@ -9,6 +8,7 @@ import {
   DomainError,
   DomainErrorCode,
 } from "./errors.js";
+import { requireActor, requireRole } from "./authorization.js";
 
 /**
  * Issue domain service.
@@ -61,12 +61,6 @@ function wrapMongooseValidationError(err) {
   return err;
 }
 
-function requireActor(actorContext) {
-  if (!actorContext || !actorContext.id) {
-    throw unauthorized("an authenticated actor is required");
-  }
-}
-
 /**
  * createIssue(actorContext, payload)
  *
@@ -117,9 +111,7 @@ export async function createIssue(actorContext, payload) {
  */
 function authorizeTransition(fromStatus, targetStatus, actorContext, issueDoc) {
   if (fromStatus === "open" && targetStatus === "acknowledged") {
-    if (actorContext.role !== "EXPERT") {
-      throw forbidden("only an EXPERT may acknowledge an Issue");
-    }
+    requireRole(actorContext, "EXPERT");
     return;
   }
 
@@ -144,9 +136,7 @@ function authorizeTransition(fromStatus, targetStatus, actorContext, issueDoc) {
   }
 
   if (fromStatus === "resolved" && targetStatus === "verified") {
-    if (actorContext.role !== "EXPERT") {
-      throw forbidden("only an EXPERT may verify an Issue's resolution");
-    }
+    requireRole(actorContext, "EXPERT");
     // History-derived actor check (Phase D contract point 2): the
     // verifying actor must differ from the actor recorded in the most
     // recent relevant history entry — the in_progress -> resolved entry
@@ -174,11 +164,7 @@ function authorizeTransition(fromStatus, targetStatus, actorContext, issueDoc) {
 
   if (fromStatus === "resolved" && targetStatus === "in_progress") {
     // Failed verification. EXPERT-authorized, per ADR-0003.
-    if (actorContext.role !== "EXPERT") {
-      throw forbidden(
-        "only an EXPERT may record a failed verification (resolved -> in_progress)",
-      );
-    }
+    requireRole(actorContext, "EXPERT");
     return;
   }
 

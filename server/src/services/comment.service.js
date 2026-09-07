@@ -2,13 +2,13 @@ import { Comment } from "../models/Comment.js";
 import { Issue } from "../models/Issue.js";
 import { Knowledge } from "../models/Knowledge.js";
 import {
-  unauthorized,
   invalidState,
   invalidParent,
   targetNotFound,
   DomainError,
   DomainErrorCode,
 } from "./errors.js";
+import { requireActor } from "./authorization.js";
 
 /**
  * Comment domain service.
@@ -31,12 +31,6 @@ function wrapMongooseValidationError(err) {
     });
   }
   return err;
-}
-
-function requireActor(actorContext) {
-  if (!actorContext || !actorContext.id) {
-    throw unauthorized("an authenticated actor is required");
-  }
 }
 
 async function targetExists(refType, refId) {

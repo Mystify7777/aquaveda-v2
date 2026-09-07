@@ -1,13 +1,13 @@
 import { Knowledge } from "../models/Knowledge.js";
 import {
   notFound,
-  unauthorized,
   forbidden,
   invalidState,
   stateRace,
   DomainError,
   DomainErrorCode,
 } from "./errors.js";
+import { requireActor, requireRole } from "./authorization.js";
 
 /**
  * Knowledge domain service.
@@ -27,12 +27,6 @@ function wrapMongooseValidationError(err) {
     });
   }
   return err;
-}
-
-function requireActor(actorContext) {
-  if (!actorContext || !actorContext.id) {
-    throw unauthorized("an authenticated actor is required");
-  }
 }
 
 /**
@@ -149,9 +143,7 @@ export async function approve(actorContext, knowledgeId) {
     );
   }
 
-  if (actorContext.role !== "EXPERT") {
-    throw forbidden("only an EXPERT may approve a Knowledge article");
-  }
+  requireRole(actorContext, "EXPERT");
 
   if (String(knowledge.author) === String(actorContext.id)) {
     throw forbidden("an author may not approve their own Knowledge submission");
@@ -217,9 +209,7 @@ export async function reject(actorContext, knowledgeId, feedback) {
     );
   }
 
-  if (actorContext.role !== "EXPERT") {
-    throw forbidden("only an EXPERT may reject a Knowledge article");
-  }
+  requireRole(actorContext, "EXPERT");
 
   if (String(knowledge.author) === String(actorContext.id)) {
     throw forbidden("an author may not reject their own Knowledge submission");

@@ -4,9 +4,22 @@
 
 ## Current Milestone
 
-Authentication — implementation in progress. Architecture fully locked
-(`docs/architecture/decision-register.md` §"Locked — Authentication").
-Implementation plan Phases A–H **complete, reviewed, and verified for
+Authorization & Ownership Policy — **implemented, reviewed, and
+verified for real against real MongoDB: 138/138 tests, 32 suites, 0
+failures** (127 prior + 11 new in `authorization.service.test.js`).
+Consolidated the duplicated `requireActor()` (4 identical copies → 1
+shared module) and `requireRole()` (5 inline role checks → 1
+single-role-only primitive — see `decision-register.md` AUTH-L1/L2)
+across all four domain services. Ownership confirmed operation-specific,
+not generalized (AUTH-L3). ADMIN's lack of a concrete capability
+documented as an open gap, not manufactured (AUTH-L4). D-3a
+re-confirmed out of scope, untouched (AUTH-L5). Full detail:
+`docs/architecture/authorization-architecture-decision-report.md`,
+`docs/architecture/authorization-implementation-plan.md`,
+`docs/architecture/decision-register.md` §"Locked — Authorization &
+Ownership Policy".
+
+Authentication — Phases A–H **complete, reviewed, and verified for
 real against real MongoDB**. Phases A–F: `npm run verify:models`
 **44/44**, `npm run verify:validation` **44/44**, `npm test`
 **113/113**, including every concurrency test (Issue, Knowledge, and
@@ -18,13 +31,41 @@ genuine cross-site (frontend/backend on different registrable domains)
 corrected from `"lax"` to `"none"` during review, since a missing env
 var must not silently produce a same-site cookie that only fails in
 production), `Secure` forced regardless of `NODE_ENV`, `COOKIE_DOMAIN`
-unset. `npm run verify:cookie-config` **10/10** offline. **Full
+unset. `npm run verify:cookie-config` **10/10** offline. Full
 authentication suite re-run against real MongoDB, closing both Phase G
-and Phase H's open verification items: 127/127 passing, 30 suites**
-(the 128-test figure in an earlier draft of this section was an
-arithmetic error, corrected against the actual reported run).
+and Phase H's open verification items: **127/127 passing, 30 suites**
+(the 128-test figure in an earlier draft was an arithmetic error,
+corrected against the actual reported run).
 
 ## Completed
+
+### Authorization & Ownership Policy
+- Investigation report (`authorization-architecture-decision-report.md`):
+  full inventory of existing authorization logic across all 4 domain
+  services, distinguishing existing/deferred/genuinely-unbuilt policy.
+  Reviewed and approved.
+- Decisions promoted to `decision-register.md` as AUTH-L1–L5: shared
+  `requireActor`/`requireRole` primitives (consolidation only, no new
+  policy), ownership confirmed operation-specific (no generic
+  `requireOwner()`), ADMIN's capability gap documented rather than
+  manufactured, D-3a re-confirmed out of scope.
+- Implementation plan reviewed; one correction applied before
+  implementation (dropped the proposed `requireRole(actorContext, role,
+  message)` third parameter in favor of one canonical FORBIDDEN message
+  with structured `details.requiredRole`/`details.actualRole` — keeps
+  the primitive narrow and deterministic per review).
+- Implemented: `server/src/services/authorization.js` (new,
+  `requireActor`/`requireRole`), all 4 domain services refactored to
+  consume it. Found and fixed a gap in both the investigation report
+  and the initial plan during implementation — `issue.service.js`
+  actually has 3 EXPERT checks, not 2 (`open→acknowledged` was missed);
+  corrected in code and retroactively in both docs.
+- New `server/tests/authorization.service.test.js` — pure unit tests
+  (no DB), 11 cases, run for real: **11/11**.
+- Full suite verified for real against real MongoDB: **138/138 tests,
+  32 suites, 0 failures**. Offline verify scripts unaffected:
+  `verify:models` 44/44, `verify:validation` 63/63, `verify:cookie-config`
+  10/10.
 
 ### Domain Model Decision Phase
 - Full entity-by-entity Domain Model Analysis (User, Issue, Knowledge,
@@ -362,16 +403,34 @@ logout-vs-access-token-expiry trade-off.
 
 ## Next Milestone
 
-Authentication (Phases A–H) is fully complete, reviewed, and verified:
-**127/127 tests, 30 suites, real MongoDB**. Next: decide between the
-general Routes milestone (wiring Issue/Knowledge/Comment/Project
-services to Express) or any remaining Authentication cleanup — nothing
-is currently blocking either.
+Authentication (Phases A–H) and Authorization & Ownership Policy are
+both fully complete, reviewed, and verified: **138/138 tests, 32
+suites, real MongoDB**. Next: general Routes milestone (wiring
+Issue/Knowledge/Comment/Project services to Express, now consuming the
+consolidated `requireActor`/`requireRole` primitives) — nothing is
+currently blocking it.
 
-D-3a remains unresolved and untouched by Authentication end-to-end — it
-produces/consumes identity, not remediation authority.
+D-3a remains unresolved and untouched by both milestones — it
+produces/consumes identity, not remediation authority. Still depends on
+a Project membership model that does not exist yet (confirmed again
+during Authorization's investigation, not just carried forward).
 
 ## Reviewer Notes
+
+Authorization & Ownership Policy reviewed end-to-end (investigation
+report → decision promotion → implementation plan → code). One
+required correction applied before implementation: rejected the
+proposed `requireRole()` third `message` parameter as scope creep on
+the primitive's contract; canonical FORBIDDEN message + structured
+`details` adopted instead. Code review after implementation: approved,
+with two documentation corrections required and applied — the plan
+doc's Issue-service section was missing the `open→acknowledged` check
+(found only during implementation, never back-ported into the plan
+until this correction) and undercounted role-check call sites as 4
+instead of 5 throughout. A third observation (pure `authorization.service.test.js`
+importing `fakeActor` from the DB-oriented `testDb.js` helper — harmless
+but unnecessary coupling) was flagged non-blocking and left as-is per
+explicit instruction.
 
 Design System + Foundation milestone reviewed and rated 9.8/10 (prior review).
 

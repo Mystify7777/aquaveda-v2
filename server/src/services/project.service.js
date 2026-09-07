@@ -1,12 +1,12 @@
 import { Project } from "../models/Project.js";
 import { Issue } from "../models/Issue.js";
 import {
-  unauthorized,
   notFound,
   invalidState,
   DomainError,
   DomainErrorCode,
 } from "./errors.js";
+import { requireActor } from "./authorization.js";
 
 /**
  * Project domain service.
@@ -39,12 +39,6 @@ function wrapMongooseValidationError(err) {
     });
   }
   return err;
-}
-
-function requireActor(actorContext) {
-  if (!actorContext || !actorContext.id) {
-    throw unauthorized("an authenticated actor is required");
-  }
 }
 
 /**
