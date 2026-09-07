@@ -1,14 +1,31 @@
 export interface ApiSuccess<T> {
-  success: true;
-  data: T;
-  message: string;
+    success: true;
+    data: T;
+    message: string;
 }
 
 export interface ApiFailure {
-  success: false;
-  data: null;
-  message: string;
-  code?: string;
+    success: false;
+    data: null;
+    message: string;
+    code?: string;
 }
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
+
+export interface AuthUser {
+    id: string;
+    role: string;
+}
+
+export interface BackendAuthUser extends AuthUser {
+    name: string;
+    email: string;
+}
+
+export interface AuthSuccess<T> {
+    success: true;
+    user: T;
+}
+
+export type AuthResponse<T> = AuthSuccess<T> | ApiFailure;
