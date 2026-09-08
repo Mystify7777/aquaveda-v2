@@ -21,6 +21,8 @@ import { createIssueSchema, changeIssueStatusSchema } from "../src/validation/is
 import {
   createKnowledgeSchema,
   reviewKnowledgeSchema,
+  rejectKnowledgeSchema,
+  reviseKnowledgeSchema,
 } from "../src/validation/knowledge.validation.js";
 import { createCommentSchema } from "../src/validation/comment.validation.js";
 import { createProjectSchema } from "../src/validation/project.validation.js";
@@ -440,6 +442,47 @@ check("10e. loginSchema does NOT enforce the 128-character maximum either — a 
 
 check("10f. Missing password fails (still requires the field to be present and a string)", () => {
   assert.equal(loginSchema.safeParse({ email: "test@example.com" }).success, false);
+});
+
+// ---------------------------------------------------------------------
+// 11. Knowledge reject / revise (Routes milestone — separate-route schemas)
+// ---------------------------------------------------------------------
+check("11a. Reject with non-empty feedback passes", () => {
+  const result = rejectKnowledgeSchema.safeParse({ feedback: "needs more sourcing" });
+  assert.equal(result.success, true);
+});
+
+check("11b. Reject with missing feedback fails", () => {
+  assert.equal(rejectKnowledgeSchema.safeParse({}).success, false);
+});
+
+check("11c. Reject with empty-string feedback fails", () => {
+  assert.equal(rejectKnowledgeSchema.safeParse({ feedback: "" }).success, false);
+});
+
+check("11d. Reject with whitespace-only feedback fails", () => {
+  assert.equal(rejectKnowledgeSchema.safeParse({ feedback: "   " }).success, false);
+});
+
+check("11e. Revise with all three fields passes", () => {
+  const result = reviseKnowledgeSchema.safeParse({
+    title: "Updated title",
+    body: "Updated body",
+    region: "Bihar",
+  });
+  assert.equal(result.success, true);
+});
+
+check("11f. Revise with an empty object passes (service tolerates a no-op revision)", () => {
+  assert.equal(reviseKnowledgeSchema.safeParse({}).success, true);
+});
+
+check("11g. Revise with only title passes (all fields independently optional)", () => {
+  assert.equal(reviseKnowledgeSchema.safeParse({ title: "Updated title" }).success, true);
+});
+
+check("11h. Revise with an empty-string title fails (not empty, just absent, is what's allowed)", () => {
+  assert.equal(reviseKnowledgeSchema.safeParse({ title: "" }).success, false);
 });
 
 // ---------------------------------------------------------------------
