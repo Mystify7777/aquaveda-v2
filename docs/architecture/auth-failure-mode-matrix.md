@@ -4,9 +4,9 @@
 **Milestone:** Authentication & Authorization  
 **Applicability:** `@aquaveda/server` (Express API) & Frontend Client Interceptors (`apps/web`)  
 **Related Architecture Docs:**
-- [`docs/architecture/decision-register.md`](file:///d:/CODING/Next%20Js/aquaveda-v2/docs/architecture/decision-register.md)
-- [`docs/architecture/authentication-architecture-decision-report.md`](file:///d:/CODING/Next%20Js/aquaveda-v2/docs/architecture/authentication-architecture-decision-report.md)
-- [`docs/architecture/authentication-implementation-plan.md`](file:///d:/CODING/Next%20Js/aquaveda-v2/docs/architecture/authentication-implementation-plan.md)
+- [`docs/architecture/decision-register.md`](./decision-register.md)
+- [`docs/architecture/authentication-architecture-decision-report.md`](./authentication-architecture-decision-report.md)
+- [`docs/architecture/authentication-implementation-plan.md`](./authentication-implementation-plan.md)
 
 ---
 
