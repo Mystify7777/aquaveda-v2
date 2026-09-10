@@ -3,14 +3,25 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import jwt from "jsonwebtoken";
 
-// Ensure required environment variables for test execution
-process.env.JWT_ACCESS_SECRET =
-  process.env.JWT_ACCESS_SECRET || "test-access-secret-32-chars-length-ok";
-process.env.JWT_REFRESH_SECRET =
-  process.env.JWT_REFRESH_SECRET || "test-refresh-secret-32-chars-length-ok";
-process.env.ALLOWED_ORIGINS =
-  process.env.ALLOWED_ORIGINS || "http://allowed.example.com,http://localhost:3000";
-process.env.COOKIE_SAME_SITE = process.env.COOKIE_SAME_SITE || "none";
+// Ensure required environment variables for test execution.
+//
+// These are assigned unconditionally (not `x || default`) rather than
+// as fallbacks. This matters because of ES module import hoisting: the
+// `import { createApp } from "../src/app.js"` below is hoisted and
+// executes before this file's own top-level statements, regardless of
+// source-code order — and that import chain transitively loads
+// `config/env.js`, which calls `dotenv/config` as a side effect. If a
+// real local `.env` file already sets one of these vars (e.g.
+// ALLOWED_ORIGINS to a real dev origin that doesn't include
+// "http://allowed.example.com"), a `||`-style fallback here would
+// silently never apply — dotenv would have already won by the time
+// this line ran. Unconditional assignment makes this file's test
+// fixtures deterministic regardless of what a developer's real .env
+// happens to contain.
+process.env.JWT_ACCESS_SECRET = "test-access-secret-32-chars-length-ok";
+process.env.JWT_REFRESH_SECRET = "test-refresh-secret-32-chars-length-ok";
+process.env.ALLOWED_ORIGINS = "http://allowed.example.com,http://localhost:3000";
+process.env.COOKIE_SAME_SITE = "none";
 
 import { createApp } from "../src/app.js";
 import {
@@ -187,7 +198,7 @@ describe("Failure Modes — JWT Verification & Token Confusion", () => {
 
     assert.equal(res.status, 200);
     assert.equal(res.json.success, true);
-    assert.equal(res.json.user, null);
+    assert.equal(res.json.data.user, null);
   });
 
   it("MID-03: Tampered access JWT on /me resolves to user: null (200 OK)", async () => {
@@ -200,7 +211,7 @@ describe("Failure Modes — JWT Verification & Token Confusion", () => {
 
     assert.equal(res.status, 200);
     assert.equal(res.json.success, true);
-    assert.equal(res.json.user, null);
+    assert.equal(res.json.data.user, null);
   });
 
   it("MID-04: Token Confusion — Refresh JWT sent to /me resolves to user: null (200 OK)", async () => {
@@ -214,7 +225,7 @@ describe("Failure Modes — JWT Verification & Token Confusion", () => {
 
     assert.equal(res.status, 200);
     assert.equal(res.json.success, true);
-    assert.equal(res.json.user, null);
+    assert.equal(res.json.data.user, null);
   });
 
   it("service unit test: verifyAccessToken & verifyRefreshToken enforce split secrets", () => {
@@ -448,7 +459,15 @@ describe("Failure Modes — Error Sanitization (500 INTERNAL_ERROR)", () => {
 
     assert.equal(res.status, 500);
     assert.equal(res.json.success, false);
-    assert.equal(res.json.message, "Database connection dropped");
+    assert.equal(res.json.data, null);
+    // The raw error message ("Database connection dropped") must NEVER
+    // reach the client — that's the entire point of this test. The
+    // original version of this assertion checked res.json.message
+    // equal to the raw message, which was backwards: it would only
+    // pass if the leak were actually happening. Corrected to assert
+    // the generic message and explicitly assert the raw one is absent.
+    assert.equal(res.json.message, "Internal server error");
+    assert.notEqual(res.json.message, "Database connection dropped");
     assert.equal(res.json.stack, undefined, "stack trace must never leak to client");
   });
 });

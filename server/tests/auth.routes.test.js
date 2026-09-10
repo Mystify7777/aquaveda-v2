@@ -112,10 +112,16 @@ describe("POST /api/v1/auth/register", () => {
 
     assert.equal(res.status, 201);
     assert.equal(res.json.success, true);
-    assert.equal(res.json.user.email, "test@example.com");
-    assert.equal(res.json.user.role, "USER");
-    assert.equal(res.json.accessToken, undefined, "raw access token must never appear in the response body");
-    assert.equal(res.json.refreshToken, undefined, "raw refresh token must never appear in the response body");
+    assert.equal(res.json.data.user.email, "test@example.com");
+    assert.equal(res.json.data.user.role, "USER");
+    assert.equal(res.json.data.accessToken, undefined, "raw access token must never appear in the response body");
+    assert.equal(res.json.data.refreshToken, undefined, "raw refresh token must never appear in the response body");
+    // ROUTE-L5/L6 (Routes milestone Phase 9): auth.routes.js migrated
+    // onto the shared ApiResponse<T> envelope, replacing its prior
+    // bespoke {success, user} shape.
+    assert.equal(typeof res.json.message, "string");
+    assert.ok(res.json.message.length > 0);
+    assert.equal(Object.keys(res.json).sort().join(","), "data,message,success");
 
     const cookies = parseSetCookies(res.setCookieHeaders);
     assert.ok(cookies.access_token, "access_token cookie should be set");
@@ -176,7 +182,10 @@ describe("POST /api/v1/auth/login", () => {
     });
 
     assert.equal(res.status, 401);
+    assert.equal(res.json.success, false);
+    assert.equal(res.json.data, null);
     assert.equal(res.json.code, "INVALID_CREDENTIALS");
+    assert.equal(typeof res.json.message, "string");
   });
 
   it("email normalization: registering with lowercase and logging in with a differently-cased email both succeed (route-level case-insensitivity)", async () => {
@@ -231,7 +240,7 @@ describe("Phase G — request-shape validation (400 VALIDATION_FAILED)", () => {
       body: registerBody({ email: "  Test@Example.COM  " }),
     });
     assert.equal(res.status, 201);
-    assert.equal(res.json.user.email, "test@example.com", "response should reflect the canonicalized email, proving parsed.data (not raw req.body) reached the service");
+    assert.equal(res.json.data.user.email, "test@example.com", "response should reflect the canonicalized email, proving parsed.data (not raw req.body) reached the service");
   });
 
   it("register: name is trimmed before reaching the service — proven by asserting the returned (trimmed) name, not merely that registration succeeded", async () => {
@@ -239,7 +248,7 @@ describe("Phase G — request-shape validation (400 VALIDATION_FAILED)", () => {
       body: registerBody({ name: "  Trimmed Name  " }),
     });
     assert.equal(res.status, 201);
-    assert.equal(res.json.user.name, "Trimmed Name", "response should reflect the trimmed name, proving parsed.data (not raw req.body) reached the service — an untrimmed value reaching the service would fail this exact assertion");
+    assert.equal(res.json.data.user.name, "Trimmed Name", "response should reflect the trimmed name, proving parsed.data (not raw req.body) reached the service — an untrimmed value reaching the service would fail this exact assertion");
   });
 
   it("register: password shorter than 8 characters is rejected", async () => {
@@ -282,7 +291,7 @@ describe("GET /api/v1/auth/me", () => {
     const res = await request("GET", "/api/v1/auth/me");
 
     assert.equal(res.status, 200);
-    assert.equal(res.json.user, null);
+    assert.equal(res.json.data.user, null);
   });
 
   it("returns the resolved actor for a request with a valid access_token cookie", async () => {
@@ -299,8 +308,8 @@ describe("GET /api/v1/auth/me", () => {
     // HTTP layer). The earlier version of this test incorrectly
     // asserted `.email`, which can never be present; fixed to assert
     // against the fields that are actually part of the contract.
-    assert.equal(res.json.user.role, "USER");
-    assert.deepEqual(Object.keys(res.json.user).sort(), ["id", "role"]);
+    assert.equal(res.json.data.user.role, "USER");
+    assert.deepEqual(Object.keys(res.json.data.user).sort(), ["id", "role"]);
   });
 });
 

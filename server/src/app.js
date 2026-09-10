@@ -4,6 +4,11 @@ import cors from "cors";
 
 import { authMiddleware } from "./middleware/auth.js";
 import { authRouter } from "./routes/auth.routes.js";
+import { issueRouter } from "./routes/issue.routes.js";
+import { knowledgeRouter } from "./routes/knowledge.routes.js";
+import { commentRouter } from "./routes/comment.routes.js";
+import { projectRouter } from "./routes/project.routes.js";
+import { sendError } from "./http/respond.js";
 
 /**
  * Express application boundary.
@@ -78,23 +83,32 @@ export function createApp() {
 
   // The five-endpoint minimal auth API (decision-register.md L4). This
   // router is self-contained — it never calls issue/knowledge/comment/
-  // project.service.js. General domain routes remain a separate, future
-  // Routes milestone, deliberately not started here.
+  // project.service.js.
   app.use("/api/v1/auth", authRouter);
 
-  // No route matched.
+  // Routes milestone (decision-register.md "Locked — Routes",
+  // ROUTE-L1–L6): exactly 9 routes, 1:1 with the 9 existing domain
+  // service operations. No retrieval/listing route exists because no
+  // service operation exists to route to (ROUTE-L2).
+  app.use("/api/v1/issues", issueRouter);
+  app.use("/api/v1/knowledge", knowledgeRouter);
+  app.use("/api/v1/comments", commentRouter);
+  app.use("/api/v1/projects", projectRouter);
+
+  // No route matched. Conforms to the ApiResponse<T> envelope
+  // (ROUTE-L6) via the same shared sendError used by every router —
+  // this is the one call site that doesn't have a real DomainError to
+  // pass, so it constructs the minimal shape sendError expects.
   app.use((req, res) => {
-    res.status(404).json({
-      success: false,
-      message: "Not found",
-    });
+    sendError(res, { code: "NOT_FOUND", message: "Not found" });
   });
 
-  // Centralized error-handling boundary. Deliberately minimal at this
-  // milestone: it exists so thrown/forwarded errors have one place to
-  // land, not to encode the full API error contract (see ADR-0006's
-  // note that the exact error representation belongs to that contract,
-  // not to persistence-layer ADRs).
+  // Centralized error-handling boundary — the outermost safety net for
+  // anything that reaches here without having gone through a router's
+  // own try/catch (e.g. a synchronous throw in middleware itself).
+  // Routed through the same shared sendError as every other error path
+  // (ROUTE-L4/L6) rather than constructing its own bespoke shape, which
+  // is what this handler did prior to the Routes milestone.
   //
   // `next` is required and must stay fourth: Express only recognizes a
   // middleware function as an error handler when it has arity 4, and
@@ -104,11 +118,22 @@ export function createApp() {
   // fires on errors.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err, req, res, next) => {
-    console.error("[app] Unhandled error:", err);
-    res.status(err.statusCode || 500).json({
-      success: false,
-      message: err.message || "Internal server error",
-    });
+    // Malformed JSON request bodies never reach a router's own
+    // try/catch — express.json() throws before any route handler runs,
+    // landing directly here. body-parser's error has no DomainErrorCode
+    // (it's a raw SyntaxError with `.type === "entity.parse.failed"`),
+    // so without this translation it would fall into sendError's
+    // generic-500 branch — technically safe (nothing leaks) but the
+    // wrong HTTP semantic: a malformed request body is a 400 client
+    // error, not a 500 server error. Translated here, once, rather than
+    // inside respond.js — respond.js's job is mapping DomainErrorCode
+    // specifically; this is an Express/body-parser-specific concern
+    // that belongs at the boundary where express.json() is mounted.
+    if (err?.type === "entity.parse.failed") {
+      sendError(res, { code: "VALIDATION_FAILED", message: "Malformed JSON body" });
+      return;
+    }
+    sendError(res, err);
   });
 
   return app;
