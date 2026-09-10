@@ -4,6 +4,31 @@
 
 ## Current Milestone
 
+Routes — **implemented, reviewed, and verified for real against real
+MongoDB: 232/232 tests, 54 suites, 0 failures.** Executed as 6 reviewed
+checkpoints (A: shared HTTP error infra; B: 4 validation modules; C:
+Issue routes; D: Knowledge/Comment/Project routes; E: `app.js`
+integration + global 404/error normalization + `auth.routes.js`
+migration; F: full verification + docs, this update). Exactly 9 domain
+routes, 1:1 with the 9 existing service operations (2 Issue, 5
+Knowledge, 1 Comment, 1 Project) — no GET/listing/edit/delete route
+anywhere, confirmed by direct enumeration. `AUTHORIZATION_POLICY_UNRESOLVED`
+maps to 409 with a distinguishing `code` field, never silently folded
+into `FORBIDDEN`'s 403 — D-3a's two blocked transitions remain exactly
+as unresolved through the HTTP layer as they were at the service layer.
+`auth.routes.js` migrated onto the shared `ApiResponse<T>` envelope
+(fixing a confirmed pre-existing incompatibility with the frontend's
+`src/lib/api/types.ts` contract — its responses used to omit `data`/
+`message` entirely). Full detail:
+`docs/architecture/routes-milestone-discovery-report.md`,
+`docs/architecture/routes-implementation-plan.md`,
+`docs/architecture/checkpoint-e-incident-report.md` (6 test failures
+surfaced during Checkpoint E's first real-MongoDB run — 1 genuine
+product gap fixed, 5 defects in a pre-existing, independently-authored
+test file corrected — full root-cause analysis there),
+`docs/architecture/decision-register.md` §"Locked — Routes"
+(ROUTE-L1–L6).
+
 Authorization & Ownership Policy — **implemented, reviewed, and
 verified for real against real MongoDB: 138/138 tests, 32 suites, 0
 failures** (127 prior + 11 new in `authorization.service.test.js`).
@@ -38,6 +63,66 @@ and Phase H's open verification items: **127/127 passing, 30 suites**
 corrected against the actual reported run).
 
 ## Completed
+
+### Routes
+- Discovery report (`routes-milestone-discovery-report.md`): mapped
+  all 9 existing domain-service operations to their eventual HTTP
+  boundary; confirmed zero retrieval/listing operations exist anywhere
+  (not deferred, genuinely absent); confirmed `auth.routes.js`'s
+  response envelope did not conform to the frontend's `ApiResponse<T>`
+  contract at all — a real, pre-existing defect. Reviewed; one
+  contradiction caught before locking (`AUTHORIZATION_POLICY_UNRESOLVED`
+  proposed at both 409-shared-with-two-other-codes and
+  "must remain distinguishable" in the same review — resolved as 409
+  + a distinguishing `code` field).
+- Decisions locked as ROUTE-L1–L6 in `decision-register.md`, then
+  renumbered once mid-review to match a corrected ID scheme (route
+  inventory split out as its own decision, auth.routes.js migration
+  split out from the general shared-error-utility decision) — every
+  reference across `decision-register.md`, the implementation plan, and
+  2 code files' comments updated consistently, not just the register.
+- Implementation plan (`routes-implementation-plan.md`), 6 checkpoints
+  (A–F), each reviewed before the next began.
+- Checkpoint A: `server/src/http/respond.js` (`sendSuccess`, `sendError`,
+  `sendValidationError`) — one shared error-mapping utility, replacing
+  what would otherwise be 5 router-local copies. 21/21 pure unit tests,
+  run for real (no DB needed).
+- Checkpoint B: found 3 of 4 validation modules already existed
+  (pre-dating this milestone) and already matched the locked service
+  contracts; added the 2 genuinely-missing Knowledge schemas
+  (`rejectKnowledgeSchema`, `reviseKnowledgeSchema`) rather than
+  rebuilding what already worked. `verify:validation` 71/71.
+- Checkpoint C: Issue routes (2). First DB-backed route tests, explicitly
+  asserting D-3a's two blocked transitions return 409 +
+  `AUTHORIZATION_POLICY_UNRESOLVED` and never 403.
+- Checkpoint D: Knowledge (5), Comment (1), Project (1) routes — all 9
+  domain operations now have a router. Reviewed with targeted
+  coverage additions (EXPERT/non-EXPERT/self-review boundaries,
+  D-COMMENT-1's cross-target-reply rejection, explicit envelope
+  key-set assertions) before proceeding.
+- Checkpoint E: mounted all 4 routers in `app.js`; normalized the
+  global 404 and error handler onto the shared envelope; migrated
+  `auth.routes.js` off its local error-mapping copy and onto the shared
+  one, fixing its confirmed envelope non-conformance
+  (`{success, user}` → `{success, data: {user}, message}`).
+- **Incident, found and fully resolved same session**: first real
+  `npm test` run after Checkpoint E reported 6 failures. Root-caused
+  and fixed all 6 — 1 genuine gap (malformed JSON body handling, added
+  to `app.js`), 5 defects in a pre-existing, independently-authored
+  test file (`auth.failure-modes.test.js`, not part of this milestone's
+  own deliverables): 3 stale envelope assertions, 1 inverted assertion
+  (a test literally checking that an internal error message *was*
+  leaking, backwards from its own stated purpose), 1 ES-module-import-
+  hoisting environment-isolation bug. Full analysis:
+  `checkpoint-e-incident-report.md`. Also recovered a sandbox-local
+  regression mid-session (a `git stash drop` instead of `pop` during a
+  pull had discarded Checkpoint E's own `app.js`/`auth.routes.js`
+  changes in the working copy; restored from prior exports, no impact
+  on already-shared deliverables).
+- Checkpoint F (this update): confirmed by direct enumeration —
+  exactly 9 domain routes, 1:1 with the 9 service operations, no
+  extras. Full suite verified for real: **232/232 tests, 54 suites, 0
+  failures.**
 
 ### Authorization & Ownership Policy
 - Investigation report (`authorization-architecture-decision-report.md`):
@@ -403,19 +488,60 @@ logout-vs-access-token-expiry trade-off.
 
 ## Next Milestone
 
-Authentication (Phases A–H) and Authorization & Ownership Policy are
-both fully complete, reviewed, and verified: **138/138 tests, 32
-suites, real MongoDB**. Next: general Routes milestone (wiring
-Issue/Knowledge/Comment/Project services to Express, now consuming the
-consolidated `requireActor`/`requireRole` primitives) — nothing is
-currently blocking it.
+Authentication (Phases A–H), Authorization & Ownership Policy, and
+Routes are all fully complete, reviewed, and verified: **232/232
+tests, 54 suites, real MongoDB**. The backend now has a genuinely
+consumable HTTP API — 9 domain routes + 5 auth routes, all conforming
+to the frontend's `ApiResponse<T>` envelope. Next: frontend
+Authentication integration (connecting `src/lib/api/` to the 5 auth
+endpoints — register, login, session restoration, `/me`, logout), or
+frontend domain-feature integration against the 9 new routes. Neither
+is currently blocked.
 
-D-3a remains unresolved and untouched by both milestones — it
+D-3a remains unresolved and untouched across all three milestones — it
 produces/consumes identity, not remediation authority. Still depends on
-a Project membership model that does not exist yet (confirmed again
-during Authorization's investigation, not just carried forward).
+a Project membership model that does not exist yet (confirmed three
+times now: Authorization's investigation, Routes' discovery report, and
+Routes' own decision-locking pass — `Project.contributors` is still
+write-once-at-creation, never read or modified by any service
+function).
 
 ## Reviewer Notes
+
+Routes milestone reviewed at every checkpoint (A through F), same
+propose → review → correct → lock discipline as every prior milestone.
+Notable corrections made during review, not after the fact:
+- Discovery report caught its own internal contradiction before
+  locking: an early draft proposed `AUTHORIZATION_POLICY_UNRESOLVED` →
+  409 while also requiring it stay "distinguishable from
+  `INVALID_STATE`/`STATE_RACE`" — both of which are also 409. Resolved
+  as 409 + a distinguishing `code` field rather than picking a
+  different status that would have broken the "shares HTTP semantic
+  level" reasoning.
+- ROUTE-L1–L6 were renumbered once, mid-review, to match a corrected ID
+  scheme (route inventory and the `auth.routes.js` migration each
+  deserved their own decision ID rather than being folded into
+  neighboring ones); every reference across the register, the
+  implementation plan, and 2 code files' comments was updated in the
+  same pass, not left partially stale.
+- Checkpoint D's review requested additional targeted test coverage
+  (404/malformed-ID on Knowledge mutation routes, anonymous-rejection
+  beyond create, non-EXPERT/non-author boundaries, explicit envelope
+  key-set assertions) before Checkpoint E began — all added and
+  verified before proceeding, not deferred.
+- Checkpoint E's real-MongoDB run surfaced 6 failures. Diagnosed before
+  changing anything: 1 was a genuine gap in this milestone's own code
+  (malformed JSON body handling — fixed), 5 were in a test file that
+  predates and was not authored as part of this milestone
+  (`auth.failure-modes.test.js`) — including one test whose own
+  assertion was inverted (checking that an internal error message
+  *was* leaking, the opposite of its stated purpose) and one caused by
+  ES-module import-hoisting interacting with a `||`-fallback
+  environment-variable pattern. Full root-cause analysis, with
+  before/after verification for each, in
+  `checkpoint-e-incident-report.md` — nothing was "fixed" by editing a
+  test's expected value without first reproducing and understanding
+  why the actual behavior was correct.
 
 Authorization & Ownership Policy reviewed end-to-end (investigation
 report → decision promotion → implementation plan → code). One

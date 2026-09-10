@@ -652,11 +652,28 @@ any ADMIN-gated operation, any edit/delete operation on any entity, any
 Project membership model. See the decision report's §7 "Out of scope"
 for the complete list.
 
-## 🔒 Locked — Routes (promoted from `routes-milestone-discovery-report.md`; implementation not yet started)
+## 🔒 Locked — Routes (implemented, reviewed, and verified for real — 232/232 tests, 54 suites)
 
-Full derivation: `docs/architecture/routes-milestone-discovery-report.md`.
-Restated here only as locked conclusions, resolving that report's §8
-open decisions.
+**Status: implementation complete.** Full derivation:
+`docs/architecture/routes-milestone-discovery-report.md`,
+`docs/architecture/routes-implementation-plan.md` (Checkpoints A–F, all
+reviewed). Implementation, review, and full regression verification
+narrative: `docs/architecture/checkpoint-e-incident-report.md` (6 test
+failures surfaced during Checkpoint E's real MongoDB run — 1 genuine
+product gap, fixed; 5 defects in a pre-existing test file not authored
+as part of this milestone, corrected — full root-cause analysis there).
+
+Final state: exactly 9 domain routes, 1:1 with the 9 existing service
+operations (2 Issue, 5 Knowledge, 1 Comment, 1 Project — confirmed by
+direct enumeration, no extras), plus `auth.routes.js`'s pre-existing 5
+routes migrated onto the shared response infrastructure (ROUTE-L5). No
+GET/listing/edit/delete route exists anywhere. Full suite verified for
+real against real MongoDB: **232/232 tests, 54 suites, 0 failures**.
+Offline verify scripts unaffected: `verify:models` 44/44,
+`verify:validation` 71/71, `verify:cookie-config` 10/10.
+
+Restated below only as locked conclusions, resolving
+`routes-milestone-discovery-report.md` §8's open decisions.
 
 - **ROUTE-L1 — Route handlers never resolve identity themselves.**
   Every route consumes the existing global `authMiddleware`'s
