@@ -94,3 +94,23 @@ export function sendError(res, err) {
     message: "Internal server error",
   });
 }
+
+/**
+ * sendValidationError(res, zodError)
+ *
+ * A route-level Zod `safeParse` failure is not a thrown `DomainError`
+ * (nothing reached the service layer yet), but must still produce the
+ * identical `ApiFailure` shape `sendError` produces for
+ * `VALIDATION_FAILED` — consistency for API consumers, not a
+ * coincidence. Generalizes `auth.routes.js`'s original router-local
+ * `sendValidationError` (which only `/register`/`/login` used) to
+ * every router.
+ */
+export function sendValidationError(res, zodError) {
+  res.status(400).json({
+    success: false,
+    data: null,
+    message: zodError.issues[0]?.message || "Invalid request body",
+    code: DomainErrorCode.VALIDATION_FAILED,
+  });
+}

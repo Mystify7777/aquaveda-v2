@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { sendSuccess, sendError } from "../src/http/respond.js";
+import { sendSuccess, sendError, sendValidationError } from "../src/http/respond.js";
 import {
   notFound,
   unauthorized,
@@ -132,5 +132,35 @@ describe("sendError — unmapped/unknown errors", () => {
     sendError(res, new Error("raw driver error with a stack trace"));
     assert.equal(res.calls.status, 500);
     assert.equal(res.calls.json.message, "Internal server error");
+  });
+});
+
+describe("sendValidationError", () => {
+  function fakeZodError(messages) {
+    return { issues: messages.map((message) => ({ message })) };
+  }
+
+  it("produces a 400 with the standard failure envelope", () => {
+    const res = fakeRes();
+    sendValidationError(res, fakeZodError(["title is required"]));
+    assert.equal(res.calls.status, 400);
+    assert.deepEqual(res.calls.json, {
+      success: false,
+      data: null,
+      message: "title is required",
+      code: "VALIDATION_FAILED",
+    });
+  });
+
+  it("uses only the first issue's message when multiple issues exist", () => {
+    const res = fakeRes();
+    sendValidationError(res, fakeZodError(["title is required", "body is required"]));
+    assert.equal(res.calls.json.message, "title is required");
+  });
+
+  it("falls back to a generic message if issues is empty", () => {
+    const res = fakeRes();
+    sendValidationError(res, fakeZodError([]));
+    assert.equal(res.calls.json.message, "Invalid request body");
   });
 });
