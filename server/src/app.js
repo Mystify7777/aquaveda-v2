@@ -4,6 +4,7 @@ import cors from "cors";
 
 import { authMiddleware } from "./middleware/auth.js";
 import { authRouter } from "./routes/auth.routes.js";
+import { issuesRouter } from "./routes/issues.routes.js";
 
 /**
  * Express application boundary.
@@ -81,6 +82,11 @@ export function createApp() {
   // project.service.js. General domain routes remain a separate, future
   // Routes milestone, deliberately not started here.
   app.use("/api/v1/auth", authRouter);
+
+  // Issue listing — the first domain read endpoint (Issue #40). Public,
+  // no auth required. Deliberately narrow: one GET endpoint with
+  // pagination, not the full Issue CRUD surface (Routes milestone).
+  app.use("/api/v1/issues", issuesRouter);
 
   // No route matched.
   app.use((req, res) => {

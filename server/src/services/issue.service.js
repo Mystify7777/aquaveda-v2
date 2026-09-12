@@ -262,3 +262,49 @@ export async function changeStatus(actorContext, issueId, targetStatus) {
     { expectedStatus, targetStatus },
   );
 }
+
+/**
+ * listIssues({ page, limit })
+ *
+ * Public read endpoint — no actorContext required, consistent with
+ * Product Invariant 5 ("Anonymous users may explore — browsing the map,
+ * reading approved knowledge, and viewing issues never requires an
+ * account").
+ *
+ * Returns a page of Issues sorted by creation date (newest first) with
+ * structured pagination metadata. The `{ status: 1 }` index on Issue
+ * (persistence-design.md §6) naturally supports future status-filtered
+ * queries if added later; this initial implementation returns all issues
+ * regardless of status.
+ *
+ * @param {object} options
+ * @param {number} options.page - 1-indexed page number (already validated)
+ * @param {number} options.limit - items per page (already validated, max-capped)
+ * @returns {Promise<{ data: object[], pagination: object }>}
+ */
+export async function listIssues({ page, limit }) {
+  const skip = (page - 1) * limit;
+
+  const [totalCount, data] = await Promise.all([
+    Issue.countDocuments(),
+    Issue.find()
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+  ]);
+
+  const totalPages = Math.ceil(totalCount / limit);
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      totalCount,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
+  };
+}
