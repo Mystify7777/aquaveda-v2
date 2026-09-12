@@ -1,11 +1,12 @@
 import { Router } from "express";
 
-import { createIssue, changeStatus } from "../services/issue.service.js";
+import { createIssue, changeStatus, listIssues } from "../services/issue.service.js";
 import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
 import {
   createIssueSchema,
   changeIssueStatusSchema,
 } from "../validation/issue.validation.js";
+import { paginationSchema } from "../validation/shared/pagination.validation.js";
 
 /**
  * Issue routes.
@@ -15,21 +16,32 @@ import {
  * routes-milestone-discovery-report.md and
  * routes-implementation-plan.md Phase 3.
  *
- * Exactly 2 routes, 1:1 with issue.service.js's 2 exported operations
- * (ROUTE-L2) — no retrieval/listing, no edit/delete.
+ * Includes public issue listing with pagination (Issue #40), issue
+ * creation, and issue status transition operations.
  *
  * Kept thin, matching auth.routes.js's own convention: HTTP request →
  * validate → issue.service.js → HTTP response via the shared
- * sendSuccess/sendError utility (ROUTE-L4/L6). No requireActor/
- * requireRole call anywhere in this file (ROUTE-L3) — every operation
- * already enforces its own actor/role requirements; a route-level gate
- * would only duplicate that, not add anything. No JWT verification, no
- * cookie parsing here — req.actorContext is already resolved by the
- * globally-mounted authMiddleware (ROUTE-L1) before this router ever
- * runs.
+ * sendSuccess/sendError utility (ROUTE-L4/L6).
  */
 
 export const issueRouter = Router();
+
+issueRouter.get("/", async (req, res) => {
+  const parsed = paginationSchema.safeParse(req.query ?? {});
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+
+  try {
+    const result = await listIssues(parsed.data);
+    sendSuccess(res, result.data, "Issues retrieved successfully", 200, {
+      pagination: result.pagination,
+    });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
 
 issueRouter.post("/", async (req, res) => {
   const parsed = createIssueSchema.safeParse(req.body ?? {});

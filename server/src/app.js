@@ -87,9 +87,8 @@ export function createApp() {
   app.use("/api/v1/auth", authRouter);
 
   // Routes milestone (decision-register.md "Locked — Routes",
-  // ROUTE-L1–L6): exactly 9 routes, 1:1 with the 9 existing domain
-  // service operations. No retrieval/listing route exists because no
-  // service operation exists to route to (ROUTE-L2).
+  // ROUTE-L1–L6): issueRouter includes public list endpoint (Issue #40)
+  // along with create and update status operations.
   app.use("/api/v1/issues", issueRouter);
   app.use("/api/v1/knowledge", knowledgeRouter);
   app.use("/api/v1/comments", commentRouter);

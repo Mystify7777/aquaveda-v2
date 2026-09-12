@@ -57,8 +57,8 @@ const ERROR_STATUS_MAP = Object.freeze({
  * shape from src/lib/api/types.ts, verbatim. No route should construct
  * a success response by hand.
  */
-export function sendSuccess(res, data, message, status = 200) {
-  res.status(status).json({ success: true, data, message });
+export function sendSuccess(res, data, message, status = 200, extra = {}) {
+  res.status(status).json({ success: true, data, message, ...extra });
 }
 
 /**
