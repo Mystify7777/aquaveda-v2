@@ -75,6 +75,14 @@ describe("global 404 (ROUTE-L6 envelope conformance)", () => {
 });
 
 describe("full app router mounting (Phase 7)", () => {
+  it("keeps the session probe publicly readable for an anonymous browser", async () => {
+    const res = await request("GET", "/api/v1/auth/me");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.json.success, true);
+    assert.equal(res.json.data.user, null);
+  });
+
   it("reaches issueRouter through the fully-assembled app (401 for anonymous create — proves the router is wired, not testing Issue logic itself)", async () => {
     const res = await request("POST", "/api/v1/issues", {
       body: { title: "x", description: "y", location: { type: "Point", coordinates: [0, 0] } },

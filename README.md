@@ -89,6 +89,20 @@ npm run lint
 npm run build
 ```
 
+For local browser authentication, create a root `.env.local` file for the
+Next.js app (alongside `package.json`, not under `src/`) with:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000
+```
+
+The web app runs on `http://localhost:3000` and the Express API runs on
+`http://localhost:5000`. The frontend sends credentialed requests to the API;
+authentication remains in the backend's HttpOnly cookies. `/api/system` is a
+Next.js route handler and stays on the web origin. Configure the API's
+`ALLOWED_ORIGINS` separately in `server/.env` as documented in
+[`server/README.md`](server/README.md).
+
 ### Server
 
 ```bash
