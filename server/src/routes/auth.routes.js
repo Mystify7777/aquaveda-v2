@@ -1,7 +1,6 @@
 import { Router } from "express";
 
 import { register, login, refresh, logout } from "../services/auth.service.js";
-import { DomainErrorCode } from "../services/errors.js";
 import {
   getAccessTokenLifetimeMs,
   getRefreshTokenLifetimeMs,
@@ -9,6 +8,7 @@ import {
 import { ACCESS_TOKEN_COOKIE_NAME } from "../middleware/auth.js";
 import { resolveCookieSameSite, resolveCookieDomain } from "../config/env.js";
 import { registerSchema, loginSchema } from "../validation/auth.validation.js";
+import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
 
 /**
  * Authentication routes — the five-endpoint minimal auth API surface
@@ -117,79 +117,19 @@ function clearAuthCookies(res) {
 }
 
 /**
- * Local, auth-route-specific error → HTTP status mapping. Deliberately
- * NOT a generic/global error-handling module — that decision belongs to
- * a future Routes milestone with its own review, not to this
- * self-contained router. `AUTHORIZATION_POLICY_UNRESOLVED` is
- * intentionally absent: it's an Issue-lifecycle concern
- * (issue.service.js), unrelated to anything this router touches, and
- * D-3a stays untouched here as everywhere else in this milestone.
+ * Error/validation-failure handling (ROUTE-L4/L5/L6, Routes milestone
+ * Phase 9): migrated onto the shared sendError/sendValidationError from
+ * http/respond.js, replacing what was previously a local, auth-router-
+ * only ERROR_STATUS_MAP/sendDomainError/sendValidationError. This is a
+ * presentation-layer migration only — the shared utility's mapped
+ * codes are a superset of what this router ever threw
+ * (VALIDATION_FAILED, UNAUTHORIZED, INVALID_CREDENTIALS,
+ * EMAIL_ALREADY_REGISTERED, REFRESH_FAILED, NOT_FOUND all remain
+ * mapped identically), so no auth-specific error behavior changes.
+ * `AUTHORIZATION_POLICY_UNRESOLVED` being present in the shared map is
+ * irrelevant here — this router never throws or receives it; D-3a
+ * stays exactly as untouched as it was before this migration.
  */
-const ERROR_STATUS_MAP = {
-  [DomainErrorCode.VALIDATION_FAILED]: 400,
-  [DomainErrorCode.UNAUTHORIZED]: 401,
-  [DomainErrorCode.INVALID_CREDENTIALS]: 401,
-  [DomainErrorCode.EMAIL_ALREADY_REGISTERED]: 409,
-  [DomainErrorCode.REFRESH_FAILED]: 401,
-  [DomainErrorCode.NOT_FOUND]: 404,
-};
-
-/**
- * Review-pass correction: only errors with a KNOWN, mapped
- * DomainErrorCode get their message forwarded to the client — those
- * messages are intentionally written to be client-safe (e.g.
- * "Invalid email or password"). Anything else (an unmapped
- * DomainErrorCode, a raw Mongoose/driver error, a bug) is NOT a
- * message this router wrote for public consumption — it could contain
- * internal details (a Mongo connection string fragment, a stack-trace
- * fragment, a library-specific message) that must never reach a
- * client. Unknown errors are logged server-side in full and always
- * get the same generic 500 body, never their own `.message`.
- *
- * This is a narrow, auth-router-local fix — not a generic/global
- * error-handling module. A future Routes milestone may want a shared
- * version of this same principle; that's a separate decision.
- */
-function sendDomainError(res, err) {
-  const status = ERROR_STATUS_MAP[err?.code];
-
-  if (status !== undefined) {
-    res.status(status).json({
-      success: false,
-      code: err.code,
-      message: err.message,
-    });
-    return;
-  }
-
-  // Unmapped/unknown error: log the real thing server-side, never
-  // forward it to the client.
-  console.error("[auth.routes] Unexpected error:", err);
-  res.status(500).json({
-    success: false,
-    code: "INTERNAL_ERROR",
-    message: "Internal server error",
-  });
-}
-
-/**
- * Zod validation-failure translator (Phase G), kept local to this
- * router — not a generic/global validation middleware, per the same
- * scope discipline as `sendDomainError`. Only `/register` and `/login`
- * use this; `/refresh`, `/logout`, and `/me` have no request-body shape
- * to validate (cookie/context-driven), so no schema exists for them.
- *
- * Response shape matches `sendDomainError`'s exactly
- * (`{ success, code, message }`), even though this isn't a thrown
- * `DomainError` — consistency for API consumers, not a coincidence.
- */
-function sendValidationError(res, zodError) {
-  res.status(400).json({
-    success: false,
-    code: DomainErrorCode.VALIDATION_FAILED,
-    message: zodError.issues[0]?.message || "Invalid request body",
-  });
-}
 
 export const authRouter = Router();
 
@@ -207,9 +147,9 @@ authRouter.post("/register", async (req, res) => {
     // canonicalizeEmail) for callers that bypass this route entirely.
     const { user, accessToken, refreshToken } = await register(parsed.data);
     setAuthCookies(res, { accessToken, refreshToken });
-    res.status(201).json({ success: true, user });
+    sendSuccess(res, { user }, "Registered", 201);
   } catch (err) {
-    sendDomainError(res, err);
+    sendError(res, err);
   }
 });
 
@@ -223,9 +163,9 @@ authRouter.post("/login", async (req, res) => {
   try {
     const { user, accessToken, refreshToken } = await login(parsed.data);
     setAuthCookies(res, { accessToken, refreshToken });
-    res.status(200).json({ success: true, user });
+    sendSuccess(res, { user }, "Logged in");
   } catch (err) {
-    sendDomainError(res, err);
+    sendError(res, err);
   }
 });
 
@@ -235,7 +175,7 @@ authRouter.post("/logout", async (req, res) => {
   // try/catch is needed here, unlike the other four routes.
   await logout(req.cookies?.[REFRESH_TOKEN_COOKIE_NAME]);
   clearAuthCookies(res);
-  res.status(200).json({ success: true });
+  sendSuccess(res, null, "Logged out");
 });
 
 authRouter.get("/me", (req, res) => {
@@ -244,7 +184,7 @@ authRouter.get("/me", (req, res) => {
   // ever runs. This route's entire job is reading that value — per the
   // Phase E correction, there is no second, parallel actor-resolution
   // path anywhere in this codebase.
-  res.status(200).json({ success: true, user: req.actorContext });
+  sendSuccess(res, { user: req.actorContext }, "OK");
 });
 
 authRouter.post("/refresh", async (req, res) => {
@@ -252,12 +192,12 @@ authRouter.post("/refresh", async (req, res) => {
     const rawRefreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
     const { user, accessToken, refreshToken } = await refresh(rawRefreshToken);
     setAuthCookies(res, { accessToken, refreshToken });
-    res.status(200).json({ success: true, user });
+    sendSuccess(res, { user }, "Refreshed");
   } catch (err) {
     // A failed refresh also clears cookies — an unusable refresh token
     // shouldn't keep being resent on every subsequent request.
     clearAuthCookies(res);
-    sendDomainError(res, err);
+    sendError(res, err);
   }
 });
 

@@ -57,3 +57,49 @@ export const reviewKnowledgeSchema = z
       }
     }
   });
+
+/**
+ * Routes milestone note: `reviewKnowledgeSchema` above predates the
+ * locked route contract (decision-register.md ROUTE-L2) and assumes a
+ * single combined review endpoint (`{decision, feedback?}`). The
+ * locked contract instead exposes `approve` and `reject` as two
+ * separate routes, matching the two separate service functions
+ * (`approve(actorContext, knowledgeId)` — no body at all —
+ * and `reject(actorContext, knowledgeId, feedback)`). Left in place
+ * unmodified rather than removed (predates this milestone, still valid
+ * Zod); the two schemas actually used by the Routes milestone's
+ * `knowledge.routes.js` are `rejectKnowledgeSchema` and
+ * `reviseKnowledgeSchema` below. `approve`/`submitForReview` need no
+ * schema at all — no request body, same pattern as auth's `/refresh`,
+ * `/logout`, `/me`.
+ */
+
+/**
+ * Knowledge rejection request shape.
+ *
+ * Matches reject(actorContext, knowledgeId, feedback)'s actual
+ * signature exactly — feedback is the entire request body, required
+ * and non-empty (the service throws INVALID_STATE-adjacent domain
+ * errors for a missing target/state, but an empty feedback string is a
+ * shape problem Zod should catch before the service is ever called).
+ */
+export const rejectKnowledgeSchema = z.object({
+  feedback: z.string().trim().min(1, "feedback is required"),
+});
+
+/**
+ * Knowledge revision request shape.
+ *
+ * Matches revise(actorContext, knowledgeId, updatedContent)'s actual
+ * behavior exactly (knowledge.service.js, confirmed by direct read):
+ * only title/body/region are ever read from updatedContent, all three
+ * fully optional — the service tolerates any subset, including an
+ * empty object (a no-op revision is not itself an error at the service
+ * layer). This schema does not require at least one field to be
+ * present; that would be inventing a rule the service doesn't enforce.
+ */
+export const reviseKnowledgeSchema = z.object({
+  title: z.string().trim().min(1, "title must not be empty if provided").optional(),
+  body: z.string().trim().min(1, "body must not be empty if provided").optional(),
+  region: z.string().trim().optional(),
+});

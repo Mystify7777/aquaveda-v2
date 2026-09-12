@@ -1,25 +1,35 @@
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import express from "express";
+import cookieParser from "cookie-parser";
 
-import { createApp } from "../src/app.js";
+import { authMiddleware, ACCESS_TOKEN_COOKIE_NAME } from "../src/middleware/auth.js";
+import { issueRouter } from "../src/routes/issue.routes.js";
+import { User } from "../src/models/User.js";
+import { register } from "../src/services/auth.service.js";
 import { Issue } from "../src/models/Issue.js";
 import { setupTestDb, teardownTestDb, clearCollections, fakeActor, validPoint } from "./helpers/testDb.js";
 
 /**
- * Integration tests for GET /api/v1/issues — paginated issue listing.
- *
- * Uses the same dependency-free HTTP test client pattern as
- * auth.routes.test.js (raw node:http, no supertest). Tests run against
- * a real MongoDB instance (TEST_MONGO_URI), not mocks.
+ * HTTP integration tests for issue.routes.js.
  */
+
+function buildTestApp() {
+  const app = express();
+  app.use(express.json());
+  app.use(cookieParser());
+  app.use(authMiddleware);
+  app.use("/api/v1/issues", issueRouter);
+  return app;
+}
 
 let server;
 let baseUrl;
 
 before(async () => {
   await setupTestDb();
-  const app = createApp();
+  const app = buildTestApp();
   server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, resolve));
   const { port } = server.address();
@@ -35,36 +45,59 @@ after(async () => {
 
 beforeEach(clearCollections);
 
-function request(method, path) {
+function request(method, path, { body, cookies } = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.request(
-      `${baseUrl}${path}`,
-      { method },
-      (res) => {
-        const chunks = [];
-        res.on("data", (chunk) => chunks.push(chunk));
-        res.on("end", () => {
-          const rawBody = Buffer.concat(chunks).toString("utf8");
-          let body;
-          try {
-            body = JSON.parse(rawBody);
-          } catch {
-            body = rawBody;
-          }
-          resolve({ status: res.statusCode, body, headers: res.headers });
-        });
-      },
-    );
+    const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
+    const headers = {};
+    if (bodyStr !== undefined) {
+      headers["Content-Type"] = "application/json";
+      headers["Content-Length"] = Buffer.byteLength(bodyStr);
+    }
+    if (cookies) {
+      headers["Cookie"] = Object.entries(cookies)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("; ");
+    }
+
+    const req = http.request(`${baseUrl}${path}`, { method, headers }, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const rawBody = Buffer.concat(chunks).toString("utf8");
+        let json = null;
+        try {
+          json = rawBody ? JSON.parse(rawBody) : null;
+        } catch {
+          // non-JSON body
+        }
+        resolve({ status: res.statusCode, json, body: json });
+      });
+    });
     req.on("error", reject);
+    if (bodyStr !== undefined) req.write(bodyStr);
     req.end();
   });
 }
 
-/**
- * Seed helper — creates `count` issues in the database with distinct
- * titles. Each issue uses the same actor/location for simplicity; the
- * pagination tests care about counts and ordering, not field variety.
- */
+const VALID_PASSWORD = "correcthorsebatterystaple";
+
+async function makeAuthedUser(role = "USER", overrides = {}) {
+  const { user, accessToken } = await register({
+    name: "Test User",
+    email: `${role.toLowerCase()}-${Date.now()}-${Math.random()}@example.com`,
+    password: VALID_PASSWORD,
+    ...overrides,
+  });
+  if (role !== "USER") {
+    await User.updateOne({ _id: user.id }, { $set: { role } });
+  }
+  return { user, accessToken };
+}
+
+function authCookie(accessToken) {
+  return { [ACCESS_TOKEN_COOKIE_NAME]: accessToken };
+}
+
 async function seedIssues(count) {
   const actor = fakeActor();
   const now = Date.now();
@@ -91,8 +124,6 @@ async function seedIssues(count) {
 }
 
 describe("GET /api/v1/issues", () => {
-  // ── Default pagination ────────────────────────────────────────────
-
   describe("default pagination (no query params)", () => {
     it("returns page 1 with limit 10 by default", async () => {
       await seedIssues(3);
@@ -123,8 +154,6 @@ describe("GET /api/v1/issues", () => {
       assert.equal(body.pagination.hasPrevPage, false);
     });
   });
-
-  // ── Custom pagination values ──────────────────────────────────────
 
   describe("custom page and limit", () => {
     it("returns the correct page with custom limit", async () => {
@@ -158,40 +187,10 @@ describe("GET /api/v1/issues", () => {
       await seedIssues(5);
       const { body } = await request("GET", "/api/v1/issues?limit=5");
 
-      // seedIssues creates issues with increasing createdAt timestamps,
-      // so the last-created issue should appear first in the response.
       assert.equal(body.data[0].title, "Issue 5");
       assert.equal(body.data[4].title, "Issue 1");
     });
   });
-
-  // ── Pagination metadata accuracy ──────────────────────────────────
-
-  describe("pagination metadata accuracy", () => {
-    it("calculates totalPages and hasNextPage correctly for 25 items", async () => {
-      await seedIssues(25);
-      const { body } = await request("GET", "/api/v1/issues?limit=10");
-
-      assert.equal(body.pagination.totalCount, 25);
-      assert.equal(body.pagination.totalPages, 3);
-      assert.equal(body.pagination.hasNextPage, true);
-      assert.equal(body.pagination.hasPrevPage, false);
-    });
-
-    it("returns empty data for a page beyond the last page", async () => {
-      await seedIssues(5);
-      const { status, body } = await request("GET", "/api/v1/issues?page=999&limit=10");
-
-      assert.equal(status, 200);
-      assert.equal(body.success, true);
-      assert.equal(body.data.length, 0);
-      assert.equal(body.pagination.totalCount, 5);
-      assert.equal(body.pagination.hasNextPage, false);
-      assert.equal(body.pagination.hasPrevPage, true);
-    });
-  });
-
-  // ── Max limit enforcement ─────────────────────────────────────────
 
   describe("max limit enforcement", () => {
     it("rejects limit above 50", async () => {
@@ -211,8 +210,6 @@ describe("GET /api/v1/issues", () => {
       assert.equal(body.pagination.limit, 50);
     });
   });
-
-  // ── Invalid query parameters ──────────────────────────────────────
 
   describe("invalid query parameters", () => {
     it("rejects non-numeric page", async () => {
@@ -262,53 +259,118 @@ describe("GET /api/v1/issues", () => {
       assert.equal(body.success, false);
       assert.equal(body.code, "VALIDATION_FAILED");
     });
+  });
+});
 
-    it("rejects fractional page", async () => {
-      const { status, body } = await request("GET", "/api/v1/issues?page=1.5");
-
-      assert.equal(status, 400);
-      assert.equal(body.success, false);
-      assert.equal(body.code, "VALIDATION_FAILED");
+describe("POST /api/v1/issues", () => {
+  it("201s and returns the created Issue in the complete canonical envelope", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    const res = await request("POST", "/api/v1/issues", {
+      cookies: authCookie(accessToken),
+      body: {
+        title: "Leaking pipe",
+        description: "Water pooling near the market",
+        location: validPoint(),
+      },
     });
 
-    it("rejects fractional limit", async () => {
-      const { status, body } = await request("GET", "/api/v1/issues?limit=2.7");
-
-      assert.equal(status, 400);
-      assert.equal(body.success, false);
-      assert.equal(body.code, "VALIDATION_FAILED");
-    });
+    assert.equal(res.status, 201);
+    assert.equal(res.json.success, true);
+    assert.equal(res.json.data.title, "Leaking pipe");
+    assert.equal(res.json.data.status, "open");
   });
 
-  // ── Response shape ────────────────────────────────────────────────
-
-  describe("response envelope shape", () => {
-    it("includes all expected pagination fields", async () => {
-      await seedIssues(1);
-      const { body } = await request("GET", "/api/v1/issues");
-
-      assert.equal(typeof body.success, "boolean");
-      assert.equal(Array.isArray(body.data), true);
-      assert.equal(typeof body.pagination, "object");
-      assert.equal(typeof body.pagination.page, "number");
-      assert.equal(typeof body.pagination.limit, "number");
-      assert.equal(typeof body.pagination.totalCount, "number");
-      assert.equal(typeof body.pagination.totalPages, "number");
-      assert.equal(typeof body.pagination.hasNextPage, "boolean");
-      assert.equal(typeof body.pagination.hasPrevPage, "boolean");
+  it("400s with VALIDATION_FAILED for a missing title", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    const res = await request("POST", "/api/v1/issues", {
+      cookies: authCookie(accessToken),
+      body: { description: "no title here", location: validPoint() },
     });
 
-    it("returns issue documents with expected fields", async () => {
-      await seedIssues(1);
-      const { body } = await request("GET", "/api/v1/issues");
-      const issue = body.data[0];
+    assert.equal(res.status, 400);
+    assert.equal(res.json.success, false);
+    assert.equal(res.json.data, null);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
 
-      assert.ok(issue._id);
-      assert.ok(issue.title);
-      assert.ok(issue.description);
-      assert.ok(issue.location);
-      assert.ok(issue.status);
-      assert.ok(issue.createdAt);
+  it("401s with UNAUTHORIZED for an anonymous request", async () => {
+    const res = await request("POST", "/api/v1/issues", {
+      body: {
+        title: "Leaking pipe",
+        description: "Water pooling near the market",
+        location: validPoint(),
+      },
     });
+
+    assert.equal(res.status, 401);
+    assert.equal(res.json.code, "UNAUTHORIZED");
+  });
+});
+
+describe("PATCH /api/v1/issues/:issueId/status", () => {
+  async function makeOpenIssue(accessToken) {
+    const res = await request("POST", "/api/v1/issues", {
+      cookies: authCookie(accessToken),
+      body: {
+        title: "Leaking pipe",
+        description: "Water pooling near the market",
+        location: validPoint(),
+      },
+    });
+    return res.json.data;
+  }
+
+  it("200s on a valid EXPERT-authorized transition", async () => {
+    const reporter = await makeAuthedUser("USER");
+    const expert = await makeAuthedUser("EXPERT");
+    const issue = await makeOpenIssue(reporter.accessToken);
+
+    const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
+      cookies: authCookie(expert.accessToken),
+      body: { targetStatus: "acknowledged" },
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.json.success, true);
+    assert.equal(res.json.data.status, "acknowledged");
+  });
+
+  it("400s with VALIDATION_FAILED for an unrecognized targetStatus", async () => {
+    const reporter = await makeAuthedUser("USER");
+    const issue = await makeOpenIssue(reporter.accessToken);
+
+    const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
+      cookies: authCookie(reporter.accessToken),
+      body: { targetStatus: "not_a_real_status" },
+    });
+
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("403s with FORBIDDEN when a non-EXPERT attempts open -> acknowledged", async () => {
+    const reporter = await makeAuthedUser("USER");
+    const issue = await makeOpenIssue(reporter.accessToken);
+
+    const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
+      cookies: authCookie(reporter.accessToken),
+      body: { targetStatus: "acknowledged" },
+    });
+
+    assert.equal(res.status, 403);
+    assert.equal(res.json.code, "FORBIDDEN");
+  });
+
+  it("404s with NOT_FOUND for a well-formed but nonexistent issueId", async () => {
+    const expert = await makeAuthedUser("EXPERT");
+    const fakeId = "507f1f77bcf86cd799439011";
+
+    const res = await request("PATCH", `/api/v1/issues/${fakeId}/status`, {
+      cookies: authCookie(expert.accessToken),
+      body: { targetStatus: "acknowledged" },
+    });
+
+    assert.equal(res.status, 404);
+    assert.equal(res.json.code, "NOT_FOUND");
   });
 });

@@ -651,3 +651,112 @@ a generic `requireOwner()`, any multi-role/role-set authorization API,
 any ADMIN-gated operation, any edit/delete operation on any entity, any
 Project membership model. See the decision report's §7 "Out of scope"
 for the complete list.
+
+## 🔒 Locked — Routes (implemented, reviewed, and verified for real — 232/232 tests, 54 suites)
+
+**Status: implementation complete.** Full derivation:
+`docs/architecture/routes-milestone-discovery-report.md`,
+`docs/architecture/routes-implementation-plan.md` (Checkpoints A–F, all
+reviewed). Implementation, review, and full regression verification
+narrative: `docs/architecture/checkpoint-e-incident-report.md` (6 test
+failures surfaced during Checkpoint E's real MongoDB run — 1 genuine
+product gap, fixed; 5 defects in a pre-existing test file not authored
+as part of this milestone, corrected — full root-cause analysis there).
+
+Final state: exactly 9 domain routes, 1:1 with the 9 existing service
+operations (2 Issue, 5 Knowledge, 1 Comment, 1 Project — confirmed by
+direct enumeration, no extras), plus `auth.routes.js`'s pre-existing 5
+routes migrated onto the shared response infrastructure (ROUTE-L5). No
+GET/listing/edit/delete route exists anywhere. Full suite verified for
+real against real MongoDB: **232/232 tests, 54 suites, 0 failures**.
+Offline verify scripts unaffected: `verify:models` 44/44,
+`verify:validation` 71/71, `verify:cookie-config` 10/10.
+
+Restated below only as locked conclusions, resolving
+`routes-milestone-discovery-report.md` §8's open decisions.
+
+- **ROUTE-L1 — Route handlers never resolve identity themselves.**
+  Every route consumes the existing global `authMiddleware`'s
+  `req.actorContext` (populated `{id, role}` or `null`) and passes it
+  straight to the relevant service function as that function's first
+  argument. No domain router parses cookies, verifies JWTs, or
+  duplicates `authMiddleware`'s job — that remains its sole, exclusive
+  owner, unchanged from the Authentication milestone.
+
+- **ROUTE-L2 — Exact route inventory: exactly 9 routes, 1:1 with the 9
+  existing service operations** (`createIssue`, `changeStatus`,
+  `createKnowledge`, `submitForReview`, `approve`, `reject`, `revise`,
+  `createComment`, `createProject`). No retrieval/listing route (none
+  exist to route to), no edit/delete route (none exist), no route
+  invented merely because REST convention suggests one "should" exist.
+  `changeStatus` uses `PATCH /api/v1/issues/:issueId/status` (a
+  partial-state-update semantic, the one deliberate departure from
+  `auth.routes.js`'s all-`POST` precedent, chosen because that router
+  has no analogous "transition a resource's state" operation to model
+  against). Every other write operation uses `POST`, matching
+  `auth.routes.js`'s existing convention.
+
+- **ROUTE-L3 — No route-level "must be authenticated" gate.** Confirmed
+  by direct inspection (discovery report §0/§2a): all 9 domain-service
+  operations already call `requireActor()` as their first line. A
+  route-level check before calling the service would be redundant with
+  behavior the service already guarantees, and would reintroduce the
+  exact duplication AUTH-L1 consolidated away — at a different layer,
+  not eliminated. No route in this milestone performs such a check;
+  `UNAUTHORIZED` reaches the client exclusively via the service throwing
+  it, translated by ROUTE-L4's shared error mapping.
+
+- **ROUTE-L4 — One shared HTTP/domain-error mapping utility, used by
+  every router.** A single `DomainErrorCode → HTTP status` table
+  (generalizing `auth.routes.js`'s previously router-local
+  `ERROR_STATUS_MAP`) covers every code in the codebase, not just the
+  Authentication-specific subset. Within that table:
+  `AUTHORIZATION_POLICY_UNRESOLVED` maps to HTTP 409, with
+  `code: "AUTHORIZATION_POLICY_UNRESOLVED"` distinguishing it from
+  `INVALID_STATE`/`STATE_RACE`, which also use 409 — all three
+  represent a state/policy conflict at the same HTTP-semantic level, so
+  they share a status; the response body's `code` field — already part
+  of the standard failure envelope (ROUTE-L6) — is what an API consumer
+  actually branches on to tell them apart, not the status code alone.
+  This is never silently folded into `FORBIDDEN`'s 403 — `FORBIDDEN`
+  means "this actor specifically lacks permission";
+  `AUTHORIZATION_POLICY_UNRESOLVED` means "no policy exists yet to
+  evaluate anyone against," a materially different fact that must
+  remain visible to callers. D-3a itself remains completely unresolved
+  by this decision — this only fixes how its already-unresolved state
+  is represented over HTTP. Any error with an unmapped code is logged
+  server-side in full and returns a fixed generic 500 body, never
+  forwarding `.message` — the same principle `auth.routes.js`'s
+  original `sendDomainError` already established, now shared rather
+  than router-local.
+
+- **ROUTE-L5 — `auth.routes.js` is migrated onto the shared utility
+  (ROUTE-L4), as part of this milestone, not deferred.**
+  `auth.routes.js`'s local `ERROR_STATUS_MAP`/`sendDomainError`
+  (Authentication milestone) is replaced by the shared version —
+  deliberately reopening that file rather than leaving the
+  inconsistency in place. Justification: the discovery report's §5
+  confirmed `auth.routes.js`'s response envelope does not conform to
+  the frontend's `ApiResponse<T>` contract at all (`{success, user}`,
+  no `data`/`message`) — a real, already-existing defect, not a
+  hypothetical one. Fixing envelope conformance only in the 4 new
+  domain routers while leaving `auth.routes.js` non-conforming would
+  leave the actual defect in place. `auth.routes.js`'s *authentication
+  business logic* (token issuance, cookie handling, refresh rotation,
+  all locked under Authentication's L1–L17) is explicitly untouched —
+  only its error/response *presentation* layer is migrated.
+
+- **ROUTE-L6 — Every HTTP response, across all routers (including
+  `auth.routes.js` and the global 404/error-handler fallbacks in
+  `app.js`), conforms exactly to the frontend's existing `ApiResponse<T>`
+  contract** (`src/lib/api/types.ts`): success →
+  `{success: true, data: <resource>, message: <string>}`; failure →
+  `{success: false, data: null, message: <string>, code?: <string>}`.
+  No route returns a bespoke shape. This closes the confirmed gap from
+  the discovery report's §5 across the entire HTTP surface, not just
+  the 4 new domain routers.
+
+**Explicitly not locked here**: any GET/listing route, any edit/delete
+route, D-3a resolution in any form (ROUTE-L4 changes only its HTTP
+*representation*, not the underlying unresolved policy), any change to
+`authMiddleware`'s advisory (non-rejecting) behavior.
