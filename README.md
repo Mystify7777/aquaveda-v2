@@ -135,6 +135,12 @@ Browser authentication is cookie-only. Access and refresh tokens are not returne
 
 Authentication is intentionally separated from domain authorization. The unresolved D-3a policy for authorized Issue remediation actors remains a domain/application decision and is not encoded into authentication.
 
+## Frontend authentication
+
+The frontend authentication experience is available at `/login` and `/register`. Anonymous users see public navigation and authentication links; authenticated users see session controls and can sign out. The app initializes session state through `/api/v1/auth/me` and makes one refresh attempt when an expired access session may be recoverable. A successful logout clears the frontend session state after the backend clears the session cookies.
+
+Authentication uses HttpOnly cookies. The frontend does not store authentication tokens, parse JWTs, or send Bearer headers. `RequireAuth` provides the reusable boundary for contribution actions: it waits while session state is loading, guides anonymous users to sign in, and allows authenticated users to continue. Backend authentication and authorization remain authoritative.
+
 ---
 
 ## Documentation

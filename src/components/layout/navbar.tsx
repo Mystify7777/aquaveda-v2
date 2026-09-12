@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AuthControls } from "@/components/layout/auth-controls";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
@@ -51,8 +52,11 @@ export function Navbar() {
           ))}
         </nav>
 
-        {/* Right slot — theme toggle always visible, mobile menu on small screens */}
+        {/* Right slot keeps auth interactivity at a small client boundary. */}
         <div className="flex items-center gap-1">
+          <div className="hidden md:block">
+            <AuthControls />
+          </div>
           <ThemeToggle />
           <MobileNav />
         </div>
