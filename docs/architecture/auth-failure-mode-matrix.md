@@ -3,6 +3,7 @@
 **Document Status:** Approved & Canonical  
 **Milestone:** Authentication & Authorization  
 **Applicability:** `@aquaveda/server` (Express API) & Frontend Client Interceptors (`apps/web`)  
+**Applicability:** `server/` (Express API) and the current Next.js frontend under `src/`
 **Related Architecture Docs:**
 - [`docs/architecture/decision-register.md`](./decision-register.md)
 - [`docs/architecture/authentication-architecture-decision-report.md`](./authentication-architecture-decision-report.md)
@@ -28,7 +29,11 @@ This document provides the exhaustive, production-grade **Failure-Mode Matrix** 
 4. Relational & lifecycle domain errors (conflicts, nonexistent accounts).
 5. Cross-Origin Resource Sharing (CORS) rejections.
 6. Rate limiting & denial-of-service mitigations.
-7. Internal server errors and information disclosure protections.
+7. Configured cross-origin cookie transport and information disclosure protections.
+
+Rate limiting is not implemented in the current `server/src/app.js` and is
+therefore not part of the active Issue #36 contract. The rate-limit
+environment variables remain reserved for a future implementation.
 
 ---
 
@@ -98,6 +103,7 @@ All authentication error responses across the AquaVeda API conform to a uniform 
 | **CORS-01**| Any | Origin not in `ALLOWED_ORIGINS` | `200/204` | N/A | N/A | No `Access-Control-Allow-Origin` header | Express `cors` invokes `callback(null, false)`. Browser blocks response from being read. |
 | **CORS-02**| Preflight `OPTIONS` | Disallowed origin preflight | `204/404` | N/A | N/A | No `Access-Control-Allow-*` headers | Browser refuses cross-origin POST/GET with credentials. |
 | **RATE-01**| `POST /login`, `POST /register` | Rate limit quota exceeded (e.g. > 20/15m) | `429` | `RATE_LIMIT_EXCEEDED` | `"Too many requests, please try again later"` | `Retry-After: <seconds>` | Protects against credential stuffing and brute-force password guessing. |
+| **RATE-01**| Authentication endpoints | Rate limiting | N/A | N/A | N/A | N/A | Not implemented in the current API; reserved for a future security milestone. |
 | **ERR-01** | Any | Unhandled exception (e.g. DB connection dropped) | `500` | `INTERNAL_ERROR` | `"Internal server error"` | None | Unmapped exceptions sanitized; full stack trace logged to console only. |
 
 ---
@@ -137,27 +143,22 @@ All authentication error responses across the AquaVeda API conform to a uniform 
 ---
 
 ## 5. Client Handling & Interceptor Guidelines
+## 5. Current client handling
 
-Frontend clients (e.g. Next.js application in `apps/web`) must follow standard interceptor behaviors based on these failure modes:
+The current frontend does not implement a general interceptor, automatic
+domain-request retry, redirect-on-refresh-failure policy, or rate-limit
+backoff. `src/lib/api/client.ts` sends credentialed requests and classifies
+network, malformed-response, and HTTP failures as `ApiError` values.
 
-```mermaid
-flowchart TD
-    Req[API Request with Cookie] --> Res{Response Status?}
-    Res -- 200/201 OK --> Done[Handle Success]
-    Res -- 400 Validation --> FormErr[Display Field-Level Validation Errors]
-    Res -- 401 on /login --> CredErr[Display 'Invalid email or password']
-    Res -- 401 on /refresh --> SessionExpired[Clear Client User State & Redirect to /login]
-    Res -- 401 on Protected Domain Action --> AttemptRefresh[Call POST /api/v1/auth/refresh]
-    AttemptRefresh -- Refresh Succeeded --> RetryOriginal[Retry Original Request]
-    AttemptRefresh -- Refresh Failed --> SessionExpired
-    Res -- 403 Forbidden --> AccessDenied[Show Unauthorized Permission Modal]
-    Res -- 409 Conflict --> ConflictErr[Display 'Email already registered']
-    Res -- 429 Rate Limit --> Backoff[Show 'Too many requests' & Wait Retry-After]
-    Res -- 500 Internal Error --> GenericErr[Display Generic Error Toast]
-```
+`AuthProvider` bootstraps with `GET /api/v1/auth/me`. A valid actor becomes
+`authenticated`; an expected anonymous `/me` response followed by an expected
+refresh rejection becomes confirmed `anonymous`; an unexpected API response
+becomes `session-failure`; and a network failure becomes `unavailable`.
+Network/backend failure is never silently treated as anonymous. Login,
+registration, logout, and refresh use the five existing auth routes and the
+canonical `{ success, data, message }` response envelope.
 
-1. **401 on `POST /refresh`:** Represents total session termination. Client must wipe user state and redirect to login.
-2. **401 on domain routes (e.g. creating an issue):** Triggers a single transparent attempt to invoke `/api/v1/auth/refresh`. If refresh succeeds, retry the original action; if refresh fails with 401, redirect to login.
-3. **400 on `POST /register` or `/login`:** Client reads `message` to inform user which field failed validation.
-4. **409 on `POST /register`:** Prompt the user that the account already exists and offer login or password reset.
-5. **429 on any endpoint:** Inspect `Retry-After` header and disable submit button for the duration.
+`RequireAuth` is an opt-in contribution-entry UX component. It renders its
+children only for an authenticated session, links confirmed anonymous users
+to sign in/register, and displays an unavailable/session-failure message for
+other states. It does not protect public navigation or future public reads.

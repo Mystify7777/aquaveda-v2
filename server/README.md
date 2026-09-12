@@ -9,8 +9,9 @@ separate Express service rather than Next.js Route Handlers.
 
 ## Status
 
-**Not yet built for v2.** This directory is a placeholder that establishes
-the repository layout before the Domain Model milestone begins.
+The v2 Express service includes the domain models, service layer,
+authentication, authorization primitives, HTTP routes, and request
+validation needed by the current milestones.
 
 The v1 Express service (`AquaVeda2-main/server/`, now archived as a legacy
 reference) is the starting point for the business logic. It is not copied
@@ -29,12 +30,19 @@ specification, not as code to port.
 - `src/app.js` — Express app with Helmet, rate limiting, CORS for the
   Next.js dev and production origins
 
-### Authentication milestone
+### Authentication and boundary implementation
 
-- `src/modules/auth/` — register, login, logout, refresh token, me
-- `src/modules/users/`
-- JWT via `jsonwebtoken`, access + refresh token pair
-- Zod validation on all auth routes
+- `src/services/auth.service.js` — register, login, logout, refresh
+- `src/middleware/auth.js` — advisory cookie-to-`actorContext` resolution
+- `src/routes/auth.routes.js` — register, login, logout, me, refresh
+- `src/models/Session.js` — dedicated refresh-session persistence
+- JWT via `jsonwebtoken`, with HttpOnly access and refresh cookies
+- Zod validation on register/login request bodies
+- `requireActor()` and existing operation-specific service authorization remain the backend contribution boundary
+
+The current domain HTTP surface contains nine state-changing routes and no
+Issue, Knowledge, Comment, or Project GET/list routes yet. Public domain
+exploration data therefore remains a future read-surface milestone.
 
 ### Explore milestone
 
@@ -62,10 +70,11 @@ specification, not as code to port.
 ```env
 PORT=5000
 MONGO_URI=mongodb://localhost:27017/aquaveda_v2
-TEST_MONGO_URI=mongodb://localhost:27017/aquaveda_v2_test   # required for `npm test`; must differ from MONGO_URI
+TEST_MONGO_URI=mongodb://127.0.0.1:27017/aquaveda_v2_test   # required for `npm test`; must differ from MONGO_URI
 CLIENT_URL=http://localhost:3000
 ALLOWED_ORIGINS=http://localhost:3000
-JWT_SECRET=           # generate: openssl rand -base64 32
+JWT_ACCESS_SECRET=    # generate: openssl rand -base64 32
+JWT_REFRESH_SECRET=   # generate: openssl rand -base64 32
 JWT_ACCESS_EXPIRES=15m
 JWT_REFRESH_EXPIRES=7d
 RATE_LIMIT_WINDOW_MS=900000
@@ -91,6 +100,11 @@ calls needed elsewhere.
 `{ envVar: "TEST_MONGO_URI" }` and refuses to run if `TEST_MONGO_URI`
 equals `MONGO_URI`, so `npm test` can never silently operate against the
 development database.
+
+Run backend tests from this directory with `npm test`. The suite uses the
+real MongoDB instance named by `TEST_MONGO_URI`; the database must be
+available before the command starts. The frontend has a separate root
+`npm test` command for its dependency-free session-state tests.
 
 ## Known v1 bugs that do NOT carry forward
 
