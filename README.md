@@ -10,7 +10,7 @@ This is a reconstruction, not a migration, of the original AquaVeda (React + Vit
 
 ## Current status
 
-**Authentication milestone — Phases A–G complete and verified.**
+**Authentication, authorization, routes, and Issue #36 frontend boundaries are implemented and verified.**
 
 The project now has a working Express authentication foundation with:
 
@@ -24,12 +24,15 @@ The project now has a working Express authentication foundation with:
 - Explicit credentialed CORS allowlisting
 - Zod validation and email canonicalization for registration/login
 - Local auth-route error mapping with generic handling for unexpected errors
+- Anonymous public exploration remains outside authentication gating
+- Contribution entry points use `RequireAuth` to guide anonymous users to sign in or register
+- Session bootstrap distinguishes initializing, authenticated, confirmed anonymous, session failure, and backend unavailability
 
-The backend test suite currently passes **126/126** locally against MongoDB. Validation verification passes **63/63**, and model verification passes **44/44**.
+The backend test suite currently passes **233/233** locally against the dedicated `aquaveda_v2_test` MongoDB database. The focused frontend session-state suite passes **4/4**. Validation verification passes **63/63**, and model verification passes **44/44**.
 
 The broader domain/application surface is intentionally still under construction. Issue, Knowledge, Comment, Project, and recommendation behavior will be implemented milestone by milestone rather than being pulled into the authentication work prematurely.
 
-**Next:** Phase H, resolving the deployment-dependent cookie settings (`SameSite` and `Domain`) against the actual hosting topology.
+The current backend exposes five authentication routes and nine state-changing domain routes. Domain read/list routes are not implemented yet, so public domain exploration/search/filter/map data remains a future backend capability rather than an auth-gated frontend surface.
 
 ---
 
@@ -89,6 +92,20 @@ npm run lint
 npm run build
 ```
 
+For local browser authentication, create a root `.env.local` file for the
+Next.js app (alongside `package.json`, not under `src/`) with:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000
+```
+
+The web app runs on `http://localhost:3000` and the Express API runs on
+`http://localhost:5000`. The frontend sends credentialed requests to the API;
+authentication remains in the backend's HttpOnly cookies. `/api/system` is a
+Next.js route handler and stays on the web origin. Configure the API's
+`ALLOWED_ORIGINS` separately in `server/.env` as documented in
+[`server/README.md`](server/README.md).
+
 ### Server
 
 ```bash
@@ -100,6 +117,8 @@ npm run dev
 For the full backend verification workflow, see [`server/README.md`](server/README.md).
 
 The backend expects MongoDB and the environment variables documented in that file. Tests require a dedicated `TEST_MONGO_URI` that is different from `MONGO_URI`.
+
+The supported backend test command is `cd server && npm test`; it uses the real MongoDB instance named by `TEST_MONGO_URI`. The root `npm test` command runs the dependency-free frontend session-state tests.
 
 ---
 
@@ -134,6 +153,16 @@ The current authentication surface is intentionally minimal:
 Browser authentication is cookie-only. Access and refresh tokens are not returned in response bodies or stored in browser storage.
 
 Authentication is intentionally separated from domain authorization. The unresolved D-3a policy for authorized Issue remediation actors remains a domain/application decision and is not encoded into authentication.
+
+## Anonymous exploration and contribution boundaries
+
+Public navigation and public read surfaces are not protected by the frontend authentication provider. The current backend has no Issue, Knowledge, Comment, or Project GET/list routes yet; its domain routes are state-changing operations only.
+
+All currently implemented domain operations require an authenticated actor at the service boundary. The global middleware is advisory: it resolves the HttpOnly access cookie to `req.actorContext = { id, role }`, or `null` when no valid session is available. Each service still enforces `requireActor()` and its existing operation-specific role and identity checks. Frontend gating is UX guidance only and never replaces backend authorization.
+
+Browser authentication uses HttpOnly cookies only. Access or refresh tokens are not stored in `localStorage` or `sessionStorage`, and the frontend does not create bearer-token headers. For local browser authentication, set `NEXT_PUBLIC_API_URL=http://localhost:5000` in the root `.env.local`; keep backend secrets and database URIs in the ignored `server/.env` file.
+
+See [`docs/architecture/auth-boundaries.md`](docs/architecture/auth-boundaries.md) for the concrete route contracts, session states, failure handling, unresolved D-3a boundary, and current limitations.
 
 ---
 
