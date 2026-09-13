@@ -2,12 +2,15 @@ import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { Knowledge } from "../src/models/Knowledge.js";
+import { User } from "../src/models/User.js";
 import {
   createKnowledge,
   submitForReview,
   approve,
   reject,
   revise,
+  listApprovedKnowledge,
+  getApprovedKnowledgeById,
 } from "../src/services/knowledge.service.js";
 import { DomainErrorCode } from "../src/services/errors.js";
 import {
@@ -279,5 +282,118 @@ describe("knowledge.service — concurrency", () => {
     const reloaded = await Knowledge.findById(knowledge._id);
     assert.equal(reloaded.reviewHistory.length, 1);
     assert.ok(["approved", "rejected"].includes(reloaded.status));
+  });
+});
+
+describe("listApprovedKnowledge (Issue #48 — public read)", () => {
+  it("only ever returns approved articles, never draft/pending_review/rejected", async () => {
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+
+    const draft = await createKnowledge(author, { title: "draft", body: "b" });
+
+    const toApprove = await createKnowledge(author, { title: "to-approve", body: "b" });
+    await submitForReview(author, toApprove._id);
+    await approve(expert, toApprove._id);
+
+    const toReject = await createKnowledge(author, { title: "to-reject", body: "b" });
+    await submitForReview(author, toReject._id);
+    await reject(expert, toReject._id, "needs work");
+
+    const pending = await createKnowledge(author, { title: "pending", body: "b" });
+    await submitForReview(author, pending._id);
+
+    const result = await listApprovedKnowledge();
+    const ids = result.items.map((i) => String(i._id));
+
+    assert.ok(ids.includes(String(toApprove._id)));
+    assert.ok(!ids.includes(String(draft._id)));
+    assert.ok(!ids.includes(String(toReject._id)));
+    assert.ok(!ids.includes(String(pending._id)));
+    assert.equal(result.total, 1);
+  });
+
+  it("cannot be made to return non-approved content via any query parameter — no status parameter exists", async () => {
+    const author = fakeActor("USER");
+    await createKnowledge(author, { title: "draft", body: "b" });
+
+    // listApprovedKnowledge only accepts {page, limit} — passing an
+    // arbitrary extra key (as if trying to smuggle a status override)
+    // has no effect, since the service never reads anything but
+    // page/limit from its argument.
+    const result = await listApprovedKnowledge({ status: "draft", page: 1, limit: 20 });
+    assert.equal(result.total, 0);
+  });
+
+  it("respects page/limit and reports totalPages", async () => {
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    for (let i = 0; i < 3; i++) {
+      const k = await createKnowledge(author, { title: `k${i}`, body: "b" });
+      await submitForReview(author, k._id);
+      await approve(expert, k._id);
+    }
+
+    const result = await listApprovedKnowledge({ page: 2, limit: 2 });
+    assert.equal(result.items.length, 1);
+    assert.equal(result.total, 3);
+    assert.equal(result.totalPages, 2);
+  });
+});
+
+describe("getApprovedKnowledgeById (Issue #48 — public read)", () => {
+  it("returns an approved article", async () => {
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const k = await createKnowledge(author, { title: "t", body: "b" });
+    await submitForReview(author, k._id);
+    await approve(expert, k._id);
+
+    const result = await getApprovedKnowledgeById(k._id);
+    assert.equal(String(result._id), String(k._id));
+  });
+
+  it("throws NOT_FOUND (not FORBIDDEN) for a real but non-approved article — never discloses its existence/state", async () => {
+    const author = fakeActor("USER");
+    const draft = await createKnowledge(author, { title: "draft", body: "b" });
+
+    await assert.rejects(
+      () => getApprovedKnowledgeById(draft._id),
+      (err) => err.code === DomainErrorCode.NOT_FOUND,
+    );
+  });
+
+  it("throws NOT_FOUND for a well-formed but nonexistent id", async () => {
+    await assert.rejects(
+      () => getApprovedKnowledgeById(fakeObjectId()),
+      (err) => err.code === DomainErrorCode.NOT_FOUND,
+    );
+  });
+
+  it("throws VALIDATION_FAILED (CastError translation) for a malformed id", async () => {
+    await assert.rejects(
+      () => getApprovedKnowledgeById("not-a-valid-object-id"),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+
+  it("populates author with name/role only — never email or passwordHash", async () => {
+    const user = await User.create({
+      name: "Real Author",
+      email: "author@example.com",
+      passwordHash: "irrelevant-for-this-test",
+      role: "USER",
+    });
+    const expert = fakeActor("EXPERT");
+    const actor = { id: String(user._id), role: "USER" };
+    const k = await createKnowledge(actor, { title: "t", body: "b" });
+    await submitForReview(actor, k._id);
+    await approve(expert, k._id);
+
+    const result = await getApprovedKnowledgeById(k._id);
+    assert.equal(result.author.name, "Real Author");
+    assert.equal(result.author.role, "USER");
+    assert.equal(result.author.email, undefined);
+    assert.equal(result.author.passwordHash, undefined);
   });
 });

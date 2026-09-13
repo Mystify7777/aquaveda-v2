@@ -696,6 +696,34 @@ Restated below only as locked conclusions, resolving
   against). Every other write operation uses `POST`, matching
   `auth.routes.js`'s existing convention.
 
+  **Amended (Issue #48, backend public read contracts):** 8 public GET
+  routes added — `GET /api/v1/issues`, `GET /api/v1/issues/:issueId`,
+  `GET /api/v1/knowledge`, `GET /api/v1/knowledge/:knowledgeId`,
+  `GET /api/v1/projects`, `GET /api/v1/projects/:projectId`,
+  `GET /api/v1/comments` (thread read, via `?refType=&refId=` query
+  params, not a path segment). This is an explicit, reviewed amendment
+  to the "no retrieval/listing route" clause above — not a silent
+  reopening. Justification: the frontend's F3 phase (Explore/Learn/Act
+  list and detail views) was blocked entirely on these not existing
+  (`routes-milestone-discovery-report.md` and
+  `frontend-phase-plan.md` §0/§7 both flagged this explicitly as the
+  major F3 blocker). None of these 8 routes call `requireActor`/
+  `requireRole` — they are genuinely anonymous-accessible, not merely
+  unenforced (Product Invariant: anonymous users must still be able to
+  browse Explore). Knowledge's 2 read routes hard-code
+  `status: "approved"` at the service layer, never caller-controlled,
+  and return `NOT_FOUND` (never a distinguishing status) for a real but
+  non-approved article — no policy anywhere permits exposing draft/
+  pending_review/rejected content, and a uniform 404 avoids confirming
+  such content's existence to an anonymous prober. All actor references
+  (`reportedBy`/`author`/`creator`/`contributors`) are populated with
+  `{_id, name, role}` only — never email or `passwordHash` — since no
+  approved policy permits exposing a contributor's email to any
+  visitor. D-3a is untouched — none of these functions read or affect
+  Issue status authority. Full derivation: Issue #48's own acceptance
+  criteria; implementation review in
+  `docs/architecture/checkpoint-issue-48-implementation-notes.md`.
+
 - **ROUTE-L3 — No route-level "must be authenticated" gate.** Confirmed
   by direct inspection (discovery report §0/§2a): all 9 domain-service
   operations already call `requireActor()` as their first line. A

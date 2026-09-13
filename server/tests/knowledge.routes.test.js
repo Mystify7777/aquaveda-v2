@@ -356,3 +356,74 @@ describe("POST /api/v1/knowledge/:knowledgeId/revise", () => {
     assert.equal(res.json.code, "FORBIDDEN");
   });
 });
+
+describe("GET /api/v1/knowledge (Issue #48 — public read, no auth required)", () => {
+  it("200s for an anonymous request, empty page when nothing is approved yet", async () => {
+    const res = await request("GET", "/api/v1/knowledge");
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json.data.items, []);
+  });
+
+  it("returns only approved articles, never drafts", async () => {
+    const author = await makeAuthedUser("USER");
+    const expert = await makeAuthedUser("EXPERT");
+    const draft = await makeDraft(author.accessToken);
+    const toApprove = await makeDraft(author.accessToken);
+    await request("POST", `/api/v1/knowledge/${toApprove._id}/submit`, {
+      cookies: authCookie(author.accessToken),
+    });
+    await request("POST", `/api/v1/knowledge/${toApprove._id}/approve`, {
+      cookies: authCookie(expert.accessToken),
+    });
+
+    const res = await request("GET", "/api/v1/knowledge");
+    assert.equal(res.status, 200);
+    const ids = res.json.data.items.map((i) => i._id);
+    assert.ok(ids.includes(toApprove._id));
+    assert.ok(!ids.includes(draft._id));
+  });
+
+  it("400s with VALIDATION_FAILED for a limit above the maximum", async () => {
+    const res = await request("GET", "/api/v1/knowledge?limit=999");
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+});
+
+describe("GET /api/v1/knowledge/:knowledgeId (Issue #48 — public read, no auth required)", () => {
+  it("200s for an approved article, anonymously", async () => {
+    const author = await makeAuthedUser("USER");
+    const expert = await makeAuthedUser("EXPERT");
+    const draft = await makeDraft(author.accessToken);
+    await request("POST", `/api/v1/knowledge/${draft._id}/submit`, {
+      cookies: authCookie(author.accessToken),
+    });
+    await request("POST", `/api/v1/knowledge/${draft._id}/approve`, {
+      cookies: authCookie(expert.accessToken),
+    });
+
+    const res = await request("GET", `/api/v1/knowledge/${draft._id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.status, "approved");
+  });
+
+  it("404s (never a distinguishing status) for a real but non-approved article", async () => {
+    const author = await makeAuthedUser("USER");
+    const draft = await makeDraft(author.accessToken);
+
+    const res = await request("GET", `/api/v1/knowledge/${draft._id}`);
+    assert.equal(res.status, 404);
+    assert.equal(res.json.code, "NOT_FOUND");
+  });
+
+  it("404s for a well-formed but nonexistent id", async () => {
+    const res = await request("GET", "/api/v1/knowledge/507f1f77bcf86cd799439011");
+    assert.equal(res.status, 404);
+  });
+
+  it("400s for a malformed id", async () => {
+    const res = await request("GET", "/api/v1/knowledge/not-a-valid-object-id");
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+});

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { paginationQuerySchema } from "./shared/pagination.js";
+
 /**
  * Knowledge request-shape validation.
  *
@@ -103,3 +105,18 @@ export const reviseKnowledgeSchema = z.object({
   body: z.string().trim().min(1, "body must not be empty if provided").optional(),
   region: z.string().trim().optional(),
 });
+
+/**
+ * Public Knowledge list query shape (Issue #48).
+ *
+ * No `status` parameter exists here at all — deliberately, not an
+ * oversight. The service layer (listApprovedKnowledge) always filters
+ * to status: "approved" unconditionally; exposing a status query param
+ * here would let a caller request draft/pending_review/rejected
+ * content, which is exactly the "expose private/draft Knowledge"
+ * outcome Issue #48's own constraints forbid. No region filter either
+ * — no approved document or the frontend plan currently calls for one,
+ * and region has no index; adding it now would be an invented feature,
+ * not a requested one.
+ */
+export const listApprovedKnowledgeQuerySchema = paginationQuerySchema;

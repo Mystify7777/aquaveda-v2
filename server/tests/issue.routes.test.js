@@ -277,3 +277,76 @@ describe("PATCH /api/v1/issues/:issueId/status", () => {
     assert.equal(res.json.code, "INVALID_STATE");
   });
 });
+
+describe("GET /api/v1/issues (Issue #48 — public read, no auth required)", () => {
+  it("200s for an anonymous request and returns an empty page when no Issues exist", async () => {
+    const res = await request("GET", "/api/v1/issues");
+    assert.equal(res.status, 200);
+    assert.equal(res.json.success, true);
+    assert.deepEqual(res.json.data.items, []);
+    assert.equal(res.json.data.total, 0);
+  });
+
+  it("returns created Issues without requiring any cookie", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    await request("POST", "/api/v1/issues", {
+      cookies: authCookie(accessToken),
+      body: { title: "Leaking pipe", description: "d", location: validPoint() },
+    });
+
+    const res = await request("GET", "/api/v1/issues");
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.items.length, 1);
+    assert.equal(res.json.data.items[0].title, "Leaking pipe");
+  });
+
+  it("filters by ?status=", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    await request("POST", "/api/v1/issues", {
+      cookies: authCookie(accessToken),
+      body: { title: "Open one", description: "d", location: validPoint() },
+    });
+
+    const res = await request("GET", "/api/v1/issues?status=acknowledged");
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.items.length, 0);
+  });
+
+  it("400s with VALIDATION_FAILED for an unrecognized ?status=", async () => {
+    const res = await request("GET", "/api/v1/issues?status=not_a_real_status");
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("400s with VALIDATION_FAILED for a limit above the maximum", async () => {
+    const res = await request("GET", "/api/v1/issues?limit=999");
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+});
+
+describe("GET /api/v1/issues/:issueId (Issue #48 — public read, no auth required)", () => {
+  it("200s for an anonymous request", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    const createRes = await request("POST", "/api/v1/issues", {
+      cookies: authCookie(accessToken),
+      body: { title: "Leaking pipe", description: "d", location: validPoint() },
+    });
+
+    const res = await request("GET", `/api/v1/issues/${createRes.json.data._id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.title, "Leaking pipe");
+  });
+
+  it("404s for a well-formed but nonexistent id", async () => {
+    const res = await request("GET", "/api/v1/issues/507f1f77bcf86cd799439011");
+    assert.equal(res.status, 404);
+    assert.equal(res.json.code, "NOT_FOUND");
+  });
+
+  it("400s for a malformed id", async () => {
+    const res = await request("GET", "/api/v1/issues/not-a-valid-object-id");
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+});

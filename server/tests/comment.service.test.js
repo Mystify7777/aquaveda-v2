@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 
 import { createIssue } from "../src/services/issue.service.js";
 import { createKnowledge } from "../src/services/knowledge.service.js";
-import { createComment } from "../src/services/comment.service.js";
+import { createComment, getCommentThread } from "../src/services/comment.service.js";
+import { User } from "../src/models/User.js";
 import { DomainErrorCode } from "../src/services/errors.js";
 import {
   setupTestDb,
@@ -193,5 +194,123 @@ describe("comment.service — createComment", () => {
         return true;
       },
     );
+  });
+});
+
+describe("getCommentThread (Issue #48 — public read)", () => {
+  it("groups top-level comments with their (at most one level of) replies", async () => {
+    const issue = await makeIssue();
+    const parentA = await createComment(fakeActor("USER"), {
+      refType: "ISSUE",
+      refId: issue._id,
+      body: "parent A",
+    });
+    const parentB = await createComment(fakeActor("USER"), {
+      refType: "ISSUE",
+      refId: issue._id,
+      body: "parent B",
+    });
+    const replyToA = await createComment(fakeActor("USER"), {
+      refType: "ISSUE",
+      refId: issue._id,
+      body: "reply to A",
+      parentComment: parentA._id,
+    });
+
+    const thread = await getCommentThread("ISSUE", issue._id);
+    assert.equal(thread.length, 2);
+
+    const returnedA = thread.find((c) => String(c._id) === String(parentA._id));
+    const returnedB = thread.find((c) => String(c._id) === String(parentB._id));
+    assert.equal(returnedA.replies.length, 1);
+    assert.equal(String(returnedA.replies[0]._id), String(replyToA._id));
+    assert.equal(returnedB.replies.length, 0);
+  });
+
+  it("orders top-level comments oldest first", async () => {
+    const issue = await makeIssue();
+    const first = await createComment(fakeActor("USER"), {
+      refType: "ISSUE",
+      refId: issue._id,
+      body: "first",
+    });
+    await new Promise((r) => setTimeout(r, 5));
+    const second = await createComment(fakeActor("USER"), {
+      refType: "ISSUE",
+      refId: issue._id,
+      body: "second",
+    });
+
+    const thread = await getCommentThread("ISSUE", issue._id);
+    assert.equal(String(thread[0]._id), String(first._id));
+    assert.equal(String(thread[1]._id), String(second._id));
+  });
+
+  it("returns an empty array for a real target with no comments yet", async () => {
+    const issue = await makeIssue();
+    const thread = await getCommentThread("ISSUE", issue._id);
+    assert.deepEqual(thread, []);
+  });
+
+  it("throws TARGET_NOT_FOUND for a well-formed but nonexistent refId", async () => {
+    await assert.rejects(
+      () => getCommentThread("ISSUE", fakeObjectId()),
+      (err) => err.code === DomainErrorCode.TARGET_NOT_FOUND,
+    );
+  });
+
+  it("throws VALIDATION_FAILED (CastError translation) for a malformed refId", async () => {
+    await assert.rejects(
+      () => getCommentThread("ISSUE", "not-a-valid-object-id"),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+
+  it("throws INVALID_STATE for an unrecognized refType", async () => {
+    const issue = await makeIssue();
+    await assert.rejects(
+      () => getCommentThread("KNOWLEDGE", issue._id),
+      (err) => err.code === DomainErrorCode.INVALID_STATE,
+    );
+  });
+
+  it("does not mix comments from a different (refType, refId)", async () => {
+    const issueA = await makeIssue();
+    const issueB = await makeIssue();
+    await createComment(fakeActor("USER"), {
+      refType: "ISSUE",
+      refId: issueA._id,
+      body: "belongs to A",
+    });
+    await createComment(fakeActor("USER"), {
+      refType: "ISSUE",
+      refId: issueB._id,
+      body: "belongs to B",
+    });
+
+    const threadA = await getCommentThread("ISSUE", issueA._id);
+    assert.equal(threadA.length, 1);
+    assert.equal(threadA[0].body, "belongs to A");
+  });
+
+  it("populates author with name/role only — never email or passwordHash", async () => {
+    const user = await User.create({
+      name: "Real Commenter",
+      email: "commenter@example.com",
+      passwordHash: "irrelevant-for-this-test",
+      role: "USER",
+    });
+    const issue = await makeIssue();
+    await createComment({ id: String(user._id), role: "USER" }, {
+      refType: "ISSUE",
+      refId: issue._id,
+      body: "hello",
+    });
+
+    const thread = await getCommentThread("ISSUE", issue._id);
+    assert.equal(thread[0].author.name, "Real Commenter");
+    assert.equal(thread[0].author.role, "USER");
+    assert.equal(thread[0].author.email, undefined);
+    assert.equal(thread[0].author.passwordHash, undefined);
   });
 });

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { paginationQuerySchema } from "./shared/pagination.js";
+
 /**
  * Issue request-shape validation.
  *
@@ -63,4 +65,16 @@ export const createIssueSchema = z.object({
  */
 export const changeIssueStatusSchema = z.object({
   targetStatus: z.enum(ISSUE_STATUSES),
+});
+
+/**
+ * Public Issue list query shape (Issue #48).
+ *
+ * `status` filtering is optional and, when given, must be one of the 5
+ * recognized statuses — reuses the same enum as changeIssueStatusSchema
+ * rather than re-deriving it, since it's the same underlying vocabulary
+ * for a different purpose (filtering, not transitioning).
+ */
+export const listIssuesQuerySchema = paginationQuerySchema.extend({
+  status: z.enum(ISSUE_STATUSES).optional(),
 });

@@ -1,4 +1,12 @@
 import { Issue } from "../models/Issue.js";
+// Imported for its model-registration side effect only — not called
+// directly by this file. Mongoose's .populate("reportedBy", ...) below
+// needs the "User" model registered in this process before the query
+// runs; every write operation in this file already ran fine without
+// this import (services never queried the User collection before
+// Issue #48's read endpoints), so it's added here specifically for the
+// new listIssues/getIssueById functions, not incidentally.
+import "../models/User.js";
 import {
   notFound,
   forbidden,
@@ -40,6 +48,11 @@ const ISSUE_STATUSES = [
   "resolved",
   "verified",
 ];
+
+// Public-read attribution: name/role only, never email or any other
+// User field — reads are anonymous-accessible (Issue #48), and no
+// approved policy permits exposing a reporter's email to any visitor.
+const PUBLIC_ACTOR_FIELDS = "_id name role";
 
 // The exact legal transition graph, per ADR-0003 and the Phase D contract.
 // `resolved` is the only status with two legal targets (successful
@@ -261,4 +274,67 @@ export async function changeStatus(actorContext, issueId, targetStatus) {
     `Issue ${issueId} status changed before this transition could be applied`,
     { expectedStatus, targetStatus },
   );
+}
+
+/**
+ * listIssues({status?, page, limit}) — public, Issue #48.
+ *
+ * No requireActor() call: this is a genuinely anonymous-accessible read
+ * (Product Invariant: anonymous users must still be able to browse
+ * Explore). No authorization rule is invented here beyond "anyone may
+ * read" — the established public-read boundary Issue #48's own
+ * constraints require, not a step toward role-based read filtering
+ * that no approved document has ever specified.
+ */
+export async function listIssues({ status, page = 1, limit = 20 } = {}) {
+  const filter = {};
+  if (status !== undefined) {
+    if (!ISSUE_STATUSES.includes(status)) {
+      throw invalidState(`"${status}" is not a recognized Issue status`, {
+        status,
+      });
+    }
+    filter.status = status;
+  }
+
+  const skip = (page - 1) * limit;
+  const [items, total] = await Promise.all([
+    Issue.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("reportedBy", PUBLIC_ACTOR_FIELDS),
+    Issue.countDocuments(filter),
+  ]);
+
+  return {
+    items,
+    page,
+    limit,
+    total,
+    totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
+  };
+}
+
+/**
+ * getIssueById(issueId) — public, Issue #48. No requireActor() call —
+ * same public-read boundary as listIssues.
+ */
+export async function getIssueById(issueId) {
+  let issue;
+  try {
+    issue = await Issue.findById(issueId).populate(
+      "reportedBy",
+      PUBLIC_ACTOR_FIELDS,
+    );
+  } catch (err) {
+    // Malformed issueId -> raw Mongoose CastError, translated to the
+    // same DomainError contract as every write-path operation in this
+    // file.
+    throw wrapMongooseValidationError(err);
+  }
+  if (!issue) {
+    throw notFound(`Issue ${issueId} not found`);
+  }
+  return issue;
 }

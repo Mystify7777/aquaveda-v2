@@ -2,8 +2,9 @@ import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { Issue } from "../src/models/Issue.js";
+import { User } from "../src/models/User.js";
 import { createIssue } from "../src/services/issue.service.js";
-import { createProject } from "../src/services/project.service.js";
+import { createProject, listProjects, getProjectById } from "../src/services/project.service.js";
 import { DomainErrorCode } from "../src/services/errors.js";
 import {
   setupTestDb,
@@ -167,5 +168,110 @@ describe("project.service — createProject", () => {
         `Project should never have a "${field}" field`,
       );
     }
+  });
+});
+
+describe("listProjects (Issue #48 — public read)", () => {
+  it("returns all Projects in a default page, newest first", async () => {
+    const issueA = await makeIssueWithStatus("acknowledged");
+    const issueB = await makeIssueWithStatus("acknowledged");
+    const first = await createProject(fakeActor("USER"), {
+      title: "first",
+      description: "d",
+      originIssue: issueA._id,
+    });
+    await new Promise((r) => setTimeout(r, 5));
+    const second = await createProject(fakeActor("USER"), {
+      title: "second",
+      description: "d",
+      originIssue: issueB._id,
+    });
+
+    const result = await listProjects();
+    assert.equal(result.items.length, 2);
+    assert.equal(String(result.items[0]._id), String(second._id));
+    assert.equal(String(result.items[1]._id), String(first._id));
+  });
+
+  it("filters by originIssue", async () => {
+    const issueA = await makeIssueWithStatus("acknowledged");
+    const issueB = await makeIssueWithStatus("acknowledged");
+    const projectA = await createProject(fakeActor("USER"), {
+      title: "a",
+      description: "d",
+      originIssue: issueA._id,
+    });
+    await createProject(fakeActor("USER"), {
+      title: "b",
+      description: "d",
+      originIssue: issueB._id,
+    });
+
+    const result = await listProjects({ originIssue: String(issueA._id) });
+    assert.equal(result.items.length, 1);
+    assert.equal(String(result.items[0]._id), String(projectA._id));
+  });
+
+  it("respects page/limit and reports totalPages", async () => {
+    for (let i = 0; i < 3; i++) {
+      const issue = await makeIssueWithStatus("acknowledged");
+      await createProject(fakeActor("USER"), {
+        title: `p${i}`,
+        description: "d",
+        originIssue: issue._id,
+      });
+    }
+    const result = await listProjects({ page: 2, limit: 2 });
+    assert.equal(result.items.length, 1);
+    assert.equal(result.total, 3);
+    assert.equal(result.totalPages, 2);
+  });
+});
+
+describe("getProjectById (Issue #48 — public read)", () => {
+  it("returns the Project for a valid, existing id", async () => {
+    const issue = await makeIssueWithStatus("acknowledged");
+    const project = await createProject(fakeActor("USER"), {
+      title: "t",
+      description: "d",
+      originIssue: issue._id,
+    });
+    const result = await getProjectById(project._id);
+    assert.equal(String(result._id), String(project._id));
+  });
+
+  it("throws NOT_FOUND for a well-formed but nonexistent id", async () => {
+    await assert.rejects(
+      () => getProjectById(fakeObjectId()),
+      (err) => err.code === DomainErrorCode.NOT_FOUND,
+    );
+  });
+
+  it("throws VALIDATION_FAILED (CastError translation) for a malformed id", async () => {
+    await assert.rejects(
+      () => getProjectById("not-a-valid-object-id"),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+
+  it("populates creator and contributors with name/role only — never email or passwordHash", async () => {
+    const user = await User.create({
+      name: "Real Creator",
+      email: "creator@example.com",
+      passwordHash: "irrelevant-for-this-test",
+      role: "USER",
+    });
+    const issue = await makeIssueWithStatus("acknowledged");
+    const project = await createProject({ id: String(user._id), role: "USER" }, {
+      title: "t",
+      description: "d",
+      originIssue: issue._id,
+    });
+
+    const result = await getProjectById(project._id);
+    assert.equal(result.creator.name, "Real Creator");
+    assert.equal(result.creator.role, "USER");
+    assert.equal(result.creator.email, undefined);
+    assert.equal(result.creator.passwordHash, undefined);
   });
 });

@@ -1,6 +1,9 @@
 import { Comment } from "../models/Comment.js";
 import { Issue } from "../models/Issue.js";
 import { Knowledge } from "../models/Knowledge.js";
+// Model-registration side effect only — see issue.service.js's
+// identical import for the full explanation.
+import "../models/User.js";
 import {
   invalidState,
   invalidParent,
@@ -23,6 +26,14 @@ import { requireActor } from "./authorization.js";
  */
 
 const SUPPORTED_REF_TYPES = ["ISSUE", "WIKI"];
+
+// Public-read attribution: name/role only. See issue.service.js's
+// identical constant for the full rationale.
+const PUBLIC_ACTOR_FIELDS = "_id name role";
+
+// A safety bound, not a caller-controlled page/limit — see
+// getCommentThread's own comment for why threads aren't paginated.
+const MAX_THREAD_COMMENTS = 500;
 
 function wrapMongooseValidationError(err) {
   if (err.name === "ValidationError" || err.name === "CastError") {
@@ -123,4 +134,70 @@ export async function createComment(actorContext, payload) {
   } catch (err) {
     throw wrapMongooseValidationError(err);
   }
+}
+
+/**
+ * getCommentThread(refType, refId) — public, Issue #48.
+ *
+ * Fetches the full (refType, refId) thread in one query via the
+ * existing compound index, then groups top-level comments and their
+ * (at most one level of) replies in this function — exactly the plan
+ * Comment.js's own schema comment already documented ("no
+ * parentComment index... all currently planned reads go through the
+ * (refType, refId) index and group replies in the response layer").
+ * This is that response layer.
+ *
+ * Returns TARGET_NOT_FOUND if refId doesn't resolve to a real
+ * Issue/Knowledge document — reusing targetExists(), the same check
+ * createComment() already performs, so read and write agree on what
+ * counts as a valid target. No requireActor() call — genuinely
+ * anonymous-accessible, matching Explore/Learn's public read boundary.
+ *
+ * No pagination: MAX_THREAD_COMMENTS is a fixed safety bound, not a
+ * caller-controlled parameter — nothing in the current product plan
+ * calls for paging within a single thread, and inventing that control
+ * now would be speculative.
+ */
+export async function getCommentThread(refType, refId) {
+  if (!SUPPORTED_REF_TYPES.includes(refType)) {
+    throw invalidState(`"${refType}" is not a supported Comment refType`, {
+      refType,
+    });
+  }
+
+  const exists = await targetExists(refType, refId);
+  if (!exists) {
+    throw targetNotFound(
+      `no ${refType} document found for refId ${refId}`,
+      { refType, refId },
+    );
+  }
+
+  const allComments = await Comment.find({ refType, refId })
+    .sort({ createdAt: 1 })
+    .limit(MAX_THREAD_COMMENTS)
+    .populate("author", PUBLIC_ACTOR_FIELDS);
+
+  const repliesByParentId = new Map();
+  const topLevel = [];
+
+  for (const comment of allComments) {
+    if (comment.parentComment) {
+      const key = String(comment.parentComment);
+      if (!repliesByParentId.has(key)) {
+        repliesByParentId.set(key, []);
+      }
+      repliesByParentId.get(key).push(comment);
+    } else {
+      topLevel.push(comment);
+    }
+  }
+
+  return topLevel.map((comment) => {
+    const plain = comment.toObject();
+    plain.replies = (repliesByParentId.get(String(comment._id)) ?? []).map(
+      (reply) => reply.toObject(),
+    );
+    return plain;
+  });
 }
