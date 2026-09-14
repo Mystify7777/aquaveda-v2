@@ -9,11 +9,7 @@ import {
     refreshSession,
     register as registerRequest,
 } from "@/lib/api/auth";
-import { ApiError } from "@/lib/api/client";
-import {
-    isExpectedRefreshRejection,
-    statusForInitializationFailure,
-} from "@/lib/auth-state";
+import { initializeAuthSession } from "@/lib/auth-state";
 import type { AuthUser } from "@/lib/api/types";
 
 export type AuthStatus =
@@ -80,30 +76,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             active && requestGeneration.current === initializationGeneration;
 
         async function initialize() {
-            try {
-                const currentUser = await getCurrentUser();
-                if (currentUser) {
-                    if (isCurrent()) setAuthenticated(currentUser);
-                    return;
-                }
+            const result = await initializeAuthSession({
+                getCurrentUser,
+                refreshSession,
+            });
 
-                try {
-                    const refreshedUser = await refreshSession();
-                    if (isCurrent()) setAuthenticated(refreshedUser);
-                    return;
-                } catch (error) {
-                    if (error instanceof ApiError && error.kind === "network") throw error;
-                    if (!isExpectedRefreshRejection(error)) throw error;
-                }
-
-                if (isCurrent()) {
+            if (isCurrent()) {
+                if (result.user) {
+                    setAuthenticated(result.user);
+                } else {
                     setUser(null);
-                    setStatus("anonymous");
-                }
-            } catch (error) {
-                if (isCurrent()) {
-                    setUser(null);
-                    setStatus(statusForInitializationFailure(error));
+                    setStatus(result.status as AuthStatus);
                 }
             }
         }

@@ -2,7 +2,6 @@
 
 **Document Status:** Approved & Canonical  
 **Milestone:** Authentication & Authorization  
-**Applicability:** `@aquaveda/server` (Express API) & Frontend Client Interceptors (`apps/web`)  
 **Applicability:** `server/` (Express API) and the current Next.js frontend under `src/`
 **Related Architecture Docs:**
 - [`docs/architecture/decision-register.md`](./decision-register.md)
@@ -102,7 +101,6 @@ All authentication error responses across the AquaVeda API conform to a uniform 
 | **OUT-02** | `POST /logout` | Expired or tampered refresh cookie | `200` | N/A | N/A | `Set-Cookie` clears cookies | No session to delete; no error raised to client. |
 | **CORS-01**| Any | Origin not in `ALLOWED_ORIGINS` | `200/204` | N/A | N/A | No `Access-Control-Allow-Origin` header | Express `cors` invokes `callback(null, false)`. Browser blocks response from being read. |
 | **CORS-02**| Preflight `OPTIONS` | Disallowed origin preflight | `204/404` | N/A | N/A | No `Access-Control-Allow-*` headers | Browser refuses cross-origin POST/GET with credentials. |
-| **RATE-01**| `POST /login`, `POST /register` | Rate limit quota exceeded (e.g. > 20/15m) | `429` | `RATE_LIMIT_EXCEEDED` | `"Too many requests, please try again later"` | `Retry-After: <seconds>` | Protects against credential stuffing and brute-force password guessing. |
 | **RATE-01**| Authentication endpoints | Rate limiting | N/A | N/A | N/A | N/A | Not implemented in the current API; reserved for a future security milestone. |
 | **ERR-01** | Any | Unhandled exception (e.g. DB connection dropped) | `500` | `INTERNAL_ERROR` | `"Internal server error"` | None | Unmapped exceptions sanitized; full stack trace logged to console only. |
 
