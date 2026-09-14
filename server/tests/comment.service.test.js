@@ -2,7 +2,7 @@ import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { createIssue } from "../src/services/issue.service.js";
-import { createKnowledge } from "../src/services/knowledge.service.js";
+import { createKnowledge, submitForReview, approve, reject } from "../src/services/knowledge.service.js";
 import { createComment, getCommentThread } from "../src/services/comment.service.js";
 import { User } from "../src/models/User.js";
 import { DomainErrorCode } from "../src/services/errors.js";
@@ -312,5 +312,70 @@ describe("getCommentThread (Issue #48 — public read)", () => {
     assert.equal(thread[0].author.role, "USER");
     assert.equal(thread[0].author.email, undefined);
     assert.equal(thread[0].author.passwordHash, undefined);
+  });
+
+  it("REGRESSION (Issue #48 review): a WIKI thread on a draft Knowledge article is not publicly readable", async () => {
+    const draft = await makeKnowledge();
+    await createComment(fakeActor("USER"), {
+      refType: "WIKI",
+      refId: draft._id,
+      body: "commenting on a draft",
+    });
+
+    await assert.rejects(
+      () => getCommentThread("WIKI", draft._id),
+      (err) => err.code === DomainErrorCode.TARGET_NOT_FOUND,
+    );
+  });
+
+  it("REGRESSION (Issue #48 review): a WIKI thread on a pending_review Knowledge article is not publicly readable", async () => {
+    const author = fakeActor("USER");
+    const pending = await createKnowledge(author, { title: "t", body: "b" });
+    await submitForReview(author, pending._id);
+    await createComment(author, {
+      refType: "WIKI",
+      refId: pending._id,
+      body: "commenting while pending review",
+    });
+
+    await assert.rejects(
+      () => getCommentThread("WIKI", pending._id),
+      (err) => err.code === DomainErrorCode.TARGET_NOT_FOUND,
+    );
+  });
+
+  it("REGRESSION (Issue #48 review): a WIKI thread on a rejected Knowledge article is not publicly readable", async () => {
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const rejected = await createKnowledge(author, { title: "t", body: "b" });
+    await submitForReview(author, rejected._id);
+    await reject(expert, rejected._id, "needs work");
+    await createComment(author, {
+      refType: "WIKI",
+      refId: rejected._id,
+      body: "commenting on a rejected article",
+    });
+
+    await assert.rejects(
+      () => getCommentThread("WIKI", rejected._id),
+      (err) => err.code === DomainErrorCode.TARGET_NOT_FOUND,
+    );
+  });
+
+  it("REGRESSION (Issue #48 review): a WIKI thread on an approved Knowledge article IS publicly readable", async () => {
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const approved = await createKnowledge(author, { title: "t", body: "b" });
+    await submitForReview(author, approved._id);
+    await approve(expert, approved._id);
+    await createComment(author, {
+      refType: "WIKI",
+      refId: approved._id,
+      body: "commenting on an approved article",
+    });
+
+    const thread = await getCommentThread("WIKI", approved._id);
+    assert.equal(thread.length, 1);
+    assert.equal(thread[0].body, "commenting on an approved article");
   });
 });

@@ -153,6 +153,14 @@ export async function createComment(actorContext, payload) {
  * counts as a valid target. No requireActor() call — genuinely
  * anonymous-accessible, matching Explore/Learn's public read boundary.
  *
+ * Correction (post-implementation review): for WIKI targets, existence
+ * alone is not sufficient for public visibility — a WIKI thread is
+ * only readable when its Knowledge article is approved (same
+ * TARGET_NOT_FOUND used uniformly, so a private article's existence is
+ * never disclosed via its comment thread). See the inline comment at
+ * the WIKI branch below for the full reasoning, including why
+ * targetExists() itself was deliberately left unmodified.
+ *
  * No pagination: MAX_THREAD_COMMENTS is a fixed safety bound, not a
  * caller-controlled parameter — nothing in the current product plan
  * calls for paging within a single thread, and inventing that control
@@ -171,6 +179,37 @@ export async function getCommentThread(refType, refId) {
       `no ${refType} document found for refId ${refId}`,
       { refType, refId },
     );
+  }
+
+  /**
+   * Correction (Issue #48 review): targetExists() only proves the
+   * Knowledge document exists — it says nothing about whether it's
+   * approved. Left deliberately untouched here (not modified
+   * globally) because createComment's write path also calls it, and
+   * is allowed to attach a comment to a non-approved Knowledge
+   * article (unchanged, pre-existing behavior — e.g. an author or
+   * reviewer discussing a draft). The public *read* path is a
+   * separate visibility question: a WIKI thread must only be
+   * anonymously readable when its Knowledge article is approved,
+   * exactly mirroring getApprovedKnowledgeById's own rule. By the
+   * time this runs, targetExists() has already proven refId is a
+   * syntactically valid ObjectId (it throws its own translated
+   * CastError otherwise), so no additional cast-error handling is
+   * needed here.
+   */
+  if (refType === "WIKI") {
+    const knowledge = await Knowledge.findById(refId).select("status").lean();
+    if (!knowledge || knowledge.status !== "approved") {
+      // Same TARGET_NOT_FOUND as a genuinely nonexistent target —
+      // deliberately indistinguishable. Returning a different error
+      // here (e.g. FORBIDDEN) would confirm to an anonymous caller
+      // that a specific draft/pending_review/rejected article exists,
+      // exactly the disclosure Issue #48's own constraints forbid.
+      throw targetNotFound(
+        `no ${refType} document found for refId ${refId}`,
+        { refType, refId },
+      );
+    }
   }
 
   const allComments = await Comment.find({ refType, refId })

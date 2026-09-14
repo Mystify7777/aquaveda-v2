@@ -696,8 +696,9 @@ Restated below only as locked conclusions, resolving
   against). Every other write operation uses `POST`, matching
   `auth.routes.js`'s existing convention.
 
-  **Amended (Issue #48, backend public read contracts):** 8 public GET
-  routes added — `GET /api/v1/issues`, `GET /api/v1/issues/:issueId`,
+  **Amended (Issue #48, backend public read contracts):** 7 public GET
+  routes added — 2 Issue, 2 Knowledge, 2 Project, 1 Comment:
+  `GET /api/v1/issues`, `GET /api/v1/issues/:issueId`,
   `GET /api/v1/knowledge`, `GET /api/v1/knowledge/:knowledgeId`,
   `GET /api/v1/projects`, `GET /api/v1/projects/:projectId`,
   `GET /api/v1/comments` (thread read, via `?refType=&refId=` query
@@ -707,7 +708,7 @@ Restated below only as locked conclusions, resolving
   list and detail views) was blocked entirely on these not existing
   (`routes-milestone-discovery-report.md` and
   `frontend-phase-plan.md` §0/§7 both flagged this explicitly as the
-  major F3 blocker). None of these 8 routes call `requireActor`/
+  major F3 blocker). None of these 7 routes call `requireActor`/
   `requireRole` — they are genuinely anonymous-accessible, not merely
   unenforced (Product Invariant: anonymous users must still be able to
   browse Explore). Knowledge's 2 read routes hard-code
@@ -719,8 +720,20 @@ Restated below only as locked conclusions, resolving
   (`reportedBy`/`author`/`creator`/`contributors`) are populated with
   `{_id, name, role}` only — never email or `passwordHash` — since no
   approved policy permits exposing a contributor's email to any
-  visitor. D-3a is untouched — none of these functions read or affect
-  Issue status authority. Full derivation: Issue #48's own acceptance
+  visitor. **The same approved-only visibility rule extends to Comment
+  threads on WIKI targets**: `getCommentThread("WIKI", refId)` checks
+  the underlying Knowledge article's status and returns the same
+  `TARGET_NOT_FOUND` (not a distinguishing error) for a thread attached
+  to a non-approved article — corrected during review after the initial
+  implementation only checked the article's *existence*
+  (`targetExists()`), not its publication status, which would have let
+  an anonymous caller read comments on a draft. `targetExists()` itself
+  is deliberately unmodified — `createComment`'s write path still uses
+  it as-is and is unaffected, since authors/reviewers are allowed to
+  comment on non-approved Knowledge; only the new public *read* path
+  gained the additional check. Issue threads have no equivalent
+  moderation concept and need no such check. D-3a is untouched — none
+  of these functions read or affect Issue status authority. Full derivation: Issue #48's own acceptance
   criteria; implementation review in
   `docs/architecture/checkpoint-issue-48-implementation-notes.md`.
 

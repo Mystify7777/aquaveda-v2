@@ -7,7 +7,7 @@ import cookieParser from "cookie-parser";
 import { authMiddleware, ACCESS_TOKEN_COOKIE_NAME } from "../src/middleware/auth.js";
 import { commentRouter } from "../src/routes/comment.routes.js";
 import { createIssue } from "../src/services/issue.service.js";
-import { createKnowledge } from "../src/services/knowledge.service.js";
+import { createKnowledge, submitForReview, approve, reject } from "../src/services/knowledge.service.js";
 import { register } from "../src/services/auth.service.js";
 import { setupTestDb, teardownTestDb, clearCollections, fakeActor, validPoint } from "./helpers/testDb.js";
 
@@ -288,5 +288,36 @@ describe("GET /api/v1/comments (Issue #48 — public read, no auth required)", (
     assert.equal(res.status, 200);
     assert.equal(res.json.data.length, 1);
     assert.equal(res.json.data[0].body, "on the issue");
+  });
+
+  it("REGRESSION (Issue #48 review): a WIKI thread on a draft Knowledge article is not publicly readable via HTTP", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const draft = await makeKnowledge();
+    await request("POST", "/api/v1/comments", {
+      cookies: authCookie(accessToken),
+      body: { refType: "WIKI", refId: String(draft._id), body: "commenting on a draft" },
+    });
+
+    const res = await request("GET", `/api/v1/comments?refType=WIKI&refId=${draft._id}`);
+    assert.equal(res.status, 404);
+    assert.equal(res.json.code, "TARGET_NOT_FOUND");
+  });
+
+  it("REGRESSION (Issue #48 review): a WIKI thread on an approved Knowledge article IS publicly readable via HTTP", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const approved = await createKnowledge(author, { title: "t", body: "b" });
+    await submitForReview(author, approved._id);
+    await approve(expert, approved._id);
+    await request("POST", "/api/v1/comments", {
+      cookies: authCookie(accessToken),
+      body: { refType: "WIKI", refId: String(approved._id), body: "commenting on an approved article" },
+    });
+
+    const res = await request("GET", `/api/v1/comments?refType=WIKI&refId=${approved._id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.length, 1);
+    assert.equal(res.json.data[0].body, "commenting on an approved article");
   });
 });
