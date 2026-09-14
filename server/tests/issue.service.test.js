@@ -2,7 +2,8 @@ import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { Issue } from "../src/models/Issue.js";
-import { createIssue, changeStatus } from "../src/services/issue.service.js";
+import { User } from "../src/models/User.js";
+import { createIssue, changeStatus, listIssues, getIssueById } from "../src/services/issue.service.js";
 import { DomainErrorCode } from "../src/services/errors.js";
 import {
   setupTestDb,
@@ -386,6 +387,98 @@ describe("issue.service — not found and state race", () => {
     assert.equal(
       String(lastEntry.actor),
       String(winner.statusHistory.at(-1).actor),
+    );
+  });
+});
+
+describe("listIssues (Issue #48 — public read)", () => {
+  it("returns all Issues in a default page, newest first", async () => {
+    const first = await makeOpenIssue();
+    await new Promise((r) => setTimeout(r, 5));
+    const second = await makeOpenIssue();
+
+    const result = await listIssues();
+    assert.equal(result.items.length, 2);
+    assert.equal(String(result.items[0]._id), String(second._id));
+    assert.equal(String(result.items[1]._id), String(first._id));
+    assert.equal(result.total, 2);
+    assert.equal(result.page, 1);
+  });
+
+  it("filters by status", async () => {
+    const reporter = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const openIssue = await makeOpenIssue(reporter);
+    const toAcknowledge = await makeOpenIssue(reporter);
+    await changeStatus(expert, toAcknowledge._id, "acknowledged");
+
+    const openResult = await listIssues({ status: "open" });
+    assert.equal(openResult.items.length, 1);
+    assert.equal(String(openResult.items[0]._id), String(openIssue._id));
+
+    const acknowledgedResult = await listIssues({ status: "acknowledged" });
+    assert.equal(acknowledgedResult.items.length, 1);
+    assert.equal(String(acknowledgedResult.items[0]._id), String(toAcknowledge._id));
+  });
+
+  it("rejects an unrecognized status filter with VALIDATION_FAILED-equivalent INVALID_STATE", async () => {
+    await assert.rejects(
+      () => listIssues({ status: "not_a_real_status" }),
+      (err) => err.code === DomainErrorCode.INVALID_STATE,
+    );
+  });
+
+  it("respects page/limit and reports totalPages", async () => {
+    for (let i = 0; i < 5; i++) {
+      await makeOpenIssue();
+    }
+    const result = await listIssues({ page: 2, limit: 2 });
+    assert.equal(result.items.length, 2);
+    assert.equal(result.total, 5);
+    assert.equal(result.totalPages, 3);
+  });
+
+  it("populates reportedBy with name/role only — never email or passwordHash", async () => {
+    const user = await User.create({
+      name: "Real Reporter",
+      email: "reporter@example.com",
+      passwordHash: "irrelevant-for-this-test",
+      role: "USER",
+    });
+    const issue = await createIssue({ id: String(user._id), role: "USER" }, {
+      title: "Leaking pipe",
+      description: "d",
+      location: validPoint(),
+    });
+
+    const result = await listIssues();
+    const returned = result.items.find((i) => String(i._id) === String(issue._id));
+    assert.ok(returned);
+    assert.equal(returned.reportedBy.name, "Real Reporter");
+    assert.equal(returned.reportedBy.role, "USER");
+    assert.equal(returned.reportedBy.email, undefined);
+    assert.equal(returned.reportedBy.passwordHash, undefined);
+  });
+});
+
+describe("getIssueById (Issue #48 — public read)", () => {
+  it("returns the Issue for a valid, existing id", async () => {
+    const issue = await makeOpenIssue();
+    const result = await getIssueById(issue._id);
+    assert.equal(String(result._id), String(issue._id));
+  });
+
+  it("throws NOT_FOUND for a well-formed but nonexistent id", async () => {
+    await assert.rejects(
+      () => getIssueById(fakeObjectId()),
+      (err) => err.code === DomainErrorCode.NOT_FOUND,
+    );
+  });
+
+  it("throws VALIDATION_FAILED (CastError translation) for a malformed id", async () => {
+    await assert.rejects(
+      () => getIssueById("not-a-valid-object-id"),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
     );
   });
 });

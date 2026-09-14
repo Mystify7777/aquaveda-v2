@@ -1,5 +1,8 @@
 import { Project } from "../models/Project.js";
 import { Issue } from "../models/Issue.js";
+// Model-registration side effect only — see issue.service.js's
+// identical import for the full explanation.
+import "../models/User.js";
 import {
   notFound,
   invalidState,
@@ -41,6 +44,10 @@ function wrapMongooseValidationError(err) {
   return err;
 }
 
+// Public-read attribution: name/role only. See issue.service.js's
+// identical constant for the full rationale.
+const PUBLIC_ACTOR_FIELDS = "_id name role";
+
 /**
  * createProject(actorContext, payload)
  *
@@ -80,4 +87,70 @@ export async function createProject(actorContext, payload) {
   } catch (err) {
     throw wrapMongooseValidationError(err);
   }
+}
+
+/**
+ * listProjects({originIssue?, page, limit}) — public, Issue #48.
+ *
+ * No status filter exists — Project has no status/lifecycle field at
+ * all (per Project.js's own header comment), so there is nothing to
+ * filter by beyond origin. `originIssue` filtering is a real, indexed
+ * access pattern (an Issue detail page listing its related Projects),
+ * not an invented one. No requireActor() call — genuinely
+ * anonymous-accessible.
+ */
+export async function listProjects({ originIssue, page = 1, limit = 20 } = {}) {
+  const filter = {};
+  if (originIssue !== undefined) {
+    filter.originIssue = originIssue;
+  }
+
+  let items;
+  let total;
+  try {
+    const skip = (page - 1) * limit;
+    [items, total] = await Promise.all([
+      Project.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("creator", PUBLIC_ACTOR_FIELDS)
+        .populate("contributors", PUBLIC_ACTOR_FIELDS),
+      Project.countDocuments(filter),
+    ]);
+  } catch (err) {
+    // A malformed originIssue filter value throws at query-execution
+    // time here (not at a preceding .findById), unlike every write
+    // operation in this file — there's no separate "load, then use the
+    // id" step for a filter value, so the wrap has to sit around the
+    // query itself.
+    throw wrapMongooseValidationError(err);
+  }
+
+  return {
+    items,
+    page,
+    limit,
+    total,
+    totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
+  };
+}
+
+/**
+ * getProjectById(projectId) — public, Issue #48. No requireActor()
+ * call — same public-read boundary as listProjects.
+ */
+export async function getProjectById(projectId) {
+  let project;
+  try {
+    project = await Project.findById(projectId)
+      .populate("creator", PUBLIC_ACTOR_FIELDS)
+      .populate("contributors", PUBLIC_ACTOR_FIELDS);
+  } catch (err) {
+    throw wrapMongooseValidationError(err);
+  }
+  if (!project) {
+    throw notFound(`Project ${projectId} not found`);
+  }
+  return project;
 }

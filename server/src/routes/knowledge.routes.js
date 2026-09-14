@@ -6,12 +6,15 @@ import {
   approve,
   reject,
   revise,
+  listApprovedKnowledge,
+  getApprovedKnowledgeById,
 } from "../services/knowledge.service.js";
 import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
 import {
   createKnowledgeSchema,
   rejectKnowledgeSchema,
   reviseKnowledgeSchema,
+  listApprovedKnowledgeQuerySchema,
 } from "../validation/knowledge.validation.js";
 
 /**
@@ -20,6 +23,10 @@ import {
  * Locked contract: docs/architecture/decision-register.md "Locked —
  * Routes" (ROUTE-L1–L6). Exactly 5 routes, 1:1 with
  * knowledge.service.js's 5 exported operations (ROUTE-L2).
+ *
+ * UPDATED (Issue #48): 2 public read routes added — GET / (list,
+ * approved-only) and GET /:knowledgeId (detail, approved-only). See
+ * issue.routes.js's identical note on ROUTE-L2's amendment.
  *
  * `submitForReview` and `approve` take no request body — same pattern
  * as auth.routes.js's `/refresh`/`/logout`/`/me` (cookie/context-driven
@@ -32,6 +39,36 @@ import {
  */
 
 export const knowledgeRouter = Router();
+
+/**
+ * GET / — public, approved-only Knowledge list.
+ */
+knowledgeRouter.get("/", async (req, res) => {
+  const parsed = listApprovedKnowledgeQuerySchema.safeParse(req.query ?? {});
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+
+  try {
+    const result = await listApprovedKnowledge(parsed.data);
+    sendSuccess(res, result, "Knowledge articles retrieved");
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
+ * GET /:knowledgeId — public, approved-only Knowledge detail.
+ */
+knowledgeRouter.get("/:knowledgeId", async (req, res) => {
+  try {
+    const knowledge = await getApprovedKnowledgeById(req.params.knowledgeId);
+    sendSuccess(res, knowledge, "Knowledge article retrieved");
+  } catch (err) {
+    sendError(res, err);
+  }
+});
 
 knowledgeRouter.post("/", async (req, res) => {
   const parsed = createKnowledgeSchema.safeParse(req.body ?? {});
