@@ -118,4 +118,14 @@ describe("full app router mounting (Phase 7)", () => {
     assert.equal(res.status, 200);
     assert.equal(res.json.status, "ok");
   });
+
+  it("includes a valid ISO-8601 timestamp while preserving the health response", async () => {
+    const res = await request("GET", "/api/v1/health");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.json.status, "ok");
+    assert.deepEqual(Object.keys(res.json).sort(), ["status", "timestamp"]);
+    assert.equal(typeof res.json.timestamp, "string");
+    assert.equal(new Date(res.json.timestamp).toISOString(), res.json.timestamp);
+  });
 });

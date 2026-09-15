@@ -78,7 +78,7 @@ export function createApp() {
 
   // Minimal health check — no business logic, no DB dependency check yet.
   app.get("/api/v1/health", (req, res) => {
-    res.status(200).json({ status: "ok" });
+    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
   // The five-endpoint minimal auth API (decision-register.md L4). This
