@@ -75,6 +75,14 @@ describe("global 404 (ROUTE-L6 envelope conformance)", () => {
 });
 
 describe("full app router mounting (Phase 7)", () => {
+  it("keeps the session probe publicly readable for an anonymous browser", async () => {
+    const res = await request("GET", "/api/v1/auth/me");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.json.success, true);
+    assert.equal(res.json.data.user, null);
+  });
+
   it("reaches issueRouter through the fully-assembled app (401 for anonymous create — proves the router is wired, not testing Issue logic itself)", async () => {
     const res = await request("POST", "/api/v1/issues", {
       body: { title: "x", description: "y", location: { type: "Point", coordinates: [0, 0] } },
@@ -109,5 +117,15 @@ describe("full app router mounting (Phase 7)", () => {
     const res = await request("GET", "/api/v1/health");
     assert.equal(res.status, 200);
     assert.equal(res.json.status, "ok");
+  });
+
+  it("includes a valid ISO-8601 timestamp while preserving the health response", async () => {
+    const res = await request("GET", "/api/v1/health");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.json.status, "ok");
+    assert.deepEqual(Object.keys(res.json).sort(), ["status", "timestamp"]);
+    assert.equal(typeof res.json.timestamp, "string");
+    assert.equal(new Date(res.json.timestamp).toISOString(), res.json.timestamp);
   });
 });

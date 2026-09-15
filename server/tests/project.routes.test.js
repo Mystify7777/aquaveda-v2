@@ -191,3 +191,77 @@ describe("POST /api/v1/projects", () => {
     assert.equal(res.json.code, "INVALID_STATE");
   });
 });
+
+describe("GET /api/v1/projects (Issue #48 — public read, no auth required)", () => {
+  it("200s for an anonymous request, empty page when no Projects exist", async () => {
+    const res = await request("GET", "/api/v1/projects");
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json.data.items, []);
+  });
+
+  it("returns created Projects without requiring any cookie", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const issue = await makeEligibleIssue("acknowledged");
+    await request("POST", "/api/v1/projects", {
+      cookies: authCookie(accessToken),
+      body: { title: "Community pipe repair", description: "d", originIssue: String(issue._id) },
+    });
+
+    const res = await request("GET", "/api/v1/projects");
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.items.length, 1);
+    assert.equal(res.json.data.items[0].title, "Community pipe repair");
+  });
+
+  it("filters by ?originIssue=", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const issueA = await makeEligibleIssue("acknowledged");
+    const issueB = await makeEligibleIssue("acknowledged");
+    const createdA = await request("POST", "/api/v1/projects", {
+      cookies: authCookie(accessToken),
+      body: { title: "a", description: "d", originIssue: String(issueA._id) },
+    });
+    await request("POST", "/api/v1/projects", {
+      cookies: authCookie(accessToken),
+      body: { title: "b", description: "d", originIssue: String(issueB._id) },
+    });
+
+    const res = await request("GET", `/api/v1/projects?originIssue=${issueA._id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.items.length, 1);
+    assert.equal(res.json.data.items[0]._id, createdA.json.data._id);
+  });
+
+  it("400s with VALIDATION_FAILED for a malformed ?originIssue=", async () => {
+    const res = await request("GET", "/api/v1/projects?originIssue=not-a-valid-object-id");
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+});
+
+describe("GET /api/v1/projects/:projectId (Issue #48 — public read, no auth required)", () => {
+  it("200s for an anonymous request", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const issue = await makeEligibleIssue("acknowledged");
+    const createRes = await request("POST", "/api/v1/projects", {
+      cookies: authCookie(accessToken),
+      body: { title: "t", description: "d", originIssue: String(issue._id) },
+    });
+
+    const res = await request("GET", `/api/v1/projects/${createRes.json.data._id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.title, "t");
+  });
+
+  it("404s for a well-formed but nonexistent id", async () => {
+    const res = await request("GET", "/api/v1/projects/507f1f77bcf86cd799439011");
+    assert.equal(res.status, 404);
+    assert.equal(res.json.code, "NOT_FOUND");
+  });
+
+  it("400s for a malformed id", async () => {
+    const res = await request("GET", "/api/v1/projects/not-a-valid-object-id");
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+});

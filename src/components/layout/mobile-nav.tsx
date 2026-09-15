@@ -7,6 +7,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { AuthControls } from "@/components/layout/auth-controls";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -113,6 +114,10 @@ export function MobileNav() {
               </Link>
             ))}
           </nav>
+
+          <div className="mt-auto border-t p-4">
+            <AuthControls mobile />
+          </div>
 
           {/* Screen-reader title — required by Radix Dialog for a11y */}
           <DialogPrimitive.Title className="sr-only">

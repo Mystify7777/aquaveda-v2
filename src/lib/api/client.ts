@@ -14,6 +14,21 @@ export class ApiError extends Error {
   }
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+
+function buildUrl(input: RequestInfo | URL) {
+  if (input instanceof URL) return input.toString();
+  if (typeof input === "string" && /^https?:\/\//.test(input)) return input;
+  if (
+    typeof input === "string" &&
+    input.startsWith("/api/v1/") &&
+    API_BASE_URL
+  ) {
+    return `${API_BASE_URL}${input}`;
+  }
+  return input;
+}
+
 /**
  * Shared frontend API boundary.
  *
@@ -27,7 +42,7 @@ export async function apiRequest<T>(
   let response: Response;
 
   try {
-    response = await fetch(input, {
+    response = await fetch(buildUrl(input), {
       ...init,
       credentials: "include",
     });

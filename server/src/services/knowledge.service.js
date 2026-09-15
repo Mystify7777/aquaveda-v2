@@ -1,4 +1,7 @@
 import { Knowledge } from "../models/Knowledge.js";
+// Model-registration side effect only — see issue.service.js's
+// identical import for the full explanation.
+import "../models/User.js";
 import {
   notFound,
   forbidden,
@@ -28,6 +31,10 @@ function wrapMongooseValidationError(err) {
   }
   return err;
 }
+
+// Public-read attribution: name/role only. See issue.service.js's
+// identical constant for the full rationale.
+const PUBLIC_ACTOR_FIELDS = "_id name role";
 
 /**
  * createKnowledge(actorContext, payload)
@@ -320,4 +327,65 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
     `Knowledge ${knowledgeId} status changed before revision could be applied`,
     { expectedStatus: "rejected", targetStatus: "draft" },
   );
+}
+
+/**
+ * listApprovedKnowledge({page, limit}) — public, Issue #48.
+ *
+ * The status filter is unconditional and never caller-controlled —
+ * this function only ever returns status: "approved" documents,
+ * regardless of what a caller might otherwise request. This is the
+ * concrete mechanism behind Issue #48's "do not expose private/draft
+ * Knowledge" constraint: there is no code path in this function that
+ * can return a draft/pending_review/rejected article, not a filter
+ * that merely defaults to approved. No requireActor() call — genuinely
+ * anonymous-accessible, matching Learn's public read boundary.
+ */
+export async function listApprovedKnowledge({ page = 1, limit = 20 } = {}) {
+  const filter = { status: "approved" };
+
+  const skip = (page - 1) * limit;
+  const [items, total] = await Promise.all([
+    Knowledge.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("author", PUBLIC_ACTOR_FIELDS),
+    Knowledge.countDocuments(filter),
+  ]);
+
+  return {
+    items,
+    page,
+    limit,
+    total,
+    totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
+  };
+}
+
+/**
+ * getApprovedKnowledgeById(knowledgeId) — public, Issue #48.
+ *
+ * Returns NOT_FOUND — never FORBIDDEN — for a real Knowledge document
+ * that exists but isn't approved. Deliberately: distinguishing "this
+ * doesn't exist" from "this exists but you can't see it" would confirm
+ * to an anonymous caller that a specific draft/pending_review/rejected
+ * article exists at all, which is exactly the kind of unauthorized
+ * disclosure Issue #48's constraints forbid — a uniform 404 leaks
+ * nothing about non-public content's existence or state.
+ */
+export async function getApprovedKnowledgeById(knowledgeId) {
+  let knowledge;
+  try {
+    knowledge = await Knowledge.findById(knowledgeId).populate(
+      "author",
+      PUBLIC_ACTOR_FIELDS,
+    );
+  } catch (err) {
+    throw wrapMongooseValidationError(err);
+  }
+  if (!knowledge || knowledge.status !== "approved") {
+    throw notFound(`Knowledge ${knowledgeId} not found`);
+  }
+  return knowledge;
 }

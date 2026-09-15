@@ -12,3 +12,13 @@ export interface ApiFailure {
 }
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
+
+export interface AuthUser {
+  id: string;
+  role: string;
+}
+
+export interface BackendAuthUser extends AuthUser {
+  name: string;
+  email: string;
+}

@@ -7,7 +7,7 @@ import cookieParser from "cookie-parser";
 import { authMiddleware, ACCESS_TOKEN_COOKIE_NAME } from "../src/middleware/auth.js";
 import { commentRouter } from "../src/routes/comment.routes.js";
 import { createIssue } from "../src/services/issue.service.js";
-import { createKnowledge } from "../src/services/knowledge.service.js";
+import { createKnowledge, submitForReview, approve, reject } from "../src/services/knowledge.service.js";
 import { register } from "../src/services/auth.service.js";
 import { setupTestDb, teardownTestDb, clearCollections, fakeActor, validPoint } from "./helpers/testDb.js";
 
@@ -207,5 +207,117 @@ describe("POST /api/v1/comments", () => {
 
     assert.equal(res.status, 409);
     assert.equal(res.json.code, "INVALID_PARENT");
+  });
+});
+
+describe("GET /api/v1/comments (Issue #48 — public read, no auth required)", () => {
+  it("200s for an anonymous request and returns an empty thread for a real target with no comments", async () => {
+    const issue = await makeIssue();
+    const res = await request("GET", `/api/v1/comments?refType=ISSUE&refId=${issue._id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.success, true);
+    assert.deepEqual(res.json.data, []);
+  });
+
+  it("returns a top-level comment with its reply nested under it, without requiring any cookie", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const issue = await makeIssue();
+    const parentRes = await request("POST", "/api/v1/comments", {
+      cookies: authCookie(accessToken),
+      body: { refType: "ISSUE", refId: String(issue._id), body: "parent" },
+    });
+    await request("POST", "/api/v1/comments", {
+      cookies: authCookie(accessToken),
+      body: {
+        refType: "ISSUE",
+        refId: String(issue._id),
+        body: "a reply",
+        parentComment: parentRes.json.data._id,
+      },
+    });
+
+    const res = await request("GET", `/api/v1/comments?refType=ISSUE&refId=${issue._id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.length, 1);
+    assert.equal(res.json.data[0].replies.length, 1);
+    assert.equal(res.json.data[0].replies[0].body, "a reply");
+  });
+
+  it("400s with VALIDATION_FAILED for an unrecognized ?refType=", async () => {
+    const issue = await makeIssue();
+    const res = await request("GET", `/api/v1/comments?refType=NOT_A_REAL_TYPE&refId=${issue._id}`);
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("400s with VALIDATION_FAILED for a malformed ?refId=", async () => {
+    const res = await request("GET", "/api/v1/comments?refType=ISSUE&refId=not-a-valid-object-id");
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("400s with VALIDATION_FAILED when refType or refId is missing entirely", async () => {
+    const issue = await makeIssue();
+    const missingRefType = await request("GET", `/api/v1/comments?refId=${issue._id}`);
+    assert.equal(missingRefType.status, 400);
+
+    const missingRefId = await request("GET", "/api/v1/comments?refType=ISSUE");
+    assert.equal(missingRefId.status, 400);
+  });
+
+  it("404s with TARGET_NOT_FOUND for a well-formed but nonexistent refId", async () => {
+    const res = await request("GET", "/api/v1/comments?refType=ISSUE&refId=507f1f77bcf86cd799439011");
+    assert.equal(res.status, 404);
+    assert.equal(res.json.code, "TARGET_NOT_FOUND");
+  });
+
+  it("does not mix comments from a different (refType, refId) target", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const issue = await makeIssue();
+    const knowledge = await makeKnowledge();
+    await request("POST", "/api/v1/comments", {
+      cookies: authCookie(accessToken),
+      body: { refType: "ISSUE", refId: String(issue._id), body: "on the issue" },
+    });
+    await request("POST", "/api/v1/comments", {
+      cookies: authCookie(accessToken),
+      body: { refType: "WIKI", refId: String(knowledge._id), body: "on the knowledge article" },
+    });
+
+    const res = await request("GET", `/api/v1/comments?refType=ISSUE&refId=${issue._id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.length, 1);
+    assert.equal(res.json.data[0].body, "on the issue");
+  });
+
+  it("REGRESSION (Issue #48 review): a WIKI thread on a draft Knowledge article is not publicly readable via HTTP", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const draft = await makeKnowledge();
+    await request("POST", "/api/v1/comments", {
+      cookies: authCookie(accessToken),
+      body: { refType: "WIKI", refId: String(draft._id), body: "commenting on a draft" },
+    });
+
+    const res = await request("GET", `/api/v1/comments?refType=WIKI&refId=${draft._id}`);
+    assert.equal(res.status, 404);
+    assert.equal(res.json.code, "TARGET_NOT_FOUND");
+  });
+
+  it("REGRESSION (Issue #48 review): a WIKI thread on an approved Knowledge article IS publicly readable via HTTP", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const approved = await createKnowledge(author, { title: "t", body: "b" });
+    await submitForReview(author, approved._id);
+    await approve(expert, approved._id);
+    await request("POST", "/api/v1/comments", {
+      cookies: authCookie(accessToken),
+      body: { refType: "WIKI", refId: String(approved._id), body: "commenting on an approved article" },
+    });
+
+    const res = await request("GET", `/api/v1/comments?refType=WIKI&refId=${approved._id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.length, 1);
+    assert.equal(res.json.data[0].body, "commenting on an approved article");
   });
 });

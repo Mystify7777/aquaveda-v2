@@ -18,3 +18,20 @@ export const createCommentSchema = z.object({
   body: z.string().trim().min(1, "body is required"),
   parentComment: objectIdString.optional().nullable(),
 });
+
+/**
+ * Comment thread read query shape (Issue #48).
+ *
+ * Query params, not path params — matches the locked v1 precedent
+ * (`GET /api/v1/comments?refType=ISSUE|WIKI&refId=...`), explicitly
+ * cited in Comment.js's own schema comment. No pagination here: threads
+ * are read as a whole (grouped into top-level + one level of replies in
+ * the service layer, per persistence-design.md §6's own documented
+ * plan) — a thread-length cap exists in the service layer as a safety
+ * bound, not exposed as a caller-controlled page/limit, since nothing
+ * in the current product plan calls for paging within a single thread.
+ */
+export const commentThreadQuerySchema = z.object({
+  refType: z.enum(["ISSUE", "WIKI"]),
+  refId: objectIdString,
+});

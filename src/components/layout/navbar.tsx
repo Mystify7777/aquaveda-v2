@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { AuthControls } from "@/components/layout/auth-controls";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 const NAV_ITEMS = [
@@ -51,8 +52,11 @@ export function Navbar() {
           ))}
         </nav>
 
-        {/* Right slot — theme toggle always visible, mobile menu on small screens */}
+        {/* Right slot — session actions are UX only; public navigation stays available. */}
         <div className="flex items-center gap-1">
+          <div className="hidden md:block">
+            <AuthControls />
+          </div>
           <ThemeToggle />
           <MobileNav />
         </div>

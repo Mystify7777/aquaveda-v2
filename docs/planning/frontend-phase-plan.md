@@ -1,7 +1,13 @@
 # Frontend Product Implementation Phase — plan
 
-**Status: planning only, per issue #1. No product code in this
-document or its accompanying PR.**
+**Status: roadmap document.** The F1 authentication-integration slice is
+implemented by Issue #36; this document continues to describe the broader
+frontend sequence and the work that remains future or backend-dependent.
+
+Issue #36 added the root `AuthProvider`, `/login` and `/register` pages,
+`RequireAuth` for contribution entry points, session-aware navigation, the
+credentialed API base URL, and focused pure session-state tests. See
+`docs/architecture/auth-boundaries.md` for the current contract.
 
 ---
 
@@ -18,12 +24,15 @@ src/
 │   └── page.tsx                 home page (Foundation status card)
 ├── components/
 │   ├── foundation/               FoundationStatusCard, FoundationRefreshButton
-│   ├── layout/                   Navbar, Footer, MobileNav, ThemeToggle
-│   ├── providers/                ThemeProvider (next-themes)
+│   ├── layout/                   Navbar, Footer, MobileNav, ThemeToggle, AuthControls
+│   ├── providers/                ThemeProvider (next-themes), AuthProvider
+│   ├── auth/                     LoginForm, RegisterForm, RequireAuth
 │   └── ui/                       Button, Card, Badge, Input, Textarea,
 │                                  Separator, Skeleton, Avatar, EmptyState
 └── lib/
-    ├── api/client.ts             apiRequest<T>() — already targets ApiResponse<T>
+    ├── api/client.ts             apiRequest<T>() — targets ApiResponse<T> and the configured Express API
+    ├── api/auth.ts               auth endpoint client functions
+    ├── auth-state.js             pure session-state classification
     ├── api/types.ts              ApiSuccess/ApiFailure/ApiResponse<T>
     ├── api/system.ts             one example consumer (getSystemSnapshot)
     ├── system.ts
@@ -36,13 +45,11 @@ Confirmed by direct inspection, not inferred:
   `/community`, `/dashboard`** — none of these routes exist under
   `src/app/` yet. These are currently broken links, not placeholders —
   the foundation anticipated the product surfaces before building them.
-- **`apiRequest<T>()` already unwraps the exact `ApiResponse<T>`
+- **`apiRequest<T>()` unwraps the exact `ApiResponse<T>`
   envelope** the backend's Routes milestone locked (ROUTE-L6) — the
-  frontend's own API boundary and the backend's response shape already
-  agree. Its only current caller (`lib/api/system.ts`) points at a
-  Next.js-local route, not the Express backend — there is currently
-  **no configured base URL for the Express API** anywhere in the
-  frontend (no `NEXT_PUBLIC_API_URL` or equivalent exists).
+  frontend's own API boundary and the backend's response shape agree. Auth
+  calls use the configured `NEXT_PUBLIC_API_URL` base URL, while the system
+  snapshot continues to use its Next.js-local route.
 - **No data-fetching library, form library, or map library is
   installed** (`package.json` dependencies: Radix avatar/dialog/slot,
   `class-variance-authority`, `clsx`, `lucide-react`, `next-themes`,
@@ -143,6 +150,12 @@ say. Whoever merges this plan should confirm #3/#8's actual scope
 lines up with what's assumed here before treating F1/T1 as satisfied.
 
 ### Phase F1 — Frontend Authentication Integration
+
+**Status: implemented by Issue #36.** The provider initializes from `/me`,
+attempts refresh only after an expected anonymous response, and preserves
+separate `initializing`, `authenticated`, `anonymous`, `session-failure`, and
+`unavailable` states. Auth uses HttpOnly cookies through the existing API
+boundary; tokens are not stored in browser storage.
 
 **Purpose:** connect the existing `src/lib/api/` boundary to the 5
 already-verified auth endpoints; establish session-aware layout

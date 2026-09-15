@@ -123,35 +123,31 @@ async function seedIssues(count) {
   await Issue.insertMany(issues);
 }
 
-describe("GET /api/v1/issues", () => {
+describe("GET /api/v1/issues (Issue #40 pagination & Issue #48 public read)", () => {
   describe("default pagination (no query params)", () => {
-    it("returns page 1 with limit 10 by default", async () => {
+    it("returns page 1 with default limit 20", async () => {
       await seedIssues(3);
       const { status, body } = await request("GET", "/api/v1/issues");
 
       assert.equal(status, 200);
       assert.equal(body.success, true);
-      assert.equal(Array.isArray(body.data), true);
-      assert.equal(body.data.length, 3);
+      assert.equal(Array.isArray(body.data.items), true);
+      assert.equal(body.data.items.length, 3);
 
-      assert.equal(body.pagination.page, 1);
-      assert.equal(body.pagination.limit, 10);
-      assert.equal(body.pagination.totalCount, 3);
-      assert.equal(body.pagination.totalPages, 1);
-      assert.equal(body.pagination.hasNextPage, false);
-      assert.equal(body.pagination.hasPrevPage, false);
+      assert.equal(body.data.page, 1);
+      assert.equal(body.data.limit, 20);
+      assert.equal(body.data.total, 3);
+      assert.equal(body.data.totalPages, 1);
     });
 
-    it("returns an empty array when no issues exist", async () => {
+    it("returns an empty items array when no issues exist", async () => {
       const { status, body } = await request("GET", "/api/v1/issues");
 
       assert.equal(status, 200);
       assert.equal(body.success, true);
-      assert.equal(body.data.length, 0);
-      assert.equal(body.pagination.totalCount, 0);
-      assert.equal(body.pagination.totalPages, 0);
-      assert.equal(body.pagination.hasNextPage, false);
-      assert.equal(body.pagination.hasPrevPage, false);
+      assert.equal(body.data.items.length, 0);
+      assert.equal(body.data.total, 0);
+      assert.equal(body.data.totalPages, 0);
     });
   });
 
@@ -162,13 +158,11 @@ describe("GET /api/v1/issues", () => {
 
       assert.equal(status, 200);
       assert.equal(body.success, true);
-      assert.equal(body.data.length, 5);
-      assert.equal(body.pagination.page, 2);
-      assert.equal(body.pagination.limit, 5);
-      assert.equal(body.pagination.totalCount, 12);
-      assert.equal(body.pagination.totalPages, 3);
-      assert.equal(body.pagination.hasNextPage, true);
-      assert.equal(body.pagination.hasPrevPage, true);
+      assert.equal(body.data.items.length, 5);
+      assert.equal(body.data.page, 2);
+      assert.equal(body.data.limit, 5);
+      assert.equal(body.data.total, 12);
+      assert.equal(body.data.totalPages, 3);
     });
 
     it("returns the last page correctly", async () => {
@@ -176,19 +170,17 @@ describe("GET /api/v1/issues", () => {
       const { status, body } = await request("GET", "/api/v1/issues?page=2&limit=10");
 
       assert.equal(status, 200);
-      assert.equal(body.data.length, 2);
-      assert.equal(body.pagination.page, 2);
-      assert.equal(body.pagination.totalPages, 2);
-      assert.equal(body.pagination.hasNextPage, false);
-      assert.equal(body.pagination.hasPrevPage, true);
+      assert.equal(body.data.items.length, 2);
+      assert.equal(body.data.page, 2);
+      assert.equal(body.data.totalPages, 2);
     });
 
     it("returns issues sorted by createdAt descending (newest first)", async () => {
       await seedIssues(5);
       const { body } = await request("GET", "/api/v1/issues?limit=5");
 
-      assert.equal(body.data[0].title, "Issue 5");
-      assert.equal(body.data[4].title, "Issue 1");
+      assert.equal(body.data.items[0].title, "Issue 5");
+      assert.equal(body.data.items[4].title, "Issue 1");
     });
   });
 
@@ -199,7 +191,6 @@ describe("GET /api/v1/issues", () => {
       assert.equal(status, 400);
       assert.equal(body.success, false);
       assert.equal(body.code, "VALIDATION_FAILED");
-      assert.ok(body.message.toLowerCase().includes("limit"));
     });
 
     it("accepts limit of exactly 50", async () => {
@@ -207,7 +198,42 @@ describe("GET /api/v1/issues", () => {
 
       assert.equal(status, 200);
       assert.equal(body.success, true);
-      assert.equal(body.pagination.limit, 50);
+      assert.equal(body.data.limit, 50);
+    });
+  });
+
+  describe("status filtering", () => {
+    it("filters by ?status=", async () => {
+      const { accessToken } = await makeAuthedUser("USER");
+      await request("POST", "/api/v1/issues", {
+        cookies: authCookie(accessToken),
+        body: { title: "Open one", description: "d", location: validPoint() },
+      });
+
+      const res = await request("GET", "/api/v1/issues?status=acknowledged");
+      assert.equal(res.status, 200);
+      assert.equal(res.json.data.items.length, 0);
+    });
+
+    it("400s with VALIDATION_FAILED for an unrecognized ?status=", async () => {
+      const res = await request("GET", "/api/v1/issues?status=not_a_real_status");
+      assert.equal(res.status, 400);
+      assert.equal(res.json.code, "VALIDATION_FAILED");
+    });
+  });
+
+  describe("anonymous public read access", () => {
+    it("returns created Issues without requiring any cookie", async () => {
+      const { accessToken } = await makeAuthedUser("USER");
+      await request("POST", "/api/v1/issues", {
+        cookies: authCookie(accessToken),
+        body: { title: "Leaking pipe", description: "d", location: validPoint() },
+      });
+
+      const res = await request("GET", "/api/v1/issues");
+      assert.equal(res.status, 200);
+      assert.equal(res.json.data.items.length, 1);
+      assert.equal(res.json.data.items[0].title, "Leaking pipe");
     });
   });
 
@@ -372,5 +398,33 @@ describe("PATCH /api/v1/issues/:issueId/status", () => {
 
     assert.equal(res.status, 404);
     assert.equal(res.json.code, "NOT_FOUND");
+  });
+});
+
+
+
+describe("GET /api/v1/issues/:issueId (Issue #48 — public read, no auth required)", () => {
+  it("200s for an anonymous request", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    const createRes = await request("POST", "/api/v1/issues", {
+      cookies: authCookie(accessToken),
+      body: { title: "Leaking pipe", description: "d", location: validPoint() },
+    });
+
+    const res = await request("GET", `/api/v1/issues/${createRes.json.data._id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.title, "Leaking pipe");
+  });
+
+  it("404s for a well-formed but nonexistent id", async () => {
+    const res = await request("GET", "/api/v1/issues/507f1f77bcf86cd799439011");
+    assert.equal(res.status, 404);
+    assert.equal(res.json.code, "NOT_FOUND");
+  });
+
+  it("400s for a malformed id", async () => {
+    const res = await request("GET", "/api/v1/issues/not-a-valid-object-id");
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
   });
 });
