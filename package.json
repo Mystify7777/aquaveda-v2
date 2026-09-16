@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "test": "node --test \"src/**/*.test.js\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test:vitest": "vitest run",
+    "test:node": "node --test \"src/**/*.test.js\"",
+    "test": "npm run test:vitest && npm run test:node"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.10",

@@ -41,6 +41,18 @@ export default defineConfig({
       "**/server/**",
       "**/dist/**",
       "**/assists/**",
+      // Test-runner boundary: plain .test.js files are Node's own
+      // node:test suites (e.g. src/lib/auth-state.test.js), not
+      // Vitest tests — a repo-wide convention, matching how the
+      // entire backend (server/tests/*.test.js) already uses
+      // node:test exclusively. Vitest owns .test.ts/.test.tsx only.
+      // Without this exclusion, Vitest still imports/collects these
+      // files (triggering node:test's own ad-hoc self-execution as a
+      // side effect of the import) while separately reporting "No
+      // test suite found" for its own bookkeeping — a confusing
+      // false failure, not a real one. package.json's "test:node"
+      // script runs these files via the real `node --test`.
+      "**/*.test.js",
     ],
   },
 });

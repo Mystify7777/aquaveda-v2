@@ -8,6 +8,18 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
 }));
 
+/**
+ * AuthControls is mocked here for the same reason as navbar.test.tsx —
+ * see that file's header comment for the full justification. MobileNav
+ * mounts <AuthControls mobile /> inside its drawer content, which
+ * calls useAuth() and would throw without an AuthProvider ancestor;
+ * this test's actual concern is drawer open/close and navigation
+ * behavior, not auth rendering.
+ */
+vi.mock("@/components/layout/auth-controls", () => ({
+  AuthControls: () => <div data-testid="auth-controls-stub" />,
+}));
+
 // MobileNav is imported after the mock is registered (vi.mock is
 // hoisted above imports by Vitest, so this ordering in source is fine,
 // but the dynamic import below keeps the mock reset lifecycle explicit
