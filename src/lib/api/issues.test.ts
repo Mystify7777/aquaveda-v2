@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { getIssues, getIssue } from "@/lib/api/issues";
+import {
+  createIssue,
+  getIssues,
+  getIssue,
+} from "@/lib/api/issues";
 import { ApiError } from "@/lib/api/client";
 
 function mockFetchOnce(body: unknown, ok = true, status = 200) {
@@ -113,5 +117,98 @@ describe("getIssue", () => {
   it("throws a 404 ApiError for a nonexistent Issue", async () => {
     mockFetchOnce({ success: false, data: null, message: "Issue x not found", code: "NOT_FOUND" }, false, 404);
     await expect(getIssue("x")).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+  });
+});
+
+
+describe("createIssue", () => {
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_API_URL = "https://api.aquaveda.com";
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends the correct POST request with the Issue data", async () => {
+    mockFetchOnce({
+      success: true,
+      data: SAMPLE_ISSUE,
+      message: "Issue created",
+    });
+
+    await createIssue({
+      title: "Leaking pipe",
+      description: "Water pooling near the market",
+      location: {
+        type: "Point",
+        coordinates: [77.5, 12.9],
+      },
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.aquaveda.com/api/v1/issues",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: "Leaking pipe",
+          description: "Water pooling near the market",
+          location: {
+            type: "Point",
+            coordinates: [77.5, 12.9],
+          },
+        }),
+      }),
+    );
+  });
+
+  it("returns the created Issue on success", async () => {
+    mockFetchOnce({
+      success: true,
+      data: SAMPLE_ISSUE,
+      message: "Issue created",
+    });
+
+    const result = await createIssue({
+      title: "Leaking pipe",
+      description: "Water pooling near the market",
+      location: {
+        type: "Point",
+        coordinates: [77.5, 12.9],
+      },
+    });
+
+    expect(result._id).toBe("issue-1");
+    expect(result.title).toBe("Leaking pipe");
+  });
+
+  it("propagates a backend validation error", async () => {
+    mockFetchOnce(
+      {
+        success: false,
+        data: null,
+        message: "Title is required",
+        code: "VALIDATION_FAILED",
+      },
+      false,
+      400,
+    );
+
+    await expect(
+      createIssue({
+        title: "",
+        description: "Water pooling near the market",
+        location: {
+          type: "Point",
+          coordinates: [77.5, 12.9],
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      status: 400,
+    });
   });
 });
