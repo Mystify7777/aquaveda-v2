@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 
 import { authMiddleware } from "./middleware/auth.js";
+import { requestLogger } from "./middleware/request-logger.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { issueRouter } from "./routes/issue.routes.js";
 import { knowledgeRouter } from "./routes/knowledge.routes.js";
@@ -67,6 +68,7 @@ export function createApp() {
   app.use(express.json());
   app.use(cookieParser());
   app.use(cors(buildCorsOptions()));
+  app.use(requestLogger);
 
   // Global actor resolution (Phase E/L6): every route, present and
   // future, receives req.actorContext (populated or null) before it
