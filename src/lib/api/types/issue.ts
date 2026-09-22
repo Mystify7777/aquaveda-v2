@@ -38,3 +38,10 @@ export interface Issue {
 export interface IssueListQuery extends PaginationQuery {
   status?: IssueStatus;
 }
+export interface CreateIssueRequest {
+  title: string;
+  description: string;
+  location: IssueLocation;
+  severity?: string;
+  category?: string;
+}
