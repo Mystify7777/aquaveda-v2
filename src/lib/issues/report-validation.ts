@@ -1,10 +1,15 @@
 import type { CreateIssuePayload } from "@/lib/api/types/issue";
+import { isIssueCategory, isIssueSeverity } from "@/lib/issues/classification";
 
 export interface IssueReportValues {
   title: string;
   description: string;
   latitude: string;
   longitude: string;
+  /** Canonical category value, or "" for none. */
+  category: string;
+  /** Canonical severity value, or "" for none. */
+  severity: string;
 }
 
 export type IssueReportField = keyof IssueReportValues;
@@ -15,6 +20,8 @@ export const EMPTY_ISSUE_REPORT: IssueReportValues = {
   description: "",
   latitude: "",
   longitude: "",
+  category: "",
+  severity: "",
 };
 
 function parseCoordinate(raw: string, min: number, max: number, label: string) {
@@ -44,6 +51,12 @@ export function validateIssueReport(
 
   const lat = parseCoordinate(values.latitude, -90, 90, "Latitude");
   const lon = parseCoordinate(values.longitude, -180, 180, "Longitude");
+  if (values.category && !isIssueCategory(values.category)) {
+    errors.category = "Choose a category from the list.";
+  }
+  if (values.severity && !isIssueSeverity(values.severity)) {
+    errors.severity = "Choose a severity from the list.";
+  }
   if (lat.error) errors.latitude = lat.error;
   if (lon.error) errors.longitude = lon.error;
 
@@ -56,5 +69,7 @@ export function validateIssueReport(
     description,
     location: { type: "Point", coordinates: [lon.value, lat.value] },
   };
+  if (values.category && isIssueCategory(values.category)) payload.category = values.category;
+  if (values.severity && isIssueSeverity(values.severity)) payload.severity = values.severity;
   return { ok: true, payload };
 }

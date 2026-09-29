@@ -1,3 +1,4 @@
+import type { IssueCategory, IssueSeverity } from "@/lib/issues/classification";
 import type { PublicActor } from "./actor";
 import type { PaginationQuery } from "./pagination";
 
@@ -25,8 +26,12 @@ export interface Issue {
   title: string;
   description: string;
   location: IssueLocation;
-  severity: string;
-  category: string;
+  /**
+   * Canonical value, or "" when unclassified (server domain/issue-classification.js).
+   * Assumes no pre-#67 free-text rows exist; see domain-model.md "Read-type assumption".
+   */
+  severity: IssueSeverity | "";
+  category: IssueCategory | "";
   domain: string;
   status: IssueStatus;
   reportedBy: PublicActor;
@@ -40,13 +45,13 @@ export interface IssueListQuery extends PaginationQuery {
 }
 
 /**
- * Fields of POST /api/v1/issues consumed by the reporting flow (#44).
- * The backend also accepts optional `severity`/`category` strings (and
- * strips `domain`); they are deliberately not modeled here until #67
- * defines their semantics and canonical vocabulary.
+ * Body of POST /api/v1/issues. `category`/`severity` are optional and, when
+ * present, must be canonical values (#67). The backend strips `domain`.
  */
 export interface CreateIssuePayload {
   title: string;
   description: string;
   location: IssueLocation;
+  category?: IssueCategory;
+  severity?: IssueSeverity;
 }

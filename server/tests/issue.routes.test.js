@@ -319,6 +319,50 @@ describe("POST /api/v1/issues", () => {
     assert.equal(res.json.code, "VALIDATION_FAILED");
   });
 
+  it("201s and persists canonical category/severity, returned in the public read", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    const res = await request("POST", "/api/v1/issues", {
+      cookies: authCookie(accessToken),
+      body: {
+        title: "Leaking pipe",
+        description: "Water pooling near the market",
+        location: validPoint(),
+        category: "leakage_wastage",
+        severity: "high",
+      },
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.json.data.category, "leakage_wastage");
+    assert.equal(res.json.data.severity, "high");
+
+    const detail = await request("GET", `/api/v1/issues/${res.json.data._id}`);
+    assert.equal(detail.json.data.category, "leakage_wastage");
+    assert.equal(detail.json.data.severity, "high");
+  });
+
+  it("201s without category/severity, leaving them unclassified", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    const res = await request("POST", "/api/v1/issues", {
+      cookies: authCookie(accessToken),
+      body: { title: "t", description: "d", location: validPoint() },
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.json.data.category, "");
+    assert.equal(res.json.data.severity, "");
+  });
+
+  it("400s with VALIDATION_FAILED for a non-canonical category or severity", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    for (const extra of [{ category: "infrastructure" }, { severity: "urgent" }, { category: "" }]) {
+      const res = await request("POST", "/api/v1/issues", {
+        cookies: authCookie(accessToken),
+        body: { title: "t", description: "d", location: validPoint(), ...extra },
+      });
+      assert.equal(res.status, 400, JSON.stringify(extra));
+      assert.equal(res.json.code, "VALIDATION_FAILED");
+    }
+  });
+
   it("401s with UNAUTHORIZED for an anonymous request", async () => {
     const res = await request("POST", "/api/v1/issues", {
       body: {

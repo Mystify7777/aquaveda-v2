@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { IssueReportForm } from "@/components/issues/issue-report-form";
 import { ReportIssueButton } from "@/components/issues/report-issue-button";
 import { ApiError } from "@/lib/api/client";
+import { ISSUE_CATEGORIES, ISSUE_SEVERITIES } from "@/lib/issues/classification";
 
 const mockCreateIssue = vi.fn();
 const mockUseAuth = vi.fn();
@@ -105,6 +106,60 @@ describe("IssueReportForm", () => {
     await fill(user);
     await user.click(screen.getByRole("button", { name: "Submit report" }));
     expect(await screen.findByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
+  });
+});
+
+describe("IssueReportForm classification", () => {
+  beforeEach(() => {
+    mockCreateIssue.mockReset();
+    mockUseAuth.mockReturnValue({ status: "authenticated" });
+  });
+
+  function optionValues(select: HTMLElement) {
+    return Array.from(select.querySelectorAll("option")).map((o) => o.getAttribute("value"));
+  }
+
+  it("presents exactly the canonical values (plus 'Not specified') as selects", () => {
+    render(<IssueReportForm />);
+    const category = screen.getByLabelText(/^category/i);
+    const severity = screen.getByLabelText(/^severity/i);
+    expect(category.tagName).toBe("SELECT");
+    expect(severity.tagName).toBe("SELECT");
+    expect(optionValues(category)).toEqual(["", ...ISSUE_CATEGORIES.map((c) => c.value)]);
+    expect(optionValues(severity)).toEqual(["", ...ISSUE_SEVERITIES.map((s) => s.value)]);
+    expect(screen.getByRole("option", { name: ISSUE_CATEGORIES[0].label })).toBeInTheDocument();
+  });
+
+  it("submits without category/severity (both optional)", async () => {
+    const user = userEvent.setup();
+    mockCreateIssue.mockResolvedValue(CREATED);
+    render(<IssueReportForm />);
+    await fill(user);
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    const payload = mockCreateIssue.mock.calls[0][0];
+    expect(payload).not.toHaveProperty("category");
+    expect(payload).not.toHaveProperty("severity");
+  });
+
+  it("submits selected canonical category/severity and shows guidance", async () => {
+    const user = userEvent.setup();
+    mockCreateIssue.mockResolvedValue(CREATED);
+    render(<IssueReportForm />);
+    await fill(user);
+    await user.selectOptions(screen.getByLabelText(/^category/i), "water_quality");
+    await user.selectOptions(screen.getByLabelText(/^severity/i), "high");
+    expect(screen.getByText(ISSUE_SEVERITIES.find((s) => s.value === "high")!.description)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    expect(mockCreateIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ category: "water_quality", severity: "high" }),
+    );
+  });
+
+  it("cannot introduce a non-canonical value through the UI", async () => {
+    const user = userEvent.setup();
+    render(<IssueReportForm />);
+    await expect(user.selectOptions(screen.getByLabelText(/^category/i), "infrastructure")).rejects.toThrow();
+    expect(screen.getByLabelText(/^category/i)).toHaveValue("");
   });
 });
 

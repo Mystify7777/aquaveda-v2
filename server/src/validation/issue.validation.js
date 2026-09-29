@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import {
+  ISSUE_CATEGORY_VALUES,
+  ISSUE_SEVERITY_VALUES,
+} from "../domain/issue-classification.js";
 import { paginationQuerySchema } from "./shared/pagination.js";
 
 /**
@@ -42,12 +46,11 @@ export const createIssueSchema = z.object({
   title: z.string().trim().min(1, "title is required"),
   description: z.string().trim().min(1, "description is required"),
   location: geoPointSchema,
-  // severity/category are deliberately unconstrained strings — no fixed
-  // vocabulary was ever locked by any approved document (see
-  // decision-register.md D-9). Inventing an enum here would be making a
-  // product decision inside a validation schema.
-  severity: z.string().trim().optional(),
-  category: z.string().trim().optional(),
+  // Optional at creation; when supplied, must be a canonical value from
+  // domain/issue-classification.js (Issue #67, decision-register D-9).
+  // Omit the key to leave unclassified — empty strings are rejected.
+  severity: z.enum(ISSUE_SEVERITY_VALUES).optional(),
+  category: z.enum(ISSUE_CATEGORY_VALUES).optional(),
 });
 
 /**

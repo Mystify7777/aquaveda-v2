@@ -5,10 +5,12 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/client";
 import { createIssue } from "@/lib/api/issues";
 import type { Issue } from "@/lib/api/types/issue";
+import { ISSUE_CATEGORIES, ISSUE_SEVERITIES } from "@/lib/issues/classification";
 import {
   EMPTY_ISSUE_REPORT,
   validateIssueReport,
@@ -50,7 +52,7 @@ function toFailure(error: unknown): SubmitFailure {
   return { kind: "failure", message: "We could not submit your report. Try again." };
 }
 
-const FIELD_ORDER: IssueReportField[] = ["title", "description", "latitude", "longitude"];
+const FIELD_ORDER: IssueReportField[] = ["title", "description", "latitude", "longitude", "category", "severity"];
 
 function Field({
   id,
@@ -256,6 +258,53 @@ export function IssueReportForm({ onDone }: { onDone?: () => void }) {
           {geoError && <p role="status" className="text-muted-foreground text-xs">{geoError}</p>}
         </div>
 
+        <Field
+          id="report-category"
+          label="Category (optional)"
+          error={fieldErrors.category}
+          hint={
+            ISSUE_CATEGORIES.find((c) => c.value === values.category)?.description ??
+            "What kind of water problem is it?"
+          }
+        >
+          <Select
+            id="report-category"
+            ref={(el) => { fieldRefs.current.category = el; }}
+            value={values.category}
+            onChange={(e) => setField("category", e.target.value)}
+            aria-invalid={!!fieldErrors.category}
+            aria-describedby={describedBy("category", true)}
+          >
+            <option value="">Not specified</option>
+            {ISSUE_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field
+          id="report-severity"
+          label="Severity (optional)"
+          error={fieldErrors.severity}
+          hint={
+            ISSUE_SEVERITIES.find((s) => s.value === values.severity)?.description ??
+            "How much is it affecting people or the environment?"
+          }
+        >
+          <Select
+            id="report-severity"
+            ref={(el) => { fieldRefs.current.severity = el; }}
+            value={values.severity}
+            onChange={(e) => setField("severity", e.target.value)}
+            aria-invalid={!!fieldErrors.severity}
+            aria-describedby={describedBy("severity", true)}
+          >
+            <option value="">Not specified</option>
+            {ISSUE_SEVERITIES.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </Select>
+        </Field>
       </fieldset>
 
       <Button type="submit" className="w-full" disabled={pending}>

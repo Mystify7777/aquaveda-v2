@@ -19,6 +19,12 @@ import assert from "node:assert/strict";
 
 import { createIssueSchema, changeIssueStatusSchema } from "../src/validation/issue.validation.js";
 import {
+  ISSUE_CATEGORIES,
+  ISSUE_SEVERITIES,
+  ISSUE_CATEGORY_VALUES,
+  ISSUE_SEVERITY_VALUES,
+} from "../src/domain/issue-classification.js";
+import {
   createKnowledgeSchema,
   reviewKnowledgeSchema,
   rejectKnowledgeSchema,
@@ -82,21 +88,51 @@ check("1d. Issue payload missing location fails", () => {
   assert.equal(result.success, false);
 });
 
-check("1e. Issue payload accepts optional severity/category, and works without them", () => {
-  const withOptional = createIssueSchema.safeParse({
-    title: "Broken pipeline",
-    description: "Water leaking near the main road",
-    location: validPoint([77.5, 12.9]),
-    severity: "high",
-    category: "infrastructure",
-  });
-  const withoutOptional = createIssueSchema.safeParse({
+check("1e. Issue payload accepts omitted category/severity", () => {
+  const result = createIssueSchema.safeParse({
     title: "Broken pipeline",
     description: "Water leaking near the main road",
     location: validPoint([77.5, 12.9]),
   });
-  assert.equal(withOptional.success, true);
-  assert.equal(withoutOptional.success, true);
+  assert.equal(result.success, true);
+});
+
+check("1f. Every canonical category and severity is accepted", () => {
+  const base = {
+    title: "t",
+    description: "d",
+    location: validPoint([77.5, 12.9]),
+  };
+  for (const category of ISSUE_CATEGORY_VALUES) {
+    assert.equal(createIssueSchema.safeParse({ ...base, category }).success, true, category);
+  }
+  for (const severity of ISSUE_SEVERITY_VALUES) {
+    assert.equal(createIssueSchema.safeParse({ ...base, severity }).success, true, severity);
+  }
+});
+
+check("1g. Non-canonical category/severity are rejected (incl. legacy, case, blank)", () => {
+  const base = {
+    title: "t",
+    description: "d",
+    location: validPoint([77.5, 12.9]),
+  };
+  for (const category of ["infrastructure", "Leakage_Wastage", "", " other "]) {
+    assert.equal(createIssueSchema.safeParse({ ...base, category }).success, false, `category ${JSON.stringify(category)}`);
+  }
+  for (const severity of ["HIGH", "urgent", "", " low"]) {
+    assert.equal(createIssueSchema.safeParse({ ...base, severity }).success, false, `severity ${JSON.stringify(severity)}`);
+  }
+});
+
+check("1h. Classification contract is well-formed (unique values, labels, descriptions)", () => {
+  for (const list of [ISSUE_CATEGORIES, ISSUE_SEVERITIES]) {
+    assert.equal(new Set(list.map((e) => e.value)).size, list.length);
+    for (const e of list) {
+      assert.match(e.value, /^[a-z]+(_[a-z]+)*$/);
+      assert.ok(e.label.length > 0 && e.description.length > 0);
+    }
+  }
 });
 
 // ---------------------------------------------------------------------
