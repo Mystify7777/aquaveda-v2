@@ -11,17 +11,11 @@ import { RequireAuth } from "@/components/auth/require-auth";
  * without re-implementing protection per page or remembering to wrap
  * each one individually.
  *
- * No page exists under this group yet, deliberately — #43's own scope
- * explicitly excludes implementing #44/#45/#46/#47/#50. This
- * structural layout is what "establish and apply" means without a
- * product page to attach it to: the boundary is wired and unit-tested
- * (both directly, in require-auth.test.tsx, and structurally, in
- * layout.test.tsx), but has not yet been exercised through an actual
- * Next.js route — that can only happen once a real page is placed
- * under this group. The parenthesized segment name doesn't affect the
- * URL, so adding `src/app/(protected)/dashboard/page.tsx` later needs
- * no further protection work, but its own route-level behavior (e.g.
- * an actual browser navigation being gated) is unverified until then.
+ * The parenthesized segment name doesn't affect the URL: a page at
+ * `src/app/(protected)/learn/new/page.tsx` is served at `/learn/new`
+ * and is gated by this layout. Contribution entry points that need their
+ * own route (e.g. Knowledge draft authoring) live here; surfaces that
+ * must stay anonymous-accessible (e.g. /explore) do not.
  *
  * A route group, not per-page wrapping, was chosen specifically so a
  * future page can't accidentally be added to an authenticated area

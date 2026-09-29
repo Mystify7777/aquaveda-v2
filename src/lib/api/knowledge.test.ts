@@ -64,3 +64,27 @@ describe("getKnowledgeArticle", () => {
     await expect(getKnowledgeArticle("k-1")).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
   });
 });
+
+describe("createKnowledge", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("POSTs exactly the JSON payload with content-type to /api/v1/knowledge", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "https://api.aquaveda.com";
+    mockFetchOnce(
+      { success: true, data: { _id: "k-2", title: "T", status: "draft" }, message: "Knowledge draft created" },
+      true,
+      201,
+    );
+    const { createKnowledge } = await import("@/lib/api/knowledge");
+    await expect(createKnowledge({ title: "T", body: "B" })).resolves.toMatchObject({ _id: "k-2", status: "draft" });
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(url)).toContain("/api/v1/knowledge");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "T", body: "B" }),
+    });
+  });
+});
