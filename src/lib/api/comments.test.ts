@@ -60,3 +60,20 @@ describe("getCommentThread", () => {
     });
   });
 });
+
+describe("createComment", () => {
+  it("POSTs exactly the JSON payload with content-type to /api/v1/comments", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "https://api.aquaveda.com";
+    mockFetchOnce({ success: true, data: { _id: "c-2" }, message: "Comment created" }, true, 201);
+    const { createComment } = await import("@/lib/api/comments");
+    const payload = { refType: "WIKI" as const, refId: "k-1", body: "Hi" };
+    await expect(createComment(payload)).resolves.toMatchObject({ _id: "c-2" });
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(url)).toContain("/api/v1/comments");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  });
+});
