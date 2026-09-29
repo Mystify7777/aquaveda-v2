@@ -426,6 +426,17 @@ logout-vs-access-token-expiry trade-off.
   build plan in `server/README.md` — backend built here, not in a separate repo.
   Future evolution path: `apps/web` + `apps/server` workspace layout.
 
+- Frontend issue reporting (#44): `IssueReportForm` + `ReportIssueButton` (Radix Dialog, `RequireAuth` around content only), mounted on minimal public `/explore`; `createIssue()` in `lib/api/issues.ts`; hand-rolled validation in `lib/issues/report-validation.ts` (no new deps). Fixed `RequireAuth` links `/login`→`/auth/login`.
+
+## Lessons Learned (implementer — read before starting any issue)
+
+- **Do not invent product/domain semantics in UI.** #44 first shipped free-text `severity`/`category` inputs despite decision-register D-9 (no vocabulary locked). An API-accepted field is not a reason to expose it; check the decision register and open issues (e.g. #67) first.
+- **Reconcile docs with the actual tree before building on them.** Docs said `(protected)` route group; code has a real `/protected` segment. `RequireAuth` linked `/login` while pages live at `/auth/login`. Verify paths against `src/app` first.
+- **Check the shared API client's real behavior.** `apiRequest` sets no `Content-Type`; JSON POSTs need it explicitly.
+- **Test every user-facing behavior added, in the same PR.** The geolocation button first shipped untested.
+- **Never report a build as passing unless it ran.** Sandbox `next build` fails on `next/font` (no font network); report as unverified and rely on the developer's local run.
+- **Flag out-of-scope fixes explicitly** (e.g. the `RequireAuth` link fix) and keep them minimal.
+
 ## Architectural Decisions
 
 - New repository over in-place migration (ADR-0001)

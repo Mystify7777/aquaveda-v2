@@ -1,0 +1,179 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import { IssueReportForm } from "@/components/issues/issue-report-form";
+import { ReportIssueButton } from "@/components/issues/report-issue-button";
+import { ApiError } from "@/lib/api/client";
+
+const mockCreateIssue = vi.fn();
+const mockUseAuth = vi.fn();
+
+vi.mock("@/lib/api/issues", () => ({ createIssue: (p: unknown) => mockCreateIssue(p) }));
+vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => mockUseAuth() }));
+
+const CREATED = { _id: "i1", title: "Leak", status: "open" };
+
+async function fill(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText(/^title/i), "Leak");
+  await user.type(screen.getByLabelText(/^description/i), "Pipe burst");
+  await user.type(screen.getByLabelText(/^latitude/i), "12.9");
+  await user.type(screen.getByLabelText(/^longitude/i), "77.5");
+}
+
+describe("IssueReportForm", () => {
+  beforeEach(() => {
+    mockCreateIssue.mockReset();
+    mockUseAuth.mockReturnValue({ status: "authenticated" });
+  });
+
+  it("idle: renders labelled fields and an enabled submit", () => {
+    render(<IssueReportForm />);
+    expect(screen.getByRole("button", { name: "Submit report" })).toBeEnabled();
+    expect(screen.getByLabelText(/^title/i)).toBeInTheDocument();
+  });
+
+  it("valid submission sends the contract payload and shows success", async () => {
+    const user = userEvent.setup();
+    mockCreateIssue.mockResolvedValue(CREATED);
+    render(<IssueReportForm />);
+    await fill(user);
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    expect(mockCreateIssue).toHaveBeenCalledWith({
+      title: "Leak",
+      description: "Pipe burst",
+      location: { type: "Point", coordinates: [77.5, 12.9] },
+    });
+    expect(await screen.findByText("Issue reported")).toBeInTheDocument();
+  });
+
+  it("invalid input: shows field errors, focuses first invalid, never calls API", async () => {
+    const user = userEvent.setup();
+    render(<IssueReportForm />);
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    expect(mockCreateIssue).not.toHaveBeenCalled();
+    expect(screen.getByText("Title is required.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^title/i)).toHaveFocus();
+    expect(screen.getByLabelText(/^title/i)).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("submitting: disables controls and blocks duplicate submission", async () => {
+    const user = userEvent.setup();
+    let resolve!: (v: unknown) => void;
+    mockCreateIssue.mockReturnValue(new Promise((r) => (resolve = r)));
+    render(<IssueReportForm />);
+    await fill(user);
+    const form = screen.getByRole("button", { name: "Submit report" }).closest("form")!;
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    expect(screen.getByRole("button", { name: "Submitting..." })).toBeDisabled();
+    expect(form).toHaveAttribute("aria-busy", "true");
+    await user.type(screen.getByLabelText(/^title/i), "x"); // disabled, no-op
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    expect(mockCreateIssue).toHaveBeenCalledTimes(1);
+    resolve(CREATED);
+    await screen.findByText("Issue reported");
+  });
+
+  it("API/domain failure: shows message, preserves input", async () => {
+    const user = userEvent.setup();
+    mockCreateIssue.mockRejectedValue(new ApiError("title is required", "http", 400, "VALIDATION_FAILED"));
+    render(<IssueReportForm />);
+    await fill(user);
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("title is required");
+    expect(screen.getByLabelText(/^title/i)).toHaveValue("Leak");
+  });
+
+  it("network failure: unavailable message, not a session message; retry works", async () => {
+    const user = userEvent.setup();
+    mockCreateIssue.mockRejectedValueOnce(new ApiError("Failed to fetch", "network"));
+    mockCreateIssue.mockResolvedValueOnce(CREATED);
+    render(<IssueReportForm />);
+    await fill(user);
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/unreachable/i);
+    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    await waitFor(() => expect(screen.getByText("Issue reported")).toBeInTheDocument());
+  });
+
+  it("backend 401: prompts sign-in", async () => {
+    const user = userEvent.setup();
+    mockCreateIssue.mockRejectedValue(new ApiError("Authentication required", "http", 401, "UNAUTHORIZED"));
+    render(<IssueReportForm />);
+    await fill(user);
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    expect(await screen.findByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
+  });
+});
+
+describe("IssueReportForm geolocation", () => {
+  beforeEach(() => {
+    mockCreateIssue.mockReset();
+    mockUseAuth.mockReturnValue({ status: "authenticated" });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubGeolocation(impl: (ok: PositionCallback, err: PositionErrorCallback) => void) {
+    vi.stubGlobal("navigator", { ...navigator, geolocation: { getCurrentPosition: impl } });
+  }
+
+  it("success: populates latitude and longitude; manual edit and submit still work", async () => {
+    const user = userEvent.setup();
+    stubGeolocation((ok) =>
+      ok({ coords: { latitude: 25.594095, longitude: 85.137566 } } as GeolocationPosition),
+    );
+    mockCreateIssue.mockResolvedValue(CREATED);
+    render(<IssueReportForm />);
+    await user.click(screen.getByRole("button", { name: "Use my current location" }));
+    expect(screen.getByLabelText(/^latitude/i)).toHaveValue("25.594095");
+    expect(screen.getByLabelText(/^longitude/i)).toHaveValue("85.137566");
+    await user.type(screen.getByLabelText(/^title/i), "Leak");
+    await user.type(screen.getByLabelText(/^description/i), "Pipe burst");
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    expect(mockCreateIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ location: { type: "Point", coordinates: [85.137566, 25.594095] } }),
+    );
+  });
+
+  it("failure: shows manual-entry fallback and leaves coordinates untouched", async () => {
+    const user = userEvent.setup();
+    stubGeolocation((_ok, err) => err({ code: 1, message: "denied" } as GeolocationPositionError));
+    render(<IssueReportForm />);
+    await user.click(screen.getByRole("button", { name: "Use my current location" }));
+    expect(screen.getByRole("status")).toHaveTextContent(/enter coordinates manually/i);
+    expect(screen.getByLabelText(/^latitude/i)).toHaveValue("");
+  });
+
+  it("unavailable: shows manual-entry fallback when geolocation is unsupported", async () => {
+    const user = userEvent.setup();
+    const { geolocation: _omit, ...rest } = navigator as Navigator & { geolocation?: unknown };
+    void _omit;
+    vi.stubGlobal("navigator", rest);
+    render(<IssueReportForm />);
+    await user.click(screen.getByRole("button", { name: "Use my current location" }));
+    expect(screen.getByRole("status")).toHaveTextContent(/enter coordinates manually/i);
+  });
+});
+
+describe("ReportIssueButton authentication boundary", () => {
+  it("anonymous: dialog shows sign-in guidance, not the form", async () => {
+    mockUseAuth.mockReturnValue({ status: "anonymous" });
+    const user = userEvent.setup();
+    render(<ReportIssueButton />);
+    await user.click(screen.getByRole("button", { name: "Report an issue" }));
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
+    expect(screen.queryByLabelText(/^title/i)).not.toBeInTheDocument();
+  });
+
+  it("authenticated: dialog shows the form", async () => {
+    mockUseAuth.mockReturnValue({ status: "authenticated" });
+    const user = userEvent.setup();
+    render(<ReportIssueButton />);
+    await user.click(screen.getByRole("button", { name: "Report an issue" }));
+    expect(screen.getByLabelText(/^title/i)).toBeInTheDocument();
+  });
+});

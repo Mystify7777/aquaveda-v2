@@ -115,3 +115,16 @@ describe("getIssue", () => {
     await expect(getIssue("x")).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
   });
 });
+
+describe("createIssue", () => {
+  it("POSTs JSON with content-type to /api/v1/issues and returns the created issue", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "https://api.aquaveda.com";
+    mockFetchOnce({ success: true, data: SAMPLE_ISSUE, message: "Issue created" }, true, 201);
+    const { createIssue } = await import("@/lib/api/issues");
+    const payload = { title: "Leaking pipe", description: "d", location: { type: "Point" as const, coordinates: [77.5, 12.9] as [number, number] } };
+    await expect(createIssue(payload)).resolves.toMatchObject({ _id: "issue-1" });
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(url)).toContain("/api/v1/issues");
+    expect(init).toMatchObject({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  });
+});
