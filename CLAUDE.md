@@ -426,6 +426,7 @@ logout-vs-access-token-expiry trade-off.
   build plan in `server/README.md` — backend built here, not in a separate repo.
   Future evolution path: `apps/web` + `apps/server` workspace layout.
 
+- Issue category/severity contract (#67): canonical optional vocabularies in `server/src/domain/issue-classification.js` (single source of truth) → Zod enum validation, Issue schema enum, frontend selects/types via `src/lib/issues/classification.ts`. No filtering/lifecycle/auth changes. Documented in `docs/domain/domain-model.md`.
 - Frontend issue reporting (#44): `IssueReportForm` + `ReportIssueButton` (Radix Dialog, `RequireAuth` around content only), mounted on minimal public `/explore`; `createIssue()` in `lib/api/issues.ts`; hand-rolled validation in `lib/issues/report-validation.ts` (no new deps). Fixed `RequireAuth` links `/login`→`/auth/login`.
 
 ## Architectural Decisions

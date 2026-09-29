@@ -39,6 +39,60 @@ domain-quality authority). The domain requires enough status-transition
 information to be retained because `resolved`/`verified` accountability
 depends on knowing who made which claim and when.
 
+**Classification (Issue #67, resolves D-9).** `category` (what kind of water
+problem was observed — a lay observation, not a technical diagnosis) and
+`severity` (impact/urgency on people or the environment — not reporter
+confidence, fix difficulty/cost, or moderation priority) are **optional** at
+creation. Contract, by representation:
+
+| Layer                | Unspecified            | Canonical value | `""` | Other string |
+| -------------------- | ---------------------- | --------------- | ---- | ------------ |
+| Request (POST)       | **omit the key**       | accepted        | **rejected** | rejected |
+| Persistence / read   | represented as `""`    | stored as-is    | —    | —            |
+
+The client never sends `""`; `""` exists only as the persistence/read
+representation of "unclassified" (the schema default). Minimum reportable
+information stays title + description + location.
+
+| `category` value         | Label                   | Meaning                                                  |
+| ------------------------ | ----------------------- | -------------------------------------------------------- |
+| `supply_shortage`        | No or low water supply  | Water is not arriving, or far less than usual            |
+| `leakage_wastage`        | Leak or wastage         | Visible leaking, overflowing, or wasted water            |
+| `water_quality`          | Water quality concern   | Unusual colour, smell, taste, or visible pollution       |
+| `flooding_drainage`      | Flooding or drainage    | Standing water, waterlogging, or blocked drains          |
+| `damaged_infrastructure` | Damaged water facility  | Pump, tank, tap, well, or pipeline broken or not working |
+| `other`                  | Other water issue       | Water-related, fits none of the above                    |
+
+| `severity` value | Label    | Meaning                                                          |
+| ---------------- | -------- | ---------------------------------------------------------------- |
+| `low`            | Low      | Minor; little effect on daily water use or safety                |
+| `medium`         | Medium   | Noticeable disruption or ongoing waste, not immediately harmful  |
+| `high`           | High     | Serious disruption or risk affecting many people or environment  |
+| `critical`       | Critical | Immediate risk to health or safety, or a severe emergency        |
+
+Source of truth: `server/src/domain/issue-classification.js` (values, labels,
+descriptions). Backend Zod validation, the Issue Mongoose enum, and the
+frontend form/types all derive from it — no other list may exist. The set is
+a bounded V1 decision: no existing locked document defined a vocabulary, so
+it is deliberately small and low-friction. To add a value, append an entry to
+that module (never rename or reuse a `value`; labels/descriptions may be
+reworded), update this section, and add a test. Renaming/removal needs a data
+migration decision.
+
+**Read-type assumption.** The frontend type for `category`/`severity` is
+`IssueCategory | ""` / `IssueSeverity | ""` (no plain `string`). This assumes
+no non-canonical values exist in the database, and the repository supports
+that: v2 is a rebuild (not a data migration from v1), the only seed script
+creates Users, there are no Issue fixtures or migrations, and no client
+ever submitted category/severity before #67 (the #44 form omitted them). Note
+this is a compile-time claim only — the API client does not validate response
+bodies, and Mongoose reads do not re-validate, so the type is an assumption
+about stored data, not a runtime guarantee. If pre-#67 rows with free-text
+values are ever introduced (e.g. a v1 import or shared environment data),
+that requires an explicit decision — a migration, or a deliberate
+compatibility representation on the read contract — not silent normalization
+or widening the type to `string`.
+
 **Open dependency:** `acknowledged → in_progress` and `in_progress →
 resolved` both require an "authorized remediation actor," but the
 mechanism for obtaining that authority is deferred to the Project/Act

@@ -1,5 +1,10 @@
 import mongoose from "mongoose";
 
+import {
+  ISSUE_CATEGORY_VALUES,
+  ISSUE_SEVERITY_VALUES,
+} from "../domain/issue-classification.js";
+
 const { Schema } = mongoose;
 
 /**
@@ -92,11 +97,12 @@ const issueStatusHistoryEntrySchema = new Schema(
  *   `updateOne`). The real guarantee is that no service operation ever
  *   exposes `reportedBy` as an updatable field. See persistence-design.md §6.
  *
- * `category` is deliberately a freeform String, not an enum — this
- * resolves decision-register D-9 ("implementation detail") at the point
- * this schema is written, since no approved document specifies a fixed
- * category list. `severity` is treated the same way for the same reason
- * (no approved severity scale exists in any locked document).
+ * `category` and `severity` are constrained to the canonical vocabulary
+ * in domain/issue-classification.js (Issue #67, decision-register D-9),
+ * plus "" meaning "not classified" (the default). The enum is
+ * defense-in-depth for create/save; reads never re-validate. No legacy
+ * free-text data is assumed to exist — see domain-model.md, "Read-type
+ * assumption".
  */
 const locationSchema = new Schema(
   {
@@ -150,10 +156,12 @@ const issueSchema = new Schema(
     },
     severity: {
       type: String,
+      enum: ["", ...ISSUE_SEVERITY_VALUES],
       default: "",
     },
     category: {
       type: String,
+      enum: ["", ...ISSUE_CATEGORY_VALUES],
       default: "",
     },
     domain: {

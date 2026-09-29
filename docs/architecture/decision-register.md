@@ -443,7 +443,7 @@ for the resolved values.
 
 ## 🔧 Implementation detail (resolved when the relevant schema is written, no ADR needed)
 
-- Issue `category`: enum vs. freeform representation.
+- Issue `category`/`severity`: **resolved (Issue #67)** — optional, canonical enum vocabularies defined in `server/src/domain/issue-classification.js`; see `domain-model.md` (Issue → Classification).
 
 ## 🟢 Established (already correct, not reopened)
 
