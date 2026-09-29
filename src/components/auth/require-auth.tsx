@@ -43,10 +43,10 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
                 </p>
                 <div className="flex gap-2">
                     <Button asChild size="sm">
-                        <Link href="/login">Sign in</Link>
+                        <Link href="/auth/login">Sign in</Link>
                     </Button>
                     <Button asChild variant="outline" size="sm">
-                        <Link href="/register">Register</Link>
+                        <Link href="/auth/register">Register</Link>
                     </Button>
                 </div>
             </div>
@@ -62,7 +62,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
                 </p>
                 <div className="flex gap-2">
                     <Button asChild size="sm">
-                        <Link href="/login">Sign in</Link>
+                        <Link href="/auth/login">Sign in</Link>
                     </Button>
                 </div>
             </div>

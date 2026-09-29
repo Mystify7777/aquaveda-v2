@@ -426,6 +426,8 @@ logout-vs-access-token-expiry trade-off.
   build plan in `server/README.md` — backend built here, not in a separate repo.
   Future evolution path: `apps/web` + `apps/server` workspace layout.
 
+- Frontend issue reporting (#44): `IssueReportForm` + `ReportIssueButton` (Radix Dialog, `RequireAuth` around content only), mounted on minimal public `/explore`; `createIssue()` in `lib/api/issues.ts`; hand-rolled validation in `lib/issues/report-validation.ts` (no new deps). Fixed `RequireAuth` links `/login`→`/auth/login`.
+
 ## Architectural Decisions
 
 - New repository over in-place migration (ADR-0001)

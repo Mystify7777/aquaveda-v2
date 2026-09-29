@@ -66,8 +66,8 @@ describe("RequireAuth", () => {
             </RequireAuth>,
         );
         expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
-        expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
-        expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
+        expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
+        expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/auth/register");
     });
 
     it("session-failure: renders a distinct 'sign in again' message, not the generic unavailable message", () => {
@@ -83,7 +83,7 @@ describe("RequireAuth", () => {
         expect(alert.textContent).not.toMatch(/unavailable/i);
         // session-failure offers a way to recover (sign in again) —
         // unavailable deliberately does not (see the next test).
-        expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+        expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
     });
 
     it("unavailable: renders a distinct network/backend message, never implying the session itself is the problem", () => {

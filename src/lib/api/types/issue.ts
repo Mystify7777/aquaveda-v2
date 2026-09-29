@@ -38,3 +38,15 @@ export interface Issue {
 export interface IssueListQuery extends PaginationQuery {
   status?: IssueStatus;
 }
+
+/**
+ * Fields of POST /api/v1/issues consumed by the reporting flow (#44).
+ * The backend also accepts optional `severity`/`category` strings (and
+ * strips `domain`); they are deliberately not modeled here until #67
+ * defines their semantics and canonical vocabulary.
+ */
+export interface CreateIssuePayload {
+  title: string;
+  description: string;
+  location: IssueLocation;
+}
