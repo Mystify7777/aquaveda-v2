@@ -23,3 +23,16 @@ export interface KnowledgeArticle {
 }
 
 export type KnowledgeListQuery = PaginationQuery;
+
+/** Body of POST /api/v1/knowledge. `region` is intentionally not modeled (semantics undefined). */
+export interface CreateKnowledgePayload {
+  title: string;
+  body: string;
+}
+
+/**
+ * Fields the create endpoint actually returns that the frontend consumes.
+ * The response is the raw created document (author is an unpopulated id),
+ * so it is deliberately not typed as KnowledgeArticle.
+ */
+export type CreatedKnowledgeDraft = Pick<KnowledgeArticle, "_id" | "title" | "status">;
