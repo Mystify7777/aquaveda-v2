@@ -98,11 +98,16 @@ function describedBy(id: string, hasHint: boolean, hasError: boolean) {
 }
 
 /**
- * Project creation primitive (#47). Auth gating is the route's job
- * (protected layout → RequireAuth); origin-issue existence, eligibility and
- * authorization are backend-authoritative. Mount-agnostic: #52 relocates it.
+ * Project creation primitive (#47).
+ * Auth gating is provided by RequireAuth at the mount point;
+ * origin-issue existence, eligibility, and authorization remain
+ * backend-authoritative. Mounted by NewProjectButton on /act (#52).
  */
-export function ProjectCreateForm() {
+export function ProjectCreateForm({
+  onCreated,
+}: {
+  onCreated?: (project: CreatedProject) => void;
+}) {
   const [values, setValues] = React.useState<ProjectCreationValues>(EMPTY_PROJECT_CREATION);
   const [fieldErrors, setFieldErrors] = React.useState<ProjectCreationErrors>({});
   const [failure, setFailure] = React.useState<SubmitFailure | null>(null);
@@ -140,7 +145,9 @@ export function ProjectCreateForm() {
     inFlight.current = true;
     setPending(true);
     try {
-      setCreated(await createProject(result.payload));
+      const project = await createProject(result.payload);
+      setCreated(project);
+      onCreated?.(project);
     } catch (error) {
       setFailure(toFailure(error));
     } finally {
@@ -165,9 +172,14 @@ export function ProjectCreateForm() {
         <p className="text-muted-foreground text-sm">
           &ldquo;{created.title}&rdquo; was created from issue <strong>{created.originIssue}</strong>.
         </p>
-        <Button variant="outline" onClick={createAnother}>
-          Create another
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild>
+            <Link href={`/act/${created._id}`}>View project</Link>
+          </Button>
+          <Button variant="outline" onClick={createAnother}>
+            Create another
+          </Button>
+        </div>
       </div>
     );
   }

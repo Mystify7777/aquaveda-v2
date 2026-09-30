@@ -2,8 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import ProtectedLayout from "@/app/protected/layout";
-import NewProjectPage from "@/app/protected/act/new/page";
 import { ProjectCreateForm } from "@/components/projects/project-create-form";
 import { ApiError } from "@/lib/api/client";
 
@@ -75,8 +73,24 @@ describe("ProjectCreateForm", () => {
     });
     expect(await screen.findByText("Project created")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(ID);
+    expect(screen.getByRole("link", { name: "View project" })).toHaveAttribute("href", "/act/p1");
     await user.click(screen.getByRole("button", { name: "Create another" }));
     expect(screen.getByLabelText(/^title/i)).toHaveValue("");
+  });
+
+  it("calls onCreated with the created project on success only", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    mockCreateProject.mockRejectedValueOnce(new ApiError("boom", "http", 500));
+    mockCreateProject.mockResolvedValueOnce(CREATED);
+    render(<ProjectCreateForm onCreated={onCreated} />);
+    await fill(user);
+    await user.click(submit());
+    await screen.findByRole("alert");
+    expect(onCreated).not.toHaveBeenCalled();
+    await user.click(submit());
+    await screen.findByText("Project created");
+    expect(onCreated).toHaveBeenCalledWith(CREATED);
   });
 
   it("pending: disables controls and blocks duplicate submission", async () => {
@@ -166,29 +180,5 @@ describe("ProjectCreateForm", () => {
     await user.click(submit());
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not create your project/i);
     expect(screen.getByLabelText(/^description/i)).toHaveValue("Coordinated fix");
-  });
-});
-
-describe("/protected/act/new under the protected layout", () => {
-  function renderRoute() {
-    return render(
-      <ProtectedLayout>
-        <NewProjectPage />
-      </ProtectedLayout>,
-    );
-  }
-
-  it("authenticated: renders the page and form", () => {
-    mockUseAuth.mockReturnValue({ status: "authenticated" });
-    renderRoute();
-    expect(screen.getByRole("heading", { name: "New project" })).toBeInTheDocument();
-    expect(screen.getByLabelText(/^title/i)).toBeInTheDocument();
-  });
-
-  it("anonymous: shows the established sign-in UX, not the form", () => {
-    mockUseAuth.mockReturnValue({ status: "anonymous" });
-    renderRoute();
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
-    expect(screen.queryByLabelText(/^title/i)).not.toBeInTheDocument();
   });
 });
