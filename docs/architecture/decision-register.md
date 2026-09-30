@@ -737,6 +737,82 @@ Restated below only as locked conclusions, resolving
   criteria; implementation review in
   `docs/architecture/checkpoint-issue-48-implementation-notes.md`.
 
+  **Amended (Issue #74, authenticated Knowledge workflow reads):** 3
+  authenticated GET routes added to Knowledge (now 5 write + 2 public
+  read + 3 workflow read = 10; domain routes total 19):
+  `GET /api/v1/knowledge/mine`, `GET /api/v1/knowledge/review-queue`,
+  `GET /api/v1/knowledge/:knowledgeId/workflow`. Justification: #51's
+  review lifecycle (submit/approve/reject/revise) had no reachable
+  target — the public reads are approved-only by design, so a reviewer
+  could not discover or read a `pending_review` article, and an author
+  could not find their own draft/pending/rejected articles without
+  remembering an internal ID. Read-only; no lifecycle state, role,
+  permission, schema field, or index is added; D-3a untouched. The
+  decisions below are locked with this amendment.
+
+- **ROUTE-L2a — Workflow authorization (Issue #74).** All three routes
+  call `requireActor` in the service (401 when unauthenticated).
+  `GET /mine`: the owner filter is `actorContext.id` only — no
+  caller-supplied author is accepted (an `?author=` param is ignored).
+  `GET /review-queue`: `requireRole(actor, "EXPERT")` — the same exact
+  single-role rule as `approve`/`reject` (AUTH-L2); ADMIN is forbidden
+  (403), consistent with the locked EXPERT-only, not EXPERT-or-ADMIN,
+  review authority. `GET /:knowledgeId/workflow`: readable iff the
+  caller is the article's author, or is an EXPERT and the article is
+  `pending_review`. Every other case — including a nonexistent id — is
+  the same `NOT_FOUND` (never `FORBIDDEN`), for the reason
+  `getApprovedKnowledgeById` documents: a distinguishing error would
+  confirm that a specific non-public article exists. Authorization is
+  decided on the raw document before any population. A malformed id is
+  `VALIDATION_FAILED` (400).
+
+- **ROUTE-L2b — Review queue excludes the caller's own submissions
+  (Issue #74, decision 1).** Chosen: exclude (`author != actor.id`).
+  Reason: `approve`/`reject` already hard-forbid `reviewerId ===
+  authorId`, so an own-authored item in the queue could only yield an
+  item whose every action fails. This is derived from the existing
+  invariant, not a new rule. Rejected alternative: include and let the
+  action return 403 — worse UX, and it would push the self-review check
+  into the frontend. Consequence: an EXPERT's own pending article is
+  reachable through `/mine` and `/:knowledgeId/workflow` (author rule),
+  not the queue.
+
+- **ROUTE-L2c — List items are summaries; the detail read carries the
+  body (Issue #74, decision 2).** Chosen: `/mine` and `/review-queue`
+  return `{_id, title, region, status, author, createdAt, updatedAt}`
+  — no `body`, no `reviewHistory`. Only `/:knowledgeId/workflow` returns
+  `body` and `reviewHistory`. Reason: article bodies are unbounded, and a
+  50-item page of full bodies is the largest payload in the API; the
+  detail route is required regardless (a reviewer must read the article
+  before deciding), so bodies in lists would be a second source of the
+  same data. Deliberate refinement of #74's draft text, which allowed
+  either shape.
+
+- **ROUTE-L2d — Separate workflow DTO; public DTO untouched (Issue
+  #74).** `server/src/services/knowledge.dto.js` maps lean documents by
+  explicit allow-list (never the Mongoose document; no `__v`). Actors
+  are `{_id, name, role}` only, for `author` and, on the detail shape,
+  `reviewHistory[].reviewer` (populated) plus `feedback`. A reference
+  that no longer resolves maps to `null`. The public #48 reads still
+  return the existing shape (author populated, `reviewer` an
+  unpopulated id) — locked by regression tests. `/mine` and
+  `/review-queue` are registered before the public `/:knowledgeId`
+  (route-order regression test). Query validation: `/mine` accepts an
+  optional `status` enum of the four existing states plus
+  `paginationQuerySchema`; `/review-queue` accepts pagination only.
+  Ordering: `/mine` by `updatedAt` desc; `/review-queue` by `updatedAt`
+  asc (oldest first) — no `submittedAt` field is added because content
+  is immutable while `pending_review`, so `updatedAt` equals submission
+  time for every queue item; `_id` breaks ties. No new index: the
+  existing `{status}` and `{author}` indexes serve both queries
+  (`persistence-design.md`: approved indexes only).
+
+- **Known finding, out of scope for #74:** the *public* Knowledge detail
+  returns `reviewHistory`, including rejection `feedback` and
+  unpopulated reviewer ids, for an article that was rejected and later
+  approved. Not changed here (the public contract is locked by #74). A
+  narrower public DTO is a candidate follow-up.
+
 - **ROUTE-L3 — No route-level "must be authenticated" gate.** Confirmed
   by direct inspection (discovery report §0/§2a): all 9 domain-service
   operations already call `requireActor()` as their first line. A

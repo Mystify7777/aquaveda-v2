@@ -8,6 +8,9 @@ import {
   revise,
   listApprovedKnowledge,
   getApprovedKnowledgeById,
+  listMyKnowledge,
+  listReviewQueue,
+  getKnowledgeForWorkflow,
 } from "../services/knowledge.service.js";
 import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
 import {
@@ -15,6 +18,8 @@ import {
   rejectKnowledgeSchema,
   reviseKnowledgeSchema,
   listApprovedKnowledgeQuerySchema,
+  myKnowledgeQuerySchema,
+  reviewQueueQuerySchema,
 } from "../validation/knowledge.validation.js";
 
 /**
@@ -27,6 +32,13 @@ import {
  * UPDATED (Issue #48): 2 public read routes added — GET / (list,
  * approved-only) and GET /:knowledgeId (detail, approved-only). See
  * issue.routes.js's identical note on ROUTE-L2's amendment.
+ *
+ * UPDATED (Issue #74): 3 authenticated workflow read routes added —
+ * GET /mine, GET /review-queue, GET /:knowledgeId/workflow. `/mine` and
+ * `/review-queue` are registered BEFORE the public GET /:knowledgeId,
+ * otherwise Express would capture them as a knowledgeId. Authorization
+ * lives in the services (requireActor / requireRole), as for every other
+ * route here.
  *
  * `submitForReview` and `approve` take no request body — same pattern
  * as auth.routes.js's `/refresh`/`/logout`/`/me` (cookie/context-driven
@@ -59,11 +71,62 @@ knowledgeRouter.get("/", async (req, res) => {
 });
 
 /**
+ * GET /mine — the caller's own Knowledge, every status (Issue #74).
+ * MUST stay above GET /:knowledgeId.
+ */
+knowledgeRouter.get("/mine", async (req, res) => {
+  const parsed = myKnowledgeQuerySchema.safeParse(req.query ?? {});
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+
+  try {
+    const result = await listMyKnowledge(req.actorContext, parsed.data);
+    sendSuccess(res, result, "Knowledge retrieved");
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
+ * GET /review-queue — pending_review Knowledge, EXPERT only (Issue #74).
+ * MUST stay above GET /:knowledgeId.
+ */
+knowledgeRouter.get("/review-queue", async (req, res) => {
+  const parsed = reviewQueueQuerySchema.safeParse(req.query ?? {});
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+
+  try {
+    const result = await listReviewQueue(req.actorContext, parsed.data);
+    sendSuccess(res, result, "Review queue retrieved");
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
  * GET /:knowledgeId — public, approved-only Knowledge detail.
  */
 knowledgeRouter.get("/:knowledgeId", async (req, res) => {
   try {
     const knowledge = await getApprovedKnowledgeById(req.params.knowledgeId);
+    sendSuccess(res, knowledge, "Knowledge article retrieved");
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
+ * GET /:knowledgeId/workflow — full article for its author, or for an
+ * EXPERT while it is pending_review (Issue #74). Uniform 404 otherwise.
+ */
+knowledgeRouter.get("/:knowledgeId/workflow", async (req, res) => {
+  try {
+    const knowledge = await getKnowledgeForWorkflow(req.actorContext, req.params.knowledgeId);
     sendSuccess(res, knowledge, "Knowledge article retrieved");
   } catch (err) {
     sendError(res, err);
