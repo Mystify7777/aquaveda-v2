@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { getProjects, getProject } from "@/lib/api/projects";
+import { createProject, getProjects, getProject } from "@/lib/api/projects";
 
 function mockFetchOnce(body: unknown, ok = true, status = 200) {
   global.fetch = vi.fn().mockResolvedValue({
@@ -61,5 +61,24 @@ describe("getProject", () => {
   it("throws a 404 ApiError for a nonexistent project", async () => {
     mockFetchOnce({ success: false, data: null, message: "Project p-1 not found", code: "NOT_FOUND" }, false, 404);
     await expect(getProject("p-1")).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+  });
+});
+
+describe("createProject", () => {
+  it("POSTs exactly { title, description, originIssue } as JSON to /api/v1/projects", async () => {
+    mockFetchOnce(
+      { success: true, data: { _id: "p-2", title: "T", originIssue: "507f1f77bcf86cd799439011" }, message: "Project created" },
+      true,
+      201,
+    );
+    const payload = { title: "T", description: "D", originIssue: "507f1f77bcf86cd799439011" };
+    await expect(createProject(payload)).resolves.toMatchObject({ _id: "p-2" });
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("https://api.aquaveda.com/api/v1/projects");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   });
 });
