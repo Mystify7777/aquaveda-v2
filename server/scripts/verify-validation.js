@@ -29,6 +29,8 @@ import {
   reviewKnowledgeSchema,
   rejectKnowledgeSchema,
   reviseKnowledgeSchema,
+  myKnowledgeQuerySchema,
+  reviewQueueQuerySchema,
 } from "../src/validation/knowledge.validation.js";
 import { createCommentSchema } from "../src/validation/comment.validation.js";
 import { createProjectSchema } from "../src/validation/project.validation.js";
@@ -519,6 +521,39 @@ check("11g. Revise with only title passes (all fields independently optional)", 
 
 check("11h. Revise with an empty-string title fails (not empty, just absent, is what's allowed)", () => {
   assert.equal(reviseKnowledgeSchema.safeParse({ title: "" }).success, false);
+});
+
+// ---------------------------------------------------------------------
+// 12. Knowledge workflow read queries (Issue #74)
+// ---------------------------------------------------------------------
+check("12a. My Knowledge query defaults to page 1 / limit 20 with no status", () => {
+  const r = myKnowledgeQuerySchema.safeParse({});
+  assert.equal(r.success, true);
+  assert.deepEqual(r.data, { page: 1, limit: 20 });
+});
+
+check("12b. My Knowledge accepts each of the four existing lifecycle statuses", () => {
+  for (const status of ["draft", "pending_review", "approved", "rejected"]) {
+    assert.equal(myKnowledgeQuerySchema.safeParse({ status }).success, true, status);
+  }
+});
+
+check("12c. My Knowledge rejects an unknown status", () => {
+  assert.equal(myKnowledgeQuerySchema.safeParse({ status: "published" }).success, false);
+});
+
+check("12d. My Knowledge and Review queue reject out-of-range pagination", () => {
+  for (const schema of [myKnowledgeQuerySchema, reviewQueueQuerySchema]) {
+    assert.equal(schema.safeParse({ page: "0" }).success, false);
+    assert.equal(schema.safeParse({ limit: "51" }).success, false);
+    assert.equal(schema.safeParse({ limit: "abc" }).success, false);
+  }
+});
+
+check("12e. Review queue takes no status parameter (it is fixed to pending_review at the service)", () => {
+  const r = reviewQueueQuerySchema.safeParse({ status: "draft" });
+  assert.equal(r.success, true);
+  assert.equal("status" in r.data, false);
 });
 
 // ---------------------------------------------------------------------
