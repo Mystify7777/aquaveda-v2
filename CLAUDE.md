@@ -4,6 +4,7 @@
 
 ## Current Milestone
 
+<<<<<<< HEAD
 Issue #51 — frontend Learn surfaces — **implemented; ready for review**
 (backend #74 workflow reads merged at `bb4d37d`). Public: `/learn` list,
 `/learn/[knowledgeId]` detail (approved-only, defensive status guard,
@@ -29,6 +30,24 @@ is `PublicActor | null` on workflow reads, an unpopulated id on public
 reads (types differ deliberately). No backend, schema, role, or lifecycle
 change; D-3a untouched. Lifecycle write results are consumed as
 `KnowledgeLifecycleResult` (`_id`, `title`, `status`) only.
+=======
+Issue #74 — authenticated Knowledge workflow reads — **implemented;
+real-MongoDB verification pending** (the implementation environment has
+no `mongod`; a wire-compatible stand-in was used for iteration only, so
+no pass count is recorded here until the developer's real run).
+3 read-only routes: `GET /api/v1/knowledge/mine`,
+`GET /api/v1/knowledge/review-queue`,
+`GET /api/v1/knowledge/:knowledgeId/workflow`. Unblocks the review
+lifecycle portion of frontend #51 (approve/reject/revise had no
+reachable target). No schema, index, role, permission, or lifecycle
+change; D-3a untouched; public Knowledge routes/DTO unchanged
+(regression-tested). Decisions: review queue excludes the caller's own
+submissions; list items are summaries (no `body`/`reviewHistory`), the
+detail read carries them; separate workflow DTO. Full detail:
+`docs/architecture/decision-register.md` ROUTE-L2 amendment (#74) and
+ROUTE-L2a–L2d. Remaining #51 frontend (mine/review pages, submit/
+approve/reject/revise UI) follows this milestone.
+>>>>>>> 33f28793ce0c055e146fe0c09d8dddf31ab6157f
 
 Routes — **implemented, reviewed, and verified for real against real
 MongoDB: 232/232 tests, 54 suites, 0 failures.** Executed as 6 reviewed
@@ -497,6 +516,10 @@ logout-vs-access-token-expiry trade-off.
 
 ## Technical Debt
 
+- Public Knowledge detail still returns `reviewHistory` (incl. rejection
+  `feedback`, unpopulated reviewer ids) for articles rejected then
+  approved. Left unchanged by #74 (public contract locked); a narrower
+  public DTO is a candidate follow-up (register: ROUTE-L2d).
 - `not-found.tsx` copy says "hasn't been built yet" — will need updating
   as real routes ship (acceptable for now, honest placeholder)
 - **D-3a (remediation-assertion authority) remains unresolved** — not
@@ -516,6 +539,10 @@ logout-vs-access-token-expiry trade-off.
   30 suites** against real MongoDB — Phases A–H, all closed.
 
 ## Next Milestone
+
+After #74's real-MongoDB verification and merge: resume frontend #51
+(review lifecycle UI against the new reads). The paragraph below is the
+prior milestone's status and is otherwise unchanged.
 
 Authentication (Phases A–H), Authorization & Ownership Policy, and
 Routes are all fully complete, reviewed, and verified: **232/232
