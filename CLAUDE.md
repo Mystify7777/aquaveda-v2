@@ -4,6 +4,32 @@
 
 ## Current Milestone
 
+Issue #51 — frontend Learn surfaces — **implemented; ready for review**
+(backend #74 workflow reads merged at `bb4d37d`). Public: `/learn` list,
+`/learn/[knowledgeId]` detail (approved-only, defensive status guard,
+404/400 → not-found, transport failure → retryable alert), discussion
+(`CommentThread` over the #48 read contract + `CommentComposer` for
+top-level and one-level replies). Authenticated (`/protected/learn/…`):
+`mine` (status filter + pagination in the URL), `review` (queue),
+`review/[id]` (full workflow DTO: body, status, author, review history,
+rejection feedback, resolved reviewers), and the lifecycle actions —
+submit, approve, reject (feedback required), revise (rejected → draft,
+prefilled, same title/body validation as #45). Authenticated reads are
+client-side (`useApiResource`, `src/lib/api/use-api-resource.ts`): the
+session cookie belongs to the API origin, so a Next server render cannot
+forward it; the hook is a minimal fetch/reload primitive, not a cache or
+library. Action controls derive from article status plus
+viewer-is-author (session identity, presentation only); the backend
+re-authorizes every write and every refusal (403/409/404/401/network) is
+rendered, not pre-empted. After approve/reject the reviewer sees an
+outcome panel instead of a refetch (they can no longer read the article).
+Shared `LoadError` (`retryHref` | `onRetry`, 401 sign-in) and
+`PaginationNav` (`params`) extracted to `ui/`. `reviewHistory[].reviewer`
+is `PublicActor | null` on workflow reads, an unpopulated id on public
+reads (types differ deliberately). No backend, schema, role, or lifecycle
+change; D-3a untouched. Lifecycle write results are consumed as
+`KnowledgeLifecycleResult` (`_id`, `title`, `status`) only.
+
 Routes — **implemented, reviewed, and verified for real against real
 MongoDB: 232/232 tests, 54 suites, 0 failures.** Executed as 6 reviewed
 checkpoints (A: shared HTTP error infra; B: 4 validation modules; C:
