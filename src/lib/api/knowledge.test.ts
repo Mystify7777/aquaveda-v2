@@ -88,3 +88,103 @@ describe("createKnowledge", () => {
     });
   });
 });
+
+describe("submitKnowledge", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("POSTs to /api/v1/knowledge/:id/submit with no body", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "https://api.aquaveda.com";
+    mockFetchOnce(
+      { success: true, data: { _id: "k-2", title: "T", status: "pending_review" }, message: "Knowledge submitted for review" },
+    );
+    const { submitKnowledge } = await import("@/lib/api/knowledge");
+    await expect(submitKnowledge("k-2")).resolves.toMatchObject({ status: "pending_review" });
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("https://api.aquaveda.com/api/v1/knowledge/k-2/submit");
+    expect(init).toMatchObject({ method: "POST" });
+    expect(init.body).toBeUndefined();
+  });
+});
+
+describe("authenticated workflow reads (#74)", () => {
+  const envelope = (data: unknown) => ({ success: true, data, message: "ok" });
+  const page = { items: [], page: 1, limit: 20, total: 0, totalPages: 0 };
+
+  it("getMyKnowledge requests /mine with page and status, no author parameter", async () => {
+    mockFetchOnce(envelope(page));
+    const { getMyKnowledge } = await import("@/lib/api/knowledge");
+    await getMyKnowledge({ page: 2, status: "rejected" });
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("https://api.aquaveda.com/api/v1/knowledge/mine?page=2&status=rejected");
+    expect(init).toMatchObject({ credentials: "include", cache: "no-store" });
+  });
+
+  it("getMyKnowledge omits an undefined status", async () => {
+    mockFetchOnce(envelope(page));
+    const { getMyKnowledge } = await import("@/lib/api/knowledge");
+    await getMyKnowledge({ page: 1, status: undefined });
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+      "https://api.aquaveda.com/api/v1/knowledge/mine?page=1",
+    );
+  });
+
+  it("getReviewQueue requests /review-queue with pagination only", async () => {
+    mockFetchOnce(envelope(page));
+    const { getReviewQueue } = await import("@/lib/api/knowledge");
+    await getReviewQueue({ page: 3 });
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+      "https://api.aquaveda.com/api/v1/knowledge/review-queue?page=3",
+    );
+  });
+
+  it("getKnowledgeWorkflow requests /:id/workflow, encoding the id", async () => {
+    mockFetchOnce(envelope({ _id: "k-1" }));
+    const { getKnowledgeWorkflow } = await import("@/lib/api/knowledge");
+    await getKnowledgeWorkflow("k/1");
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+      "https://api.aquaveda.com/api/v1/knowledge/k%2F1/workflow",
+    );
+  });
+});
+
+describe("lifecycle writes", () => {
+  const result = { success: true, data: { _id: "k-1", title: "T", status: "approved" }, message: "ok" };
+
+  it("approveKnowledge POSTs /:id/approve with no body", async () => {
+    mockFetchOnce(result);
+    const { approveKnowledge } = await import("@/lib/api/knowledge");
+    await approveKnowledge("k-1");
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("https://api.aquaveda.com/api/v1/knowledge/k-1/approve");
+    expect(init).toMatchObject({ method: "POST" });
+    expect(init.body).toBeUndefined();
+  });
+
+  it("rejectKnowledge POSTs exactly { feedback } as JSON", async () => {
+    mockFetchOnce(result);
+    const { rejectKnowledge } = await import("@/lib/api/knowledge");
+    await rejectKnowledge("k-1", "needs sources");
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("https://api.aquaveda.com/api/v1/knowledge/k-1/reject");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback: "needs sources" }),
+    });
+  });
+
+  it("reviseKnowledge POSTs exactly { title, body } as JSON", async () => {
+    mockFetchOnce(result);
+    const { reviseKnowledge } = await import("@/lib/api/knowledge");
+    await reviseKnowledge("k-1", { title: "T2", body: "B2" });
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("https://api.aquaveda.com/api/v1/knowledge/k-1/revise");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "T2", body: "B2" }),
+    });
+  });
+});

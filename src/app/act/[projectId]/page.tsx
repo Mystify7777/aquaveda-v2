@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ProjectDetail } from "@/components/projects/project-detail";
-import { ProjectLoadError, projectLoadErrorMessage } from "@/components/projects/project-load-error";
+import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { ApiError } from "@/lib/api/client";
 import { getProject } from "@/lib/api/projects";
 
@@ -30,8 +30,8 @@ export default async function ProjectPage({
     }
     return (
       <Shell>
-        <ProjectLoadError
-          message={projectLoadErrorMessage(error)}
+        <LoadError
+          message={loadErrorMessage(error, "projects")}
           retryHref={`/act/${encodeURIComponent(projectId)}`}
         />
       </Shell>

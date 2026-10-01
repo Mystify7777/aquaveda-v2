@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "New knowledge draft" };
 
 /**
  * Knowledge draft authoring (#45). Authentication is enforced by the
- * (protected) route-group layout, not here. Learn list/detail are F3.
+ * protected layout, not here. Entry point: "Write an article" on /learn (#51).
  */
 export default function NewKnowledgeDraftPage() {
   return (

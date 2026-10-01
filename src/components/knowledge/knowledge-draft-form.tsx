@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/client";
 import { createKnowledge } from "@/lib/api/knowledge";
-import type { CreatedKnowledgeDraft } from "@/lib/api/types/knowledge";
+import { KnowledgeFormField as Field } from "@/components/knowledge/knowledge-form-field";
+import { KnowledgeSubmitAction } from "@/components/knowledge/knowledge-submit-action";
+import type { CreatedKnowledgeDraft, KnowledgeLifecycleResult } from "@/lib/api/types/knowledge";
 import {
   EMPTY_KNOWLEDGE_DRAFT,
   validateKnowledgeDraft,
@@ -52,32 +54,6 @@ function toFailure(error: unknown): SubmitFailure {
 
 const FIELD_ORDER: KnowledgeDraftField[] = ["title", "body"];
 
-function Field({
-  id,
-  label,
-  error,
-  children,
-}: {
-  id: string;
-  label: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
-      {children}
-      {error && (
-        <p id={`${id}-error`} className="text-destructive text-xs">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
 /**
  * Draft creation only. Auth gating is the route's job ((protected) layout →
  * RequireAuth); backend authorization stays authoritative.
@@ -88,6 +64,7 @@ export function KnowledgeDraftForm() {
   const [failure, setFailure] = React.useState<SubmitFailure | null>(null);
   const [pending, setPending] = React.useState(false);
   const [created, setCreated] = React.useState<CreatedKnowledgeDraft | null>(null);
+  const [submitted, setSubmitted] = React.useState<KnowledgeLifecycleResult | null>(null);
 
   // Ref guard: `pending` state lags a render, so rapid double submits could both pass a state check.
   const inFlight = React.useRef(false);
@@ -134,6 +111,7 @@ export function KnowledgeDraftForm() {
     setFieldErrors({});
     setFailure(null);
     setCreated(null);
+    setSubmitted(null);
   }
 
   if (created) {
@@ -142,10 +120,20 @@ export function KnowledgeDraftForm() {
         <h2 ref={successRef} tabIndex={-1} className="font-display text-lg font-semibold outline-none">
           Draft saved
         </h2>
-        <p className="text-muted-foreground text-sm">
-          &ldquo;{created.title}&rdquo; was saved with status <strong>{created.status}</strong>. It has not been
-          submitted for review.
-        </p>
+        {submitted ? (
+          <p className="text-muted-foreground text-sm">
+            &ldquo;{submitted.title}&rdquo; was submitted for review with status{" "}
+            <strong>{submitted.status}</strong>.
+          </p>
+        ) : (
+          <>
+            <p className="text-muted-foreground text-sm">
+              &ldquo;{created.title}&rdquo; was saved with status <strong>{created.status}</strong>. It has not been
+              submitted for review.
+            </p>
+            <KnowledgeSubmitAction knowledgeId={created._id} onSubmitted={setSubmitted} />
+          </>
+        )}
         <Button variant="outline" onClick={writeAnother}>
           Write another
         </Button>

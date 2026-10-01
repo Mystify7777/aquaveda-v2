@@ -16,6 +16,8 @@ export interface CommentComposerProps {
   refId: string;
   /** Set only when composing a reply; passed through unchanged. */
   parentComment?: string;
+  /** Called once after a successful post (e.g. to refresh a server-rendered thread). */
+  onCreated?: (comment: CreatedComment) => void;
 }
 
 type SubmitFailure = {
@@ -54,7 +56,7 @@ function toFailure(error: unknown): SubmitFailure {
   return { kind: "failure", message: "We could not post your comment. Try again." };
 }
 
-function ComposerForm({ refType, refId, parentComment }: CommentComposerProps) {
+function ComposerForm({ refType, refId, parentComment, onCreated }: CommentComposerProps) {
   const fieldId = React.useId();
   const errorId = `${fieldId}-error`;
 
@@ -89,14 +91,14 @@ function ComposerForm({ refType, refId, parentComment }: CommentComposerProps) {
     inFlight.current = true;
     setPending(true);
     try {
-      setCreated(
-        await createComment({
-          refType,
-          refId,
-          body: trimmed,
-          ...(parentComment ? { parentComment } : {}),
-        }),
-      );
+      const comment = await createComment({
+        refType,
+        refId,
+        body: trimmed,
+        ...(parentComment ? { parentComment } : {}),
+      });
+      setCreated(comment);
+      onCreated?.(comment);
     } catch (error) {
       setFailure(toFailure(error));
     } finally {
