@@ -4,7 +4,6 @@
 
 ## Current Milestone
 
-<<<<<<< HEAD
 Issue #51 — frontend Learn surfaces — **implemented; ready for review**
 (backend #74 workflow reads merged at `bb4d37d`). Public: `/learn` list,
 `/learn/[knowledgeId]` detail (approved-only, defensive status guard,
@@ -30,7 +29,6 @@ is `PublicActor | null` on workflow reads, an unpopulated id on public
 reads (types differ deliberately). No backend, schema, role, or lifecycle
 change; D-3a untouched. Lifecycle write results are consumed as
 `KnowledgeLifecycleResult` (`_id`, `title`, `status`) only.
-=======
 Issue #74 — authenticated Knowledge workflow reads — **implemented;
 real-MongoDB verification pending** (the implementation environment has
 no `mongod`; a wire-compatible stand-in was used for iteration only, so
@@ -47,7 +45,6 @@ detail read carries them; separate workflow DTO. Full detail:
 `docs/architecture/decision-register.md` ROUTE-L2 amendment (#74) and
 ROUTE-L2a–L2d. Remaining #51 frontend (mine/review pages, submit/
 approve/reject/revise UI) follows this milestone.
->>>>>>> 33f28793ce0c055e146fe0c09d8dddf31ab6157f
 
 Routes — **implemented, reviewed, and verified for real against real
 MongoDB: 232/232 tests, 54 suites, 0 failures.** Executed as 6 reviewed
