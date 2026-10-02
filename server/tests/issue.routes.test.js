@@ -289,7 +289,7 @@ describe("GET /api/v1/issues (Issue #40 pagination & Issue #48 public read)", ()
 });
 
 describe("POST /api/v1/issues", () => {
-  it("201s and returns the created Issue in the complete canonical envelope", async () => {
+  it("201s and returns the created Issue in the complete canonical envelope (ROUTE-L6)", async () => {
     const { accessToken } = await makeAuthedUser("USER");
     const res = await request("POST", "/api/v1/issues", {
       cookies: authCookie(accessToken),
@@ -304,9 +304,12 @@ describe("POST /api/v1/issues", () => {
     assert.equal(res.json.success, true);
     assert.equal(res.json.data.title, "Leaking pipe");
     assert.equal(res.json.data.status, "open");
+    assert.equal(typeof res.json.message, "string");
+    assert.ok(res.json.message.length > 0);
+    assert.equal(Object.keys(res.json).sort().join(","), "data,message,success");
   });
 
-  it("400s with VALIDATION_FAILED for a missing title", async () => {
+  it("400s with VALIDATION_FAILED for a missing title, with the complete canonical failure envelope (ROUTE-L6)", async () => {
     const { accessToken } = await makeAuthedUser("USER");
     const res = await request("POST", "/api/v1/issues", {
       cookies: authCookie(accessToken),
@@ -316,7 +319,10 @@ describe("POST /api/v1/issues", () => {
     assert.equal(res.status, 400);
     assert.equal(res.json.success, false);
     assert.equal(res.json.data, null);
+    assert.equal(typeof res.json.message, "string");
+    assert.ok(res.json.message.length > 0);
     assert.equal(res.json.code, "VALIDATION_FAILED");
+    assert.equal(Object.keys(res.json).sort().join(","), "code,data,message,success");
   });
 
   it("201s and persists canonical category/severity, returned in the public read", async () => {
@@ -363,7 +369,7 @@ describe("POST /api/v1/issues", () => {
     }
   });
 
-  it("401s with UNAUTHORIZED for an anonymous request", async () => {
+  it("401s with UNAUTHORIZED for an anonymous request (no cookie)", async () => {
     const res = await request("POST", "/api/v1/issues", {
       body: {
         title: "Leaking pipe",
@@ -390,7 +396,7 @@ describe("PATCH /api/v1/issues/:issueId/status", () => {
     return res.json.data;
   }
 
-  it("200s on a valid EXPERT-authorized transition", async () => {
+  it("200s on a valid EXPERT-authorized transition (open -> acknowledged)", async () => {
     const reporter = await makeAuthedUser("USER");
     const expert = await makeAuthedUser("EXPERT");
     const issue = await makeOpenIssue(reporter.accessToken);
@@ -442,6 +448,53 @@ describe("PATCH /api/v1/issues/:issueId/status", () => {
 
     assert.equal(res.status, 404);
     assert.equal(res.json.code, "NOT_FOUND");
+  });
+
+  it("400s with VALIDATION_FAILED (CastError translation) for a malformed issueId", async () => {
+    const expert = await makeAuthedUser("EXPERT");
+
+    const res = await request("PATCH", "/api/v1/issues/not-a-valid-object-id/status", {
+      cookies: authCookie(expert.accessToken),
+      body: { targetStatus: "acknowledged" },
+    });
+
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("409s with AUTHORIZATION_POLICY_UNRESOLVED (never 403) for the D-3a-gated acknowledged -> in_progress transition", async () => {
+    const expert = await makeAuthedUser("EXPERT");
+    const issue = await makeOpenIssue(expert.accessToken);
+
+    // Move to acknowledged first (a legal, EXPERT-authorized transition).
+    await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
+      cookies: authCookie(expert.accessToken),
+      body: { targetStatus: "acknowledged" },
+    });
+
+    const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
+      cookies: authCookie(expert.accessToken),
+      body: { targetStatus: "in_progress" },
+    });
+
+    assert.equal(res.status, 409);
+    assert.notEqual(res.status, 403);
+    assert.equal(res.json.code, "AUTHORIZATION_POLICY_UNRESOLVED");
+    assert.equal(res.json.success, false);
+    assert.equal(res.json.data, null);
+  });
+
+  it("409s with STATE_RACE style envelope on a genuinely illegal transition (open -> verified)", async () => {
+    const expert = await makeAuthedUser("EXPERT");
+    const issue = await makeOpenIssue(expert.accessToken);
+
+    const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
+      cookies: authCookie(expert.accessToken),
+      body: { targetStatus: "verified" },
+    });
+
+    assert.equal(res.status, 409);
+    assert.equal(res.json.code, "INVALID_STATE");
   });
 });
 
