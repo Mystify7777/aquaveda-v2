@@ -87,7 +87,14 @@ function Field({
   );
 }
 
-export function IssueReportForm({ onDone }: { onDone?: () => void }) {
+export function IssueReportForm({
+  onDone,
+  onCreated,
+}: {
+  onDone?: () => void;
+  /** Called once after a successful report (e.g. to refresh a server-rendered list). */
+  onCreated?: (issue: Issue) => void;
+}) {
   const [values, setValues] = React.useState<IssueReportValues>(EMPTY_ISSUE_REPORT);
   const [fieldErrors, setFieldErrors] = React.useState<IssueReportErrors>({});
   const [failure, setFailure] = React.useState<SubmitFailure | null>(null);
@@ -152,7 +159,9 @@ export function IssueReportForm({ onDone }: { onDone?: () => void }) {
     inFlight.current = true;
     setPending(true);
     try {
-      setCreated(await createIssue(result.payload));
+      const issue = await createIssue(result.payload);
+      setCreated(issue);
+      onCreated?.(issue);
     } catch (error) {
       setFailure(toFailure(error));
     } finally {
@@ -177,8 +186,15 @@ export function IssueReportForm({ onDone }: { onDone?: () => void }) {
         <p className="text-muted-foreground text-sm">
           &ldquo;{created.title}&rdquo; was submitted with status <strong>{created.status}</strong>.
         </p>
-        <div className="flex gap-2">
-          {onDone && <Button onClick={onDone}>Done</Button>}
+        <div className="flex flex-wrap gap-2">
+          <Button asChild>
+            <Link href={`/explore/${created._id}`}>View issue</Link>
+          </Button>
+          {onDone && (
+            <Button variant="outline" onClick={onDone}>
+              Done
+            </Button>
+          )}
           <Button variant="outline" onClick={reportAnother}>
             Report another
           </Button>

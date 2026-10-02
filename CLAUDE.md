@@ -4,6 +4,23 @@
 
 ## Current Milestone
 
+Issue #50 — frontend Explore surface — **implemented; ready for
+review.** Public `/explore` (server-rendered from `GET /issues`: `status`
+filter as links + URL pagination, list + Leaflet map of the issues on the
+*current page*, skip-link past the map, loading/empty/filtered-empty/
+past-the-end/error states) and `/explore/[issueId]` (public detail:
+description, classification, location + single-marker map, read-only
+status history, ISSUE discussion via `CommentThread`/`DiscussionComposer`;
+404/400 → not-found, transport failure → retryable alert). Reporting stays
+the #44 dialog behind `RequireAuth`; it now refreshes the list after a
+successful report and links to the new issue. Leaflet/react-leaflet added
+(first consumer; map is client-only via `next/dynamic` ssr:false, uses a
+`divIcon` to avoid bundler-hostile default marker assets, markers are
+keyboard-focusable and titled). Only the contract the backend has is
+used: no geo, search, category/severity filter or sort parameters are
+sent. No backend, lifecycle, or D-3a change; the detail page exposes no
+transition controls and omits the unpopulated status-history `actor` id.
+
 Issue #74 — authenticated Knowledge workflow reads — **implemented;
 real-MongoDB verification pending** (the implementation environment has
 no `mongod`; a wire-compatible stand-in was used for iteration only, so
@@ -488,6 +505,12 @@ logout-vs-access-token-expiry trade-off.
 
 ## Technical Debt
 
+- **Blocked on backend #41 (public Issue search with geospatial
+  filtering):** viewport/bounding-box and radius map queries, text
+  search, and category/severity filters/sort on `/explore`. Today the map
+  shows only the current page of `GET /issues` (newest first, ≤50 per
+  page), so it is not a complete picture of all issues. Not faked
+  client-side; revisit when #41 defines the contract.
 - Public Knowledge detail still returns `reviewHistory` (incl. rejection
   `feedback`, unpopulated reviewer ids) for articles rejected then
   approved. Left unchanged by #74 (public contract locked); a narrower
