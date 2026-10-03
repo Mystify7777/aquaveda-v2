@@ -6,6 +6,7 @@ import {
   getRefreshTokenLifetimeMs,
 } from "../services/auth-tokens.js";
 import { ACCESS_TOKEN_COOKIE_NAME } from "../middleware/auth.js";
+import { createRateLimiter } from "../middleware/rate-limiter.js";
 import { resolveCookieSameSite, resolveCookieDomain } from "../config/env.js";
 import { registerSchema, loginSchema } from "../validation/auth.validation.js";
 import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
@@ -131,9 +132,33 @@ function clearAuthCookies(res) {
  * stays exactly as untouched as it was before this migration.
  */
 
+// --- Rate limiters (Issue #42) ---
+// Conservative limits for public, unauthenticated endpoints that accept
+// credentials or tokens. Identified strictly by IP address (never by
+// email/username/payload) to prevent account enumeration and lock-out.
+// /me (GET, read-only, no credentials) and /logout (POST, idempotent,
+// no credentials in body) are deliberately not rate-limited.
+const registerLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 5,
+  keyPrefix: "auth:register:",
+});
+
+const loginLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 10,
+  keyPrefix: "auth:login:",
+});
+
+const refreshLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 10,
+  keyPrefix: "auth:refresh:",
+});
+
 export const authRouter = Router();
 
-authRouter.post("/register", async (req, res) => {
+authRouter.post("/register", registerLimiter, async (req, res) => {
   const parsed = registerSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     sendValidationError(res, parsed.error);
@@ -153,7 +178,7 @@ authRouter.post("/register", async (req, res) => {
   }
 });
 
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     sendValidationError(res, parsed.error);
@@ -187,7 +212,7 @@ authRouter.get("/me", (req, res) => {
   sendSuccess(res, { user: req.actorContext }, "OK");
 });
 
-authRouter.post("/refresh", async (req, res) => {
+authRouter.post("/refresh", refreshLimiter, async (req, res) => {
   try {
     const rawRefreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
     const { user, accessToken, refreshToken } = await refresh(rawRefreshToken);
