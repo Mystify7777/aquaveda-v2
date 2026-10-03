@@ -4,6 +4,16 @@
 
 ## Current Milestone
 
+Issue #41 — public Issue discovery (backend) — **implemented; ready for
+review.** `GET /api/v1/issues` now also accepts `category`, `severity`,
+`q` (text) and `bbox` (`west,south,east,north`), all optional and
+combinable; ordering is `createdAt` desc then `_id` desc. Contract:
+`docs/architecture/issue-discovery-contract.md`; decisions: register
+ROUTE-L2e. One new index (`issue_text_search`); persistence-design
+amended. No lifecycle, auth, or D-3a change. Verified against a real
+`mongod` (3.6.8 — see the PR report for the version caveat); the
+production-version run is the developer's.
+
 Issue #50 — frontend Explore surface — **implemented; ready for
 review.** Public `/explore` (server-rendered from `GET /issues`: `status`
 filter as links + URL pagination, list + Leaflet map of the issues on the
@@ -505,12 +515,15 @@ logout-vs-access-token-expiry trade-off.
 
 ## Technical Debt
 
-- **Blocked on backend #41 (public Issue search with geospatial
-  filtering):** viewport/bounding-box and radius map queries, text
-  search, and category/severity filters/sort on `/explore`. Today the map
-  shows only the current page of `GET /issues` (newest first, ≤50 per
-  page), so it is not a complete picture of all issues. Not faked
-  client-side; revisit when #41 defines the contract.
+- **Explore has not yet adopted the #41 discovery parameters.** The
+  backend contract (`category`, `severity`, `q`, `bbox` on
+  `GET /api/v1/issues`) is implemented and documented in
+  `docs/architecture/issue-discovery-contract.md`; `/explore` still sends
+  only `status`/`page`, so its map still shows the current page of
+  results rather than the viewport. Adoption (filters UI, search box,
+  viewport-driven `bbox` fetching with the 10° cap) is a frontend
+  follow-up. Radius/proximity search is intentionally not part of the
+  contract.
 - Public Knowledge detail still returns `reviewHistory` (incl. rejection
   `feedback`, unpopulated reviewer ids) for articles rejected then
   approved. Left unchanged by #74 (public contract locked); a narrower

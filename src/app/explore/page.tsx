@@ -22,10 +22,11 @@ function parsePage(raw: string | string[] | undefined): number {
 
 /**
  * Public Issue discovery (#50). Server-rendered from the public list read
- * (#48): `status` + pagination are the only supported query parameters, so
- * those are the only ones sent. The map plots the issues on the *current
- * page*; viewport/radius queries and search need #41 and are not faked
- * here. Anonymous-accessible; reporting stays a dialog gated by RequireAuth.
+ * (#48): this page sends only `status` + pagination. The backend has since
+ * added `category`, `severity`, `q` and `bbox` (#41, see
+ * docs/architecture/issue-discovery-contract.md); adopting them is a
+ * separate frontend change, so the map still plots the issues on the
+ * *current page*. Anonymous-accessible; reporting stays a dialog gated by RequireAuth.
  * Loading UI: ./loading.tsx.
  */
 export default async function ExplorePage({

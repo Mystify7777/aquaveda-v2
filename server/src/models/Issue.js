@@ -199,6 +199,14 @@ const issueSchema = new Schema(
 issueSchema.index({ location: "2dsphere" });
 issueSchema.index({ status: 1 });
 issueSchema.index({ reportedBy: 1 });
+// Issue #41: public text search (`q`) over title + description. Whole-word
+// matching with no stemming/stop-words (`default_language: "none"`) so
+// multilingual reports behave predictably. See
+// docs/architecture/issue-discovery-contract.md.
+issueSchema.index(
+  { title: "text", description: "text" },
+  { name: "issue_text_search", default_language: "none" },
+);
 
 export const Issue = mongoose.model("Issue", issueSchema);
 export default Issue;

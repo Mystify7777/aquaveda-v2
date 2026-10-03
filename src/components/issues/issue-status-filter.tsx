@@ -7,7 +7,7 @@ import { ISSUE_STATUSES, ISSUE_STATUS_LABELS } from "@/lib/issues/status";
 /**
  * Status filter as plain links (URL-driven, works without JS). `status` is
  * the only filter the backend list contract supports (#48); category,
- * severity, text and location filters are #41.
+ * severity, text and location filters exist since #41 (see docs/architecture/issue-discovery-contract.md) but this component does not offer them yet.
  */
 export function IssueStatusFilter({ status }: { status?: IssueStatus }) {
   return (

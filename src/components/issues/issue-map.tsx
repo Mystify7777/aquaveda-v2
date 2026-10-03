@@ -35,7 +35,7 @@ function FitToMarkers({ issues }: { issues: MappableIssue[] }) {
  * Leaflet map of the given issues. Client-only (loaded via IssueMapLoader
  * with ssr: false). Markers are keyboard-focusable and titled with the
  * issue title; popups link to the detail route. It only displays what it
- * is given — there is no viewport-driven fetching (that is #41).
+ * is given — there is no viewport-driven fetching yet (the `bbox` contract exists since #41; adoption is a follow-up).
  */
 export default function IssueMap({ issues }: { issues: MappableIssue[] }) {
   return (
