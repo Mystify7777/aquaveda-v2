@@ -813,6 +813,48 @@ Restated below only as locked conclusions, resolving
   approved. Not changed here (the public contract is locked by #74). A
   narrower public DTO is a candidate follow-up.
 
+- **ROUTE-L2e — Public Issue discovery extends `GET /api/v1/issues`
+  (Issue #41).** No new endpoint and no new route count: the existing
+  public list gains optional, combinable parameters `category`,
+  `severity`, `q` (text) and `bbox`. Anonymous, read-only, no new
+  fields, canonical envelopes unchanged; a request without the new
+  parameters behaves exactly as before. Full contract (parameters,
+  bounds, ordering, MongoDB strategy, exclusions):
+  `docs/architecture/issue-discovery-contract.md`. Locked decisions:
+  (a) **one geographic representation**, `bbox=west,south,east,north`
+  (longitude first, edges inclusive, west < east, ±85° latitude, ≤10°
+  per axis, 400 not clamp); radius/`$near` is deliberately out because
+  it forces distance ordering and breaks counted stable pagination, and
+  a "near me" client can compute a bbox; (b) **ordering is always
+  `createdAt` desc then `_id` desc** (the `_id` tiebreaker is new and
+  backward compatible); (c) **`q`: indexed `$text` candidates + per-term whole-word
+  verification.** Every term is required as a whole word in title or
+  description; case-insensitive, diacritics significant, no stemming,
+  query syntax neutralised (quotes separate terms, metacharacters are
+  literal). `$text` alone is insufficient: quoted-phrase matching is a
+  substring test over an OR-selected candidate set, so a term matched
+  inside a longer word ("main" in "maintenance") whenever another term
+  supplied the candidate — found by probing a real `mongod` and fixed in
+  review. The regex check runs only on index candidates, so the endpoint
+  stays index-bound (an unindexed regex scan was rejected for a public
+  anonymous endpoint). Consequence, locked: a term with no letter or
+  digit has no index token, so it cannot locate documents itself — a
+  query of only such terms is accepted and empty; alongside a searchable
+  term it is still required and checked literally on that term's
+  candidates (narrows, never widens, never dropped). Clients strip
+  standalone punctuation. This adds the `issue_text_search` index
+  (persistence-design amended accordingly); (d) **`bbox` is a
+  `$centerSphere` candidate circle that strictly encloses the box, plus
+  exact planar bounds**: verified against a real `mongod` that a GeoJSON
+  `$geometry` polygon from the corners is wrong at the edges (great-circle
+  arcs) and that `$box` is a collection scan on a 2dsphere index;
+  (e) `category` and `severity` are exact matches on the canonical
+  vocabularies; unclassified (`""`) is not filterable and no semantics
+  are invented; (f) service-layer re-validation of the new parameters
+  against the same definitions (`domain/issue-search.js`), because
+  services are also called directly. Issue lifecycle, authentication
+  and D-3a are untouched.
+
 - **ROUTE-L3 — No route-level "must be authenticated" gate.** Confirmed
   by direct inspection (discovery report §0/§2a): all 9 domain-service
   operations already call `requireActor()` as their first line. A

@@ -17,7 +17,11 @@
 
 import assert from "node:assert/strict";
 
-import { createIssueSchema, changeIssueStatusSchema } from "../src/validation/issue.validation.js";
+import {
+  createIssueSchema,
+  changeIssueStatusSchema,
+  listIssuesQuerySchema,
+} from "../src/validation/issue.validation.js";
 import {
   ISSUE_CATEGORIES,
   ISSUE_SEVERITIES,
@@ -554,6 +558,56 @@ check("12e. Review queue takes no status parameter (it is fixed to pending_revie
   const r = reviewQueueQuerySchema.safeParse({ status: "draft" });
   assert.equal(r.success, true);
   assert.equal("status" in r.data, false);
+});
+
+// ---------------------------------------------------------------------
+// 13. Public Issue discovery query (Issue #41)
+// ---------------------------------------------------------------------
+check("13a. Discovery query with no parameters keeps the pre-#41 defaults", () => {
+  const r = listIssuesQuerySchema.safeParse({});
+  assert.equal(r.success, true);
+  assert.deepEqual(r.data, { page: 1, limit: 20 });
+});
+
+check("13b. Discovery query parses every filter; bbox becomes [west,south,east,north]; q is trimmed", () => {
+  const r = listIssuesQuerySchema.safeParse({
+    status: "open",
+    category: "water_quality",
+    severity: "high",
+    q: "  burst pipe ",
+    bbox: "77, 12, 78, 13",
+    page: "2",
+    limit: "10",
+  });
+  assert.equal(r.success, true);
+  assert.deepEqual(r.data, {
+    status: "open",
+    category: "water_quality",
+    severity: "high",
+    q: "burst pipe",
+    bbox: [77, 12, 78, 13],
+    page: 2,
+    limit: 10,
+  });
+});
+
+check("13c. Discovery query rejects unknown category/severity and malformed or out-of-bounds q/bbox", () => {
+  for (const bad of [
+    { category: "nope" },
+    { severity: "nope" },
+    { q: "a" },
+    { q: '""' },
+    { q: "a".repeat(101) },
+    { q: ["ab", "cd"] },
+    { bbox: "1,2,3" },
+    { bbox: "a,b,c,d" },
+    { bbox: "78,12,77,13" },
+    { bbox: "0,0,10.01,1" },
+    { bbox: "-180,-85,180,85" },
+    { bbox: ["0,0,1,1", "0,0,2,2"] },
+  ]) {
+    assert.equal(listIssuesQuerySchema.safeParse(bad).success, false, JSON.stringify(bad));
+  }
 });
 
 // ---------------------------------------------------------------------
