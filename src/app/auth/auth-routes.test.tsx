@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
@@ -10,6 +7,7 @@ import { LoginForm } from "@/components/auth/login-form";
 import { RegisterForm } from "@/components/auth/register-form";
 import { RequireAuth } from "@/components/auth/require-auth";
 import { AuthControls } from "@/components/layout/auth-controls";
+import { internalHrefs, resolveAppRoute } from "@/test-utils/app-routes";
 
 /**
  * Issue #80 — the public auth page URLs.
@@ -21,22 +19,16 @@ import { AuthControls } from "@/components/layout/auth-controls";
  * The bug class: a component links to a path no App Router page serves
  * (/login, /register), and an href-string assertion alone cannot notice.
  * These tests therefore map each rendered href to the page file that
- * serves it. `routeHasPage` only understands static paths (no dynamic
- * segments or route groups) — enough for the auth pages; the wider route
- * and link audit is Issue #81.
+ * serves it, via the shared resolver (src/test-utils/app-routes.ts,
+ * Issue #81 — see docs/engineering/testing.md "Route/link contract").
  */
 
 const mockUseAuth = vi.fn();
 vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => mockUseAuth() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn() }) }));
 
-/** True iff `href` (path only) is served by a static page.tsx under src/app. */
-function routeHasPage(href: string): boolean {
-  const pathname = href.split(/[?#]/)[0];
-  if (!pathname.startsWith("/")) return false;
-  const segments = pathname.split("/").filter(Boolean);
-  return fs.existsSync(path.join(process.cwd(), "src", "app", ...segments, "page.tsx"));
-}
+/** True iff `href` is served by a page under src/app (static or dynamic). */
+const routeHasPage = (href: string) => resolveAppRoute(href) !== "missing";
 
 const CANONICAL = { login: "/auth/login", register: "/auth/register" } as const;
 
@@ -47,12 +39,6 @@ const anonymous = () => ({
   register: vi.fn(),
   logout: vi.fn(),
 });
-
-/** Every in-app link (href starting with "/") inside a rendered tree. */
-const internalHrefs = (container: HTMLElement) =>
-  [...container.querySelectorAll("a[href]")]
-    .map((a) => a.getAttribute("href")!)
-    .filter((h) => h.startsWith("/"));
 
 describe("route-existence helper (negative control)", () => {
   it("accepts the real auth pages and rejects the paths that used to be linked", () => {

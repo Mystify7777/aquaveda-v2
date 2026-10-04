@@ -77,8 +77,8 @@ describe("createProject", () => {
     expect(url).toBe("https://api.aquaveda.com/api/v1/projects");
     expect(init).toMatchObject({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
 });

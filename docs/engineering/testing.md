@@ -8,18 +8,17 @@ not enough process to become a second job.
 | Layer | Tool | Current status |
 | --- | --- | --- |
 | Backend unit/integration | Node.js built-in test runner | Active under `server/tests/` |
-| Frontend pure logic | Node.js built-in test runner | Active for `src/**/*.test.js` |
-| Component | React Testing Library | Not installed; no component suite yet |
+| Frontend pure logic | Node.js built-in test runner | Active for `src/**/*.test.js` (`npm run test:node`) |
+| Frontend unit/component | Vitest + React Testing Library (jsdom) | Active for `src/**/*.test.{ts,tsx}` (`npm run test:vitest`) |
 | End-to-end | Playwright | Not installed; deferred until a real user flow exists |
 
 ## What gets tested at each level
 
 - **Pure functions in `lib/`** — unit tests. Fast, cheap, catches the most
   regressions per line of test code.
-- **Client Components with real interaction logic** — component tests with
-  RTL once that dependency is introduced. Current AuthProvider session-state
-  classification is kept in a pure JavaScript module and tested directly;
-  React rendering and browser interaction are not currently component-tested.
+- **Client Components with real interaction logic** — Vitest + RTL component
+  tests (rendering, interaction, accessibility attributes). Pure session-state
+  classification stays in `src/lib/auth-state.js`, tested with `node:test`.
 - **Full user flows** — Playwright e2e. The only layer that validates
   Server + Client together across the real network boundary.
 - **UI primitives** (`button`, `card`, etc.) — not tested directly.
@@ -38,7 +37,7 @@ implementation details rather than behavior.
 From the repository root:
 
 ```text
-npm test                 # frontend session-state tests
+npm test                 # Vitest (components/units) + node:test
 npm run typecheck
 npm run lint
 npx next build --webpack # Windows-compatible production build command here
@@ -54,3 +53,43 @@ npm run verify:models
 npm run verify:validation
 npm run verify:cookie-config
 ```
+
+## Route/link contract (Issue #81)
+
+Prevents `component href -> no App Router page -> runtime 404` (the #80 bug).
+Helper: `src/test-utils/app-routes.ts` (test-only). Shared by
+`src/app/auth/auth-routes.test.tsx`,
+`src/components/layout/navigation-links.test.tsx` (nav + Learn entry points) and
+`src/components/product-links.test.tsx` (Explore/Learn/Act cards, map popup,
+report/create forms, workflow lists/article, not-found pages); its own rules are tested in
+`src/test-utils/app-routes.test.ts` against a temp fixture tree.
+
+**API**
+
+- `resolveAppRoute(href)` -> `"static" | "dynamic" | "catch-all" | "missing"`
+- `internalHrefs(container)` -> in-app hrefs found in a rendered tree
+- `findBrokenLinks(hrefs, deferred?)` -> problem strings; assert `toEqual([])`
+
+**Verifies:** a link whose path maps to a `page.*` under `src/app`. Handles
+static segments, `[param]` (matches any value, never claims the concrete path
+exists on disk), `(group)` folders (not URL segments), query/fragment
+stripping. Catch-all pages resolve as `catch-all` and count as implemented
+(the route shape is served; segment values and data are not checked).
+
+**Does not verify:** middleware/proxy, rewrites, redirects, route handlers,
+parallel/intercepting routes, param validity or data existence, auth gating,
+or hrefs built at runtime that never render in a test. External, `#frag`,
+`?query` and relative hrefs are never resolved. It is an approximation of
+Next.js routing on purpose; the real router is covered by e2e (#85).
+
+**Deferred links:** links to not-yet-built routes (currently `/community`,
+`/dashboard` in the nav) must be listed in the test's `deferred` array. The
+check fails if a deferred route gains a page, so the list cannot go stale.
+
+**Adding coverage:** render the component, then
+`expect(findBrokenLinks(internalHrefs(container))).toEqual([])`. Do not add
+placeholder pages to satisfy it.
+
+**Related:** #80 (canonical `/auth/*` URLs, uses this helper), #83 (protected
+route topology; `/protected/*` is currently a real URL segment, and this
+contract only checks that those pages exist), #85 (browser e2e, out of scope here).

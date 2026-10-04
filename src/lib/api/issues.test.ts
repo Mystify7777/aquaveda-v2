@@ -125,6 +125,7 @@ describe("createIssue", () => {
     await expect(createIssue(payload)).resolves.toMatchObject({ _id: "issue-1" });
     const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(String(url)).toContain("/api/v1/issues");
-    expect(init).toMatchObject({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    expect(init).toMatchObject({ method: "POST", body: JSON.stringify(payload) });
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
 });

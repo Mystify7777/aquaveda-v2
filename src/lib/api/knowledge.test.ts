@@ -83,9 +83,9 @@ describe("createKnowledge", () => {
     expect(String(url)).toContain("/api/v1/knowledge");
     expect(init).toMatchObject({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "T", body: "B" }),
     });
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
 });
 
@@ -170,9 +170,9 @@ describe("lifecycle writes", () => {
     expect(url).toBe("https://api.aquaveda.com/api/v1/knowledge/k-1/reject");
     expect(init).toMatchObject({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedback: "needs sources" }),
     });
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
 
   it("reviseKnowledge POSTs exactly { title, body } as JSON", async () => {
@@ -183,8 +183,8 @@ describe("lifecycle writes", () => {
     expect(url).toBe("https://api.aquaveda.com/api/v1/knowledge/k-1/revise");
     expect(init).toMatchObject({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "T2", body: "B2" }),
     });
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
 });

@@ -72,8 +72,8 @@ describe("createComment", () => {
     expect(String(url)).toContain("/api/v1/comments");
     expect(init).toMatchObject({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
 });

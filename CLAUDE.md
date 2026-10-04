@@ -4,6 +4,16 @@
 
 ## Current Milestone
 
+Issue #81 — route/link contract — **implemented.** Shared test-only
+resolver `src/test-utils/app-routes.ts` (static, `[param]`, `(group)`,
+catch-all reported-not-trusted; no Next router reimplementation, no new
+deps). #80's auth test now uses it; new `navigation-links.test.tsx` covers
+Navbar/MobileNav/Learn workflow links; `product-links.test.tsx` covers the
+Explore/Learn/Act link-producing components. `/community` and `/dashboard` are
+linked in the nav but unimplemented — explicitly listed as deferred, and the
+test fails when a page appears. Details: `docs/engineering/testing.md`.
+Not touched: auth, routes, #82/#83/#85.
+
 Issue #80 — public auth page URLs — **fixed.** Canonical URLs are
 `/auth/login` and `/auth/register` (where the pages actually live; also
 what 16 components and their tests already used). `LoginForm`,
