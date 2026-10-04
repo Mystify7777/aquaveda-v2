@@ -17,7 +17,7 @@ export function AuthControls({ mobile = false }: { mobile?: boolean }) {
     }
 
     if (status === "anonymous") {
-        return <div className={mobile ? "flex flex-col gap-2" : "flex items-center gap-1"}><Button asChild variant="ghost" size="sm"><Link href="/login">Sign in</Link></Button><Button asChild size="sm"><Link href="/register">Register</Link></Button></div>;
+        return <div className={mobile ? "flex flex-col gap-2" : "flex items-center gap-1"}><Button asChild variant="ghost" size="sm"><Link href="/auth/login">Sign in</Link></Button><Button asChild size="sm"><Link href="/auth/register">Register</Link></Button></div>;
     }
 
     if (status !== "authenticated") {

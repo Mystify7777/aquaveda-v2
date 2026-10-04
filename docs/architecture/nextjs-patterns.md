@@ -11,9 +11,11 @@ as deep in the tree as possible, not at the page level.
 - `page.tsx` (Server Component): calls `getSystemSnapshot()` directly —
   no fetch, no useEffect, no loading state. Runs on the server.
 - `FoundationStatusCard` (Client Component): owns the interactive refresh,
-  seeded with the server-rendered initial snapshot.
+  seeded with the server-rendered initial snapshot. It is a Client
+  Component because every value it renders is the state that a refresh
+  replaces; there is no static shell to leave on the server.
 - `FoundationRefreshButton` (Client Component): the single interactive
-  element, isolated so the card shell doesn't need to be client.
+  element, isolating the fetch / pending / error logic from the card.
 
 Every later data-heavy screen follows the same split.
 
@@ -54,4 +56,52 @@ scattered across components. It handles:
 - Base URL from environment variable
 - Authorization header injection
 - Response envelope unwrapping (`{ success, data, message }`)
+- JSON request bodies: stringified bodies receive `Content-Type: application/json` unless the caller explicitly supplies a content type
 - Error normalization using the `code` field on error responses
+
+## Client boundary audit (Issue #6)
+
+Audited against `main` at the time of Issue #6: 29 of 110 `src/` modules
+carry a real `"use client"` directive (the only route file is the
+framework-required `app/error.tsx`); every other page, layout, `Navbar`,
+`Footer`, list/detail view and presentational component is a Server
+Component. **No unnecessary Client Component boundary was found**, so no
+code was changed. Each boundary is one of:
+
+- **Hooks, context or events** — forms, dialogs, `AuthProvider`,
+  `RequireAuth`, `AuthControls`, `ThemeToggle`, `MobileNav` (pathname +
+  open state), `WorkflowArticle` / lists (client-fetched, session
+  cookie), comment composers.
+- **Browser APIs / client-only libraries** — `IssueReportForm`
+  (`navigator.geolocation`), `IssueMap` (Leaflet), and `IssueMapLoader`
+  (`next/dynamic` with `ssr: false` is only permitted in a Client
+  Component).
+- **Framework requirement** — `error.tsx`.
+- **Documented decision** — `providers/` are the `"use client"` context
+  boundary (`ThemeProvider` wraps `next-themes`; the library also ships
+  its own directive, so the wrapper is removable in principle but is the
+  documented, isolated boundary and is kept).
+
+Interactive code is already pushed to the leaves: the `Navbar` is a Server
+Component with `MobileNav` / `AuthControls` / `ThemeToggle` islands; the
+protected layout passes server-rendered pages as `children` through
+`RequireAuth` (they stay server-rendered); `CommentThread` renders on the
+server and only mounts `ReplyToggle`.
+
+Left as-is deliberately (changing them would only move or reshape a
+boundary, not shrink the client surface, or would change a component API):
+
+- `AuthSubmitButton`, `use-api-resource.ts`: carry a directive but are
+  imported only by Client Components, so they create no boundary and ship
+  no extra client JS; the directive is harmless.
+- `MyKnowledgeList` filter links and `MobileNav`'s static drawer header are
+  server-renderable markup inside a client component; extracting them saves
+  negligible JS and means changing the component APIs.
+- `ui/avatar.tsx` has no importers; if it is used later its directive is
+  needed (Radix Avatar + `forwardRef`/`displayName` on client references).
+
+Concern noted, out of scope for Issue #6: `IssueMapLoader` receives whole
+`Issue[]` documents as props from Server Components, so they are serialized
+into the RSC payload a second time. Passing only the already-derived
+`{ id, title, position }` list (what `toMappableIssues` produces) would
+shrink that payload; it is a props-shape change, not a boundary change.
