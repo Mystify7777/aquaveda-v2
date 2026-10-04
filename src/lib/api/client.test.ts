@@ -41,14 +41,8 @@ describe("apiRequest", () => {
       body: JSON.stringify({ hello: "world" }),
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      "/x",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          "content-type": "application/json",
-        }),
-      }),
-    );
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
   });
 
   it("preserves an explicitly supplied content type", async () => {
@@ -60,14 +54,8 @@ describe("apiRequest", () => {
       body: JSON.stringify({ hello: "world" }),
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      "/x",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          "content-type": "application/custom+json",
-        }),
-      }),
-    );
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    expect(new Headers(init?.headers).get("Content-Type")).toBe("application/custom+json");
   });
 
   it("does not add a JSON content type when there is no request body", async () => {
