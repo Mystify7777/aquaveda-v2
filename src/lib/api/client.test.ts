@@ -33,6 +33,52 @@ describe("apiRequest", () => {
     );
   });
 
+  it("sets JSON content type for string request bodies", async () => {
+    mockFetchOnce({ ok: true, jsonBody: { success: true, data: null, message: "ok" } });
+
+    await apiRequest("/x", {
+      method: "POST",
+      body: JSON.stringify({ hello: "world" }),
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/x",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("preserves an explicitly supplied content type", async () => {
+    mockFetchOnce({ ok: true, jsonBody: { success: true, data: null, message: "ok" } });
+
+    await apiRequest("/x", {
+      method: "POST",
+      headers: { "Content-Type": "application/custom+json" },
+      body: JSON.stringify({ hello: "world" }),
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/x",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "content-type": "application/custom+json",
+        }),
+      }),
+    );
+  });
+
+  it("does not add a JSON content type when there is no request body", async () => {
+    mockFetchOnce({ ok: true, jsonBody: { success: true, data: null, message: "ok" } });
+
+    await apiRequest("/x");
+
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    expect(init?.headers).toEqual(new Headers());
+  });
+
   it("throws an ApiError with kind 'network' when fetch itself rejects", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("connection refused"));
     await expect(apiRequest("/x")).rejects.toMatchObject({

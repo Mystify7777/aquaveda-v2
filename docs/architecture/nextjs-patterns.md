@@ -56,6 +56,7 @@ scattered across components. It handles:
 - Base URL from environment variable
 - Authorization header injection
 - Response envelope unwrapping (`{ success, data, message }`)
+- JSON request bodies: stringified bodies receive `Content-Type: application/json` unless the caller explicitly supplies a content type
 - Error normalization using the `code` field on error responses
 
 ## Client boundary audit (Issue #6)
