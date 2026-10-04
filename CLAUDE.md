@@ -4,6 +4,17 @@
 
 ## Current Milestone
 
+Issue #80 — public auth page URLs — **fixed.** Canonical URLs are
+`/auth/login` and `/auth/register` (where the pages actually live; also
+what 16 components and their tests already used). `LoginForm`,
+`RegisterForm` and `AuthControls` (Navbar/MobileNav) linked to
+`/login` / `/register`, which 404ed; they now use the canonical URLs.
+No redirects, duplicate pages, or auth/API changes (`/api/v1/auth/*` is
+unrelated). `src/app/auth/auth-routes.test.tsx` maps each rendered auth
+href to its `page.tsx`, with a negative control for the old paths. The
+planned `(auth)` route group never shipped; docs that said `/login` /
+`/register` were corrected. Broader route/link audit: Issue #81.
+
 Issue #6 — client-boundary audit — **complete; no code change.** All 29
 `"use client"` modules reviewed against the dependency graph; none is an
 unnecessary boundary (hooks/context/events, browser APIs or client-only
