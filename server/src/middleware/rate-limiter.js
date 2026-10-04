@@ -167,7 +167,11 @@ export function createInMemoryStore({ cleanupIntervalMs = 60_000 } = {}) {
 // separate keys because each limiter uses its own windowMs/maxRequests
 // — no cross-contamination occurs because the key is the IP address
 // and each limiter instance calls hit() independently.
-const defaultStore = createInMemoryStore();
+//
+// Exported so the auth test suite can call defaultStore.reset() in
+// beforeEach to achieve per-test isolation without disabling rate
+// limiting or touching production thresholds (PR review requirement).
+export const defaultStore = createInMemoryStore();
 
 /**
  * Creates an Express middleware that enforces rate limiting using a
