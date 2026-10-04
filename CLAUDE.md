@@ -4,6 +4,15 @@
 
 ## Current Milestone
 
+Issue #6 — client-boundary audit — **complete; no code change.** All 29
+`"use client"` modules reviewed against the dependency graph; none is an
+unnecessary boundary (hooks/context/events, browser APIs or client-only
+libraries, `ssr:false` dynamic import, framework requirement, or the
+documented `providers/` boundary). Findings and the deliberately retained
+borderline cases are recorded in `docs/architecture/nextjs-patterns.md`
+("Client boundary audit"); the same change corrects a statement there that
+the `FoundationStatusCard` shell was not a Client Component.
+
 Issue #41 — public Issue discovery (backend) — **implemented; ready for
 review.** `GET /api/v1/issues` now also accepts `category`, `severity`,
 `q` (text) and `bbox` (`west,south,east,north`), all optional and
