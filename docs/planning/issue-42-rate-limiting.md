@@ -44,6 +44,17 @@ Clients are identified **strictly by IP address**, resolved in this order:
 2. `X-Real-IP` header (common single-hop proxy header)
 3. `req.socket.remoteAddress` (direct connection, no proxy)
 
+> **⚠ Deployment requirement — trusted reverse proxy:**
+> The rate limiter relies on the `X-Forwarded-For` header. This requires the application
+> to be deployed behind a trusted reverse proxy that guarantees this header is supplied
+> or properly overwritten. It should not be considered universally authoritative in
+> untrusted environments.
+>
+> Without a trusted proxy layer, any client can spoof `X-Forwarded-For` and bypass
+> rate limiting entirely by sending an arbitrary IP in that header. Ensure your
+> reverse proxy (Nginx, Caddy, Cloudflare, Vercel Edge Network, etc.) strips and
+> re-sets this header before forwarding requests to the Express service.
+
 ### Security: No Account Enumeration / Lock-out
 
 The rate limiter **NEVER** identifies clients by email, username, or any request-body
