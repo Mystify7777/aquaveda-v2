@@ -54,7 +54,7 @@ export function LoginForm() {
             </div>
             <AuthSubmitButton pending={pending}>Sign in</AuthSubmitButton>
             <p className="text-muted-foreground text-center text-sm">
-                New to AquaVeda? <Link href="/register" className="text-primary font-medium hover:underline">Create an account</Link>
+                New to AquaVeda? <Link href="/auth/register" className="text-primary font-medium hover:underline">Create an account</Link>
             </p>
         </form>
     );
