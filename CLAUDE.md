@@ -4,6 +4,33 @@
 
 ## Current Milestone
 
+Issue #41 — public Issue discovery (backend) — **implemented; ready for
+review.** `GET /api/v1/issues` now also accepts `category`, `severity`,
+`q` (text) and `bbox` (`west,south,east,north`), all optional and
+combinable; ordering is `createdAt` desc then `_id` desc. Contract:
+`docs/architecture/issue-discovery-contract.md`; decisions: register
+ROUTE-L2e. One new index (`issue_text_search`); persistence-design
+amended. No lifecycle, auth, or D-3a change. Verified against a real
+`mongod` (3.6.8 — see the PR report for the version caveat); the
+production-version run is the developer's.
+
+Issue #50 — frontend Explore surface — **implemented; ready for
+review.** Public `/explore` (server-rendered from `GET /issues`: `status`
+filter as links + URL pagination, list + Leaflet map of the issues on the
+*current page*, skip-link past the map, loading/empty/filtered-empty/
+past-the-end/error states) and `/explore/[issueId]` (public detail:
+description, classification, location + single-marker map, read-only
+status history, ISSUE discussion via `CommentThread`/`DiscussionComposer`;
+404/400 → not-found, transport failure → retryable alert). Reporting stays
+the #44 dialog behind `RequireAuth`; it now refreshes the list after a
+successful report and links to the new issue. Leaflet/react-leaflet added
+(first consumer; map is client-only via `next/dynamic` ssr:false, uses a
+`divIcon` to avoid bundler-hostile default marker assets, markers are
+keyboard-focusable and titled). Only the contract the backend has is
+used: no geo, search, category/severity filter or sort parameters are
+sent. No backend, lifecycle, or D-3a change; the detail page exposes no
+transition controls and omits the unpopulated status-history `actor` id.
+
 Issue #74 — authenticated Knowledge workflow reads — **implemented;
 real-MongoDB verification pending** (the implementation environment has
 no `mongod`; a wire-compatible stand-in was used for iteration only, so
@@ -488,6 +515,15 @@ logout-vs-access-token-expiry trade-off.
 
 ## Technical Debt
 
+- **Explore has not yet adopted the #41 discovery parameters.** The
+  backend contract (`category`, `severity`, `q`, `bbox` on
+  `GET /api/v1/issues`) is implemented and documented in
+  `docs/architecture/issue-discovery-contract.md`; `/explore` still sends
+  only `status`/`page`, so its map still shows the current page of
+  results rather than the viewport. Adoption (filters UI, search box,
+  viewport-driven `bbox` fetching with the 10° cap) is a frontend
+  follow-up. Radius/proximity search is intentionally not part of the
+  contract.
 - Public Knowledge detail still returns `reviewHistory` (incl. rejection
   `feedback`, unpopulated reviewer ids) for articles rejected then
   approved. Left unchanged by #74 (public contract locked); a narrower

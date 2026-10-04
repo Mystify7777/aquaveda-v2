@@ -9,9 +9,11 @@ import { ISSUE_CATEGORIES, ISSUE_SEVERITIES } from "@/lib/issues/classification"
 
 const mockCreateIssue = vi.fn();
 const mockUseAuth = vi.fn();
+const mockRefresh = vi.fn();
 
 vi.mock("@/lib/api/issues", () => ({ createIssue: (p: unknown) => mockCreateIssue(p) }));
 vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => mockUseAuth() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRefresh }) }));
 
 const CREATED = { _id: "i1", title: "Leak", status: "open" };
 
@@ -230,5 +232,52 @@ describe("ReportIssueButton authentication boundary", () => {
     render(<ReportIssueButton />);
     await user.click(screen.getByRole("button", { name: "Report an issue" }));
     expect(screen.getByLabelText(/^title/i)).toBeInTheDocument();
+  });
+});
+
+describe("report flow → Explore list integration (#50)", () => {
+  beforeEach(() => {
+    mockCreateIssue.mockReset();
+    mockRefresh.mockReset();
+    mockUseAuth.mockReturnValue({ status: "authenticated" });
+  });
+
+  it("IssueReportForm calls onCreated once on success only, and offers a link to the new issue", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    mockCreateIssue.mockRejectedValueOnce(new ApiError("boom", "http", 500));
+    mockCreateIssue.mockResolvedValueOnce(CREATED);
+    render(<IssueReportForm onCreated={onCreated} />);
+    await fill(user);
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    await screen.findByRole("alert");
+    expect(onCreated).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    expect(await screen.findByText("Issue reported")).toBeInTheDocument();
+    expect(onCreated).toHaveBeenCalledTimes(1);
+    expect(onCreated).toHaveBeenCalledWith(CREATED);
+    expect(screen.getByRole("link", { name: "View issue" })).toHaveAttribute("href", "/explore/i1");
+  });
+
+  it("ReportIssueButton refreshes the server-rendered list after a successful report", async () => {
+    const user = userEvent.setup();
+    mockCreateIssue.mockResolvedValue(CREATED);
+    render(<ReportIssueButton />);
+    await user.click(screen.getByRole("button", { name: "Report an issue" }));
+    await fill(user);
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    await screen.findByText("Issue reported");
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("ReportIssueButton does not refresh when the report fails", async () => {
+    const user = userEvent.setup();
+    mockCreateIssue.mockRejectedValue(new ApiError("boom", "http", 500));
+    render(<ReportIssueButton />);
+    await user.click(screen.getByRole("button", { name: "Report an issue" }));
+    await fill(user);
+    await user.click(screen.getByRole("button", { name: "Submit report" }));
+    await screen.findByRole("alert");
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 });

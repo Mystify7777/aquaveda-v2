@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
  */
 export function ReportIssueButton() {
   const [open, setOpen] = React.useState(false);
+  const router = useRouter();
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
@@ -40,7 +42,8 @@ export function ReportIssueButton() {
             </DialogPrimitive.Close>
           </div>
           <RequireAuth>
-            <IssueReportForm onDone={() => setOpen(false)} />
+            {/* The server-rendered list is stale after a report; re-run it. */}
+            <IssueReportForm onDone={() => setOpen(false)} onCreated={() => router.refresh()} />
           </RequireAuth>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
