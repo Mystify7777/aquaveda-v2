@@ -4,6 +4,15 @@
 
 ## Current Milestone
 
+Issue #82 — Explore adopts the #41 discovery filters — **implemented
+(uncommitted, awaiting review).** `category`, `severity`, `q`, `bbox` +
+existing `status`/`page`, all URL-driven (`src/lib/issues/discovery.ts`),
+validated with the backend's own `issue-search.js`. Native GET filter form
+(blank params redirect to the canonical URL), "Search this area" bbox
+control on the map (explicit, never clamped). Backend contract and
+protected-route topology untouched. Details:
+`docs/architecture/issue-discovery-contract.md` ("Frontend adoption").
+
 Issue #81 — route/link contract — **implemented.** Shared test-only
 resolver `src/test-utils/app-routes.ts` (static, `[param]`, `(group)`,
 catch-all reported-not-trusted; no Next router reimplementation, no new

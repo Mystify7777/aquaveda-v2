@@ -105,7 +105,7 @@ describe("IssueDetail", () => {
 
 describe("IssueStatusFilter", () => {
   it("offers All plus the five existing statuses as links; marks the active one", () => {
-    render(<IssueStatusFilter status="resolved" />);
+    render(<IssueStatusFilter filters={{ status: "resolved" }} />);
     const nav = screen.getByRole("navigation", { name: "Filter by status" });
     expect(within(nav).getAllByRole("link")).toHaveLength(6);
     expect(screen.getByRole("link", { name: "All" })).toHaveAttribute("href", "/explore");
@@ -114,8 +114,20 @@ describe("IssueStatusFilter", () => {
     expect(screen.getByRole("link", { name: "All" })).not.toHaveAttribute("aria-current");
   });
 
+  it("changing status keeps the other filters and resets the page", () => {
+    render(<IssueStatusFilter filters={{ status: "open", category: "water_quality", q: "pump", bbox: "77,12,78,13" }} />);
+    expect(screen.getByRole("link", { name: "Resolved" })).toHaveAttribute(
+      "href",
+      "/explore?status=resolved&category=water_quality&q=pump&bbox=77%2C12%2C78%2C13",
+    );
+    expect(screen.getByRole("link", { name: "All" })).toHaveAttribute(
+      "href",
+      "/explore?category=water_quality&q=pump&bbox=77%2C12%2C78%2C13",
+    );
+  });
+
   it("with no filter, All is current", () => {
-    render(<IssueStatusFilter />);
+    render(<IssueStatusFilter filters={{}} />);
     expect(screen.getByRole("link", { name: "All" })).toHaveAttribute("aria-current", "page");
   });
 });

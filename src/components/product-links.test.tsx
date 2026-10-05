@@ -9,6 +9,9 @@ import RootNotFound from "@/app/not-found";
 import IssueMap from "@/components/issues/issue-map";
 import { ApiError } from "@/lib/api/client";
 import { IssueCard } from "@/components/issues/issue-card";
+import { IssueDiscoveryFilters } from "@/components/issues/issue-discovery-filters";
+import { SearchAreaControl } from "@/components/issues/issue-search-area";
+import { IssueStatusFilter } from "@/components/issues/issue-status-filter";
 import { IssueReportForm } from "@/components/issues/issue-report-form";
 import { KnowledgeCard } from "@/components/knowledge/knowledge-card";
 import { WorkflowArticle } from "@/components/knowledge/workflow-article";
@@ -90,6 +93,21 @@ describe("Explore links", () => {
     await user.click(screen.getByRole("button", { name: "Submit report" }));
     await screen.findByText(marker);
     expectResolves(container, expected);
+  });
+
+  it("Explore filters (status nav, clear links, search-area link) all target /explore", () => {
+    const filters = { status: "open", category: "other", q: "pump", bbox: "77.5,12.8,77.7,13.1" } as const;
+    const { container } = render(
+      <>
+        <IssueStatusFilter filters={filters} />
+        <IssueDiscoveryFilters filters={filters} invalid={{}} />
+        <SearchAreaControl viewport={[77.5, 12.8, 77.7, 13.1]} filters={filters} />
+      </>,
+    );
+    const hrefs = internalHrefs(container);
+    expect(hrefs.length).toBeGreaterThan(6);
+    expect(hrefs.every((h) => h === "/explore" || h.startsWith("/explore?"))).toBe(true);
+    expect(findBrokenLinks(hrefs)).toEqual([]);
   });
 
   it("not-found -> /explore", () => {

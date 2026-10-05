@@ -40,8 +40,18 @@ export interface Issue {
   updatedAt: string;
 }
 
+/**
+ * Query of GET /api/v1/issues. Discovery parameters are the locked #41
+ * contract (docs/architecture/issue-discovery-contract.md): all optional,
+ * combined with AND. `q` and `bbox` are sent as validated strings
+ * (`bbox` = "west,south,east,north").
+ */
 export interface IssueListQuery extends PaginationQuery {
   status?: IssueStatus;
+  category?: IssueCategory;
+  severity?: IssueSeverity;
+  q?: string;
+  bbox?: string;
 }
 
 /**
