@@ -91,5 +91,6 @@ check fails if a deferred route gains a page, so the list cannot go stale.
 placeholder pages to satisfy it.
 
 **Related:** #80 (canonical `/auth/*` URLs, uses this helper), #83 (protected
-route topology; `/protected/*` is currently a real URL segment, and this
-contract only checks that those pages exist), #85 (browser e2e, out of scope here).
+route topology: authenticated pages live in the `(protected)` route group,
+which is implementation-only and never a URL segment; `/protected/*` is not
+a canonical URL and the contract reports it as missing), #85 (browser e2e, out of scope here).

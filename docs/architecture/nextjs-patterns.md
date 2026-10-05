@@ -105,3 +105,13 @@ Concern noted, out of scope for Issue #6: `IssueMapLoader` receives whole
 into the RSC payload a second time. Passing only the already-derived
 `{ id, title, position }` list (what `toMappableIssues` produces) would
 shrink that payload; it is a props-shape change, not a boundary change.
+
+## Route topology: `(protected)` is a route group (#83)
+
+Authenticated workflow pages live in `src/app/(protected)/` and are gated by
+`(protected)/layout.tsx` (`RequireAuth`). The group name is implementation-only:
+it never appears in a URL. Canonical URLs: `/learn/new`, `/learn/mine`,
+`/learn/review`, `/learn/review/[id]`, `/act/new`. `/protected/*` is not a route
+(no redirects, no compatibility tree). Public Explore/Learn/Act surfaces stay
+outside the group and anonymous. New authenticated pages go in the group; the
+route/link contract (`src/test-utils/app-routes.ts`) treats groups as transparent.

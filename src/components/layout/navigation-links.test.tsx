@@ -36,11 +36,11 @@ describe("navigation links resolve to implemented routes", () => {
     expect(findBrokenLinks(hrefs, DEFERRED)).toEqual([]);
   });
 
-  it("Learn workflow entry points (/protected/* is a real URL segment)", () => {
+  it("Learn workflow entry points (canonical URLs; (protected) is not a URL segment)", () => {
     mockUseAuth.mockReturnValue({ status: "authenticated", user: { role: "EXPERT" } });
     const { container } = render(<LearnWorkflowLinks />);
     const hrefs = internalHrefs(container);
-    expect(hrefs.sort()).toEqual(["/protected/learn/mine", "/protected/learn/review"]);
+    expect(hrefs.sort()).toEqual(["/learn/mine", "/learn/review"]);
     expect(findBrokenLinks(hrefs)).toEqual([]);
   });
 });

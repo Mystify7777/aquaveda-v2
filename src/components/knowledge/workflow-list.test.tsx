@@ -48,7 +48,7 @@ describe("MyKnowledgeList", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading your articles...");
     expect(await screen.findByRole("link", { name: "Article 1" })).toHaveAttribute(
       "href",
-      "/protected/learn/review/k1",
+      "/learn/review/k1",
     );
     expect(mockMine).toHaveBeenCalledWith({ page: 1, status: undefined });
     const list = screen.getByRole("list");
@@ -66,23 +66,23 @@ describe("MyKnowledgeList", () => {
     const nav = screen.getByRole("navigation", { name: "Filter by status" });
     expect(nav).toHaveTextContent("All");
     expect(screen.getByRole("link", { name: "Rejected" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: "Draft" })).toHaveAttribute("href", "/protected/learn/mine?status=draft");
-    expect(screen.getByRole("link", { name: "All" })).toHaveAttribute("href", "/protected/learn/mine");
+    expect(screen.getByRole("link", { name: "Draft" })).toHaveAttribute("href", "/learn/mine?status=draft");
+    expect(screen.getByRole("link", { name: "All" })).toHaveAttribute("href", "/learn/mine");
   });
 
   it("pagination preserves the active status filter", async () => {
     mockMine.mockResolvedValue(pageOf([item(1)], { page: 2, total: 60, totalPages: 3 }));
     render(<MyKnowledgeList page={2} status="draft" />);
     await screen.findByText("Page 2 of 3");
-    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/protected/learn/mine?status=draft&page=3");
-    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/protected/learn/mine?status=draft");
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/learn/mine?status=draft&page=3");
+    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/learn/mine?status=draft");
   });
 
   it("empty (no filter): invites writing; empty (filtered): says so; past-the-end: links back", async () => {
     mockMine.mockResolvedValueOnce(pageOf([]));
     const { unmount } = render(<MyKnowledgeList page={1} />);
     expect(await screen.findByRole("heading", { name: "No articles yet" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Write an article" })).toHaveAttribute("href", "/protected/learn/new");
+    expect(screen.getByRole("link", { name: "Write an article" })).toHaveAttribute("href", "/learn/new");
     unmount();
 
     mockMine.mockResolvedValueOnce(pageOf([]));
@@ -94,7 +94,7 @@ describe("MyKnowledgeList", () => {
     render(<MyKnowledgeList page={9} />);
     expect(await screen.findByRole("link", { name: "Back to first page" })).toHaveAttribute(
       "href",
-      "/protected/learn/mine",
+      "/learn/mine",
     );
   });
 
@@ -126,7 +126,7 @@ describe("ReviewQueueList", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading review queue...");
     expect(await screen.findByRole("link", { name: "Article 1" })).toHaveAttribute(
       "href",
-      "/protected/learn/review/k1",
+      "/learn/review/k1",
     );
     expect(mockQueue).toHaveBeenCalledWith({ page: 1 });
     expect(screen.getByText(/By Asha/)).toBeInTheDocument();
@@ -143,7 +143,7 @@ describe("ReviewQueueList", () => {
     mockQueue.mockResolvedValue(pageOf([item(1)], { page: 2, total: 60, totalPages: 3 }));
     render(<ReviewQueueList page={2} />);
     await screen.findByText("Page 2 of 3");
-    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/protected/learn/review?page=3");
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/learn/review?page=3");
   });
 
   it("a backend refusal (403) is rendered, not pre-empted client-side", async () => {

@@ -19,13 +19,13 @@ describe("LearnWorkflowLinks", () => {
   it("signed-in USER: My articles only", () => {
     mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role: "USER" } });
     render(<LearnWorkflowLinks />);
-    expect(screen.getByRole("link", { name: "My articles" })).toHaveAttribute("href", "/protected/learn/mine");
+    expect(screen.getByRole("link", { name: "My articles" })).toHaveAttribute("href", "/learn/mine");
     expect(screen.queryByRole("link", { name: "Review queue" })).not.toBeInTheDocument();
   });
 
   it("EXPERT: both links", () => {
     mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role: "EXPERT" } });
     render(<LearnWorkflowLinks />);
-    expect(screen.getByRole("link", { name: "Review queue" })).toHaveAttribute("href", "/protected/learn/review");
+    expect(screen.getByRole("link", { name: "Review queue" })).toHaveAttribute("href", "/learn/review");
   });
 });

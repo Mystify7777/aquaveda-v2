@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import ProtectedLayout from "@/app/protected/layout";
-import NewKnowledgeDraftPage from "@/app/protected/learn/new/page";
+import ProtectedLayout from "@/app/(protected)/layout";
+import NewKnowledgeDraftPage from "@/app/(protected)/learn/new/page";
 import { KnowledgeDraftForm } from "@/components/knowledge/knowledge-draft-form";
 import { ApiError } from "@/lib/api/client";
 
