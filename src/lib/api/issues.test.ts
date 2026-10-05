@@ -45,6 +45,16 @@ describe("getIssues", () => {
     );
   });
 
+  it("serializes the #41 discovery params exactly (q/bbox encoded, no extras)", async () => {
+    mockFetchOnce({ success: true, data: { items: [], page: 1, limit: 20, total: 0, totalPages: 0 }, message: "ok" });
+    await getIssues({ page: 1, category: "water_quality", severity: "high", q: "main road", bbox: "77.5,12.8,77.7,13.1" });
+    const url = new URL((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+    expect(url.origin + url.pathname).toBe("https://api.aquaveda.com/api/v1/issues");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      page: "1", category: "water_quality", severity: "high", q: "main road", bbox: "77.5,12.8,77.7,13.1",
+    });
+  });
+
   it("serializes the status filter and pagination params into the query string", async () => {
     mockFetchOnce({ success: true, data: { items: [], page: 2, limit: 10, total: 0, totalPages: 0 }, message: "ok" });
     await getIssues({ status: "acknowledged", page: 2, limit: 10 });

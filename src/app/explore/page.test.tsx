@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 
 import ExplorePage from "@/app/explore/page";
 import ExploreLoading from "@/app/explore/loading";
@@ -7,13 +7,17 @@ import { ApiError } from "@/lib/api/client";
 import type { Issue } from "@/lib/api/types/issue";
 
 const mockGetIssues = vi.fn();
+const mockRedirect = vi.fn((url: string) => {
+  throw new Error(`NEXT_REDIRECT:${url}`);
+});
+vi.mock("next/navigation", () => ({ redirect: (url: string) => mockRedirect(url), usePathname: () => "/explore" }));
 vi.mock("@/lib/api/issues", () => ({ getIssues: (q: unknown) => mockGetIssues(q) }));
 vi.mock("@/components/issues/report-issue-button", () => ({
   ReportIssueButton: () => <button>Report an issue</button>,
 }));
 vi.mock("@/components/issues/issue-map-loader", () => ({
-  IssueMapLoader: ({ issues, label }: { issues: Issue[]; label: string }) => (
-    <div role="region" aria-label={label}>{`map:${issues.map((i) => i._id).join(",")}`}</div>
+  IssueMapLoader: ({ issues, label, areaSearch }: { issues: Issue[]; label: string; areaSearch?: { filters: unknown } }) => (
+    <div role="region" aria-label={label} data-area-filters={JSON.stringify(areaSearch?.filters ?? null)}>{`map:${issues.map((i) => i._id).join(",")}`}</div>
   ),
 }));
 
@@ -37,13 +41,14 @@ function issue(n: number, over: Partial<Issue> = {}): Issue {
 const pageOf = (items: Issue[], over = {}) => ({
   items, page: 1, limit: 20, total: items.length, totalPages: items.length ? 1 : 0, ...over,
 });
-async function renderPage(sp: { page?: string | string[]; status?: string | string[] } = {}) {
+async function renderPage(sp: Record<string, string | string[] | undefined> = {}) {
   render(await ExplorePage({ searchParams: Promise.resolve(sp) }));
 }
 
 describe("/explore", () => {
   beforeEach(() => {
     mockGetIssues.mockReset();
+    mockRedirect.mockClear();
   });
 
   it("anonymous browse: lists public issues linking to detail, and maps the same page of issues", async () => {
@@ -85,12 +90,14 @@ describe("/explore", () => {
     expect(skip.getAttribute("href")).toBe(`#${target.id}`);
   });
 
-  it("sends only the supported contract parameters: page and status", async () => {
+  it("with no discovery filters the request is unchanged: only page and status", async () => {
     mockGetIssues.mockResolvedValue(pageOf([issue(1)]));
     await renderPage({ page: "3", status: "resolved" });
     expect(mockGetIssues).toHaveBeenCalledTimes(1);
     expect(mockGetIssues.mock.calls[0][0]).toEqual({ page: 3, status: "resolved" });
     expect(Object.keys(mockGetIssues.mock.calls[0][0]).sort()).toEqual(["page", "status"]);
+    await renderPage();
+    expect(Object.keys(mockGetIssues.mock.calls[1][0])).toEqual(["page"]);
   });
 
   it.each([["closed"], [""], ["OPEN"]])("an unrecognized status %j is ignored, not forwarded", async (raw) => {
@@ -157,5 +164,152 @@ describe("/explore", () => {
   it("loading state is an announced status region", () => {
     render(<ExploreLoading />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading issues...");
+  });
+});
+
+const BBOX = "77.5,12.8,77.7,13.1";
+
+describe("/explore discovery filters (#82)", () => {
+  beforeEach(() => {
+    mockGetIssues.mockReset();
+    mockRedirect.mockClear();
+    mockGetIssues.mockResolvedValue(pageOf([issue(1)]));
+  });
+
+  it("forwards every filter with status and pagination, exactly as the #41 contract names them", async () => {
+    await renderPage({ status: "open", category: "water_quality", severity: "high", q: "main road", bbox: BBOX, page: "2" });
+    expect(mockGetIssues).toHaveBeenCalledWith({
+      page: 2, status: "open", category: "water_quality", severity: "high", q: "main road", bbox: BBOX,
+    });
+  });
+
+  it.each([
+    [{ category: "water_quality" }, { page: 1, category: "water_quality" }],
+    [{ severity: "critical" }, { page: 1, severity: "critical" }],
+    [{ q: "leak" }, { page: 1, q: "leak" }],
+    [{ bbox: BBOX }, { page: 1, bbox: BBOX }],
+    [{ category: "other", severity: "low" }, { page: 1, category: "other", severity: "low" }],
+  ])("combination %j", async (sp, expected) => {
+    await renderPage(sp);
+    expect(mockGetIssues.mock.calls[0][0]).toEqual(expected);
+  });
+
+  it("unrecognized category/severity are ignored, not forwarded", async () => {
+    await renderPage({ category: "bogus", severity: "extreme" });
+    expect(mockGetIssues.mock.calls[0][0]).toEqual({ page: 1 });
+  });
+
+  it("form is prefilled from the URL and carries status + bbox (never page) as hidden fields", async () => {
+    await renderPage({ status: "open", category: "water_quality", severity: "high", q: "pump", bbox: BBOX, page: "3" });
+    const form = screen.getByRole("search");
+    expect(form).toHaveAttribute("method", "get");
+    expect(form).toHaveAttribute("action", "/explore");
+    expect(screen.getByLabelText("Search")).toHaveValue("pump");
+    expect(screen.getByLabelText("Category")).toHaveValue("water_quality");
+    expect(screen.getByLabelText("Severity")).toHaveValue("high");
+    const hidden = [...form.querySelectorAll("input[type=hidden]")].map((i) => [i.getAttribute("name"), i.getAttribute("value")]);
+    expect(hidden).toEqual([["status", "open"], ["bbox", BBOX]]);
+    expect(form.querySelector("[name=page]")).toBeNull();
+  });
+
+  it("category/severity options come from the canonical vocabulary, plus an 'Any' option", async () => {
+    await renderPage();
+    const options = (label: string) => [...(screen.getByLabelText(label) as HTMLSelectElement).options].map((o) => o.value);
+    expect(options("Category")).toEqual(["", "supply_shortage", "leakage_wastage", "water_quality", "flooding_drainage", "damaged_infrastructure", "other"]);
+    expect(options("Severity")).toEqual(["", "low", "medium", "high", "critical"]);
+  });
+
+  it("pagination links keep every active filter in canonical order; page 1 link is bare of page", async () => {
+    mockGetIssues.mockResolvedValue(pageOf([issue(1)], { page: 2, total: 60, totalPages: 3 }));
+    await renderPage({ page: "2", bbox: BBOX, q: "pump", status: "open", category: "other" });
+    const prefix = "/explore?status=open&category=other&q=pump&bbox=77.5%2C12.8%2C77.7%2C13.1";
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", `${prefix}&page=3`);
+    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", prefix);
+  });
+
+  it("status links keep discovery filters and reset the page", async () => {
+    await renderPage({ page: "2", q: "pump", category: "other" });
+    expect(screen.getByRole("link", { name: "Resolved" })).toHaveAttribute("href", "/explore?status=resolved&category=other&q=pump");
+    expect(screen.getByRole("link", { name: "All" })).toHaveAttribute("href", "/explore?category=other&q=pump");
+  });
+
+  it("Clear filters appears only when a discovery filter is active, clears them, and keeps status", async () => {
+    await renderPage({ status: "open" });
+    expect(screen.queryByRole("link", { name: "Clear filters" })).not.toBeInTheDocument();
+    cleanup();
+    await renderPage({ status: "open", q: "pump", bbox: BBOX });
+    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/explore?status=open");
+    expect(screen.getByRole("link", { name: "Clear map area" })).toHaveAttribute("href", "/explore?status=open&q=pump");
+  });
+
+  it("filtered-empty: says the filters matched nothing and offers a way out; not the 'no issues reported yet' copy", async () => {
+    mockGetIssues.mockResolvedValue(pageOf([]));
+    await renderPage({ status: "open", q: "pump" });
+    expect(screen.getByRole("heading", { name: "No issues match these filters" })).toBeInTheDocument();
+    expect(screen.queryByText("No issues reported yet")).not.toBeInTheDocument();
+    const links = screen.getAllByRole("link", { name: "Clear filters" });
+    expect(links.length).toBeGreaterThan(0);
+    links.forEach((l) => expect(l).toHaveAttribute("href", "/explore?status=open"));
+    expect(screen.getByRole("button", { name: "Report an issue" })).toBeInTheDocument();
+  });
+
+  it("status-only empty keeps the original copy", async () => {
+    mockGetIssues.mockResolvedValue(pageOf([]));
+    await renderPage({ status: "verified" });
+    expect(screen.getByRole("heading", { name: "No verified issues" })).toBeInTheDocument();
+  });
+
+  it("page past the end with filters links back to the canonical first page", async () => {
+    mockGetIssues.mockResolvedValue(pageOf([], { page: 9, total: 3, totalPages: 1 }));
+    await renderPage({ page: "9", category: "other", q: "pump" });
+    expect(screen.getByRole("link", { name: "Back to first page" })).toHaveAttribute("href", "/explore?category=other&q=pump");
+  });
+
+  it("API failure with filters: alert, retry to the same canonical URL, filters stay usable", async () => {
+    mockGetIssues.mockRejectedValue(new ApiError("Failed to fetch", "network"));
+    await renderPage({ page: "2", category: "other", q: "pump" });
+    expect(screen.getByRole("alert")).toHaveTextContent(/unreachable/i);
+    expect(screen.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "/explore?category=other&q=pump&page=2");
+    expect(screen.getByLabelText("Search")).toHaveValue("pump");
+    expect(screen.queryByRole("heading", { name: /No issues/ })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [{ q: "a" }, /q must be at least 2/],
+    [{ q: "x".repeat(101) }, /q must be at most 100/],
+    [{ bbox: "0,0,50,1" }, /bbox must not span more than 10 degrees/],
+    [{ bbox: "nope" }, /bbox must be four numbers/],
+  ])("contract-invalid %j is explained with the backend wording and never sent", async (sp, message) => {
+    await renderPage(sp);
+    expect(mockGetIssues).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(message);
+    expect(screen.queryByRole("heading", { name: /No issues/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/explore");
+  });
+
+  it("an invalid q stays in the input so it can be corrected", async () => {
+    await renderPage({ q: "a" });
+    expect(screen.getByLabelText("Search")).toHaveValue("a");
+  });
+
+  it.each([
+    [{ q: "", category: "", severity: "" }, "/explore"],
+    [{ q: "", status: "open", page: "2" }, "/explore?status=open&page=2"],
+    [{ q: "  pump ", category: "" }, "/explore?q=pump"],
+    [{ bbox: "" }, "/explore"],
+  ])("blank or padded GET-form params %j redirect to the canonical URL %s", async (sp, url) => {
+    await expect(renderPage(sp)).rejects.toThrow(`NEXT_REDIRECT:${url}`);
+    expect(mockGetIssues).not.toHaveBeenCalled();
+  });
+
+  it("canonical and legacy URLs do not redirect", async () => {
+    await renderPage({ status: "open", page: "2" });
+    await renderPage({ status: "" });
+    expect(mockRedirect).not.toHaveBeenCalled();
+  });
+
+  it("anonymous browse works with filters (no auth dependency)", async () => {
+    await renderPage({ q: "pump" });
+    expect(screen.getByRole("link", { name: "Issue 1" })).toHaveAttribute("href", "/explore/i1");
   });
 });

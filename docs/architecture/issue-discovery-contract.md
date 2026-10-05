@@ -149,5 +149,39 @@ nor `$nearSphere`, so `q` composes with every other filter.
 
 Radius search, distance/relevance ordering, fuzzy or prefix text search,
 multi-value filters (`status=a,b`), cursor pagination, antimeridian
-crossing, frontend adoption (Explore keeps using only `status`/`page` until
-its own follow-up).
+crossing.
+
+## Frontend adoption: `/explore` (Issue #82)
+
+The contract above is unchanged; this records how Explore consumes it.
+Code: `src/lib/issues/discovery.ts` (state), `src/app/explore/page.tsx`.
+
+- **URL is the only state.** `/explore?status&category&severity&q&bbox&page`,
+  parsed and serialized in one place. Serialization is deterministic (fixed
+  key order, inactive filters and `page=1` omitted); status links, filter
+  form and pagination all emit canonical URLs. Changing any filter resets
+  `page`. No global/client state.
+- **Nothing is re-implemented.** Category/severity come from
+  `issue-classification.js`; `q` and `bbox` are validated with the backend's
+  own `issue-search.js` (`searchTextProblem`, `parseBbox`, `bboxProblem`), reached through the single boundary file `src/lib/issues/discovery-contract.ts` (same pattern as `classification.ts`).
+  `q` is sent trimmed, otherwise as typed; there is no client-side matching,
+  stripping of punctuation, or normalization beyond the trim.
+- **Unknown values.** Unrecognized `status`/`category`/`severity` are ignored
+  (as `status` always was). A `q`/`bbox` that breaks the contract is **not
+  sent and not dropped silently**: Explore shows the backend's wording and no
+  results.
+- **Filter form** is a native GET form (no JS needed). Blank fields submit as
+  `?q=&category=`; the page redirects those (and padded `q`) to the canonical
+  URL. "Clear filters" clears category/severity/`q`/`bbox` and keeps `status`
+  (which has its own "All").
+- **Area search (`bbox`).** The map offers an explicit "Search this area"
+  (Leaflet bounds are exactly the contract order). Not automatic, so panning
+  never refetches or loops. The viewport is rounded to 5 decimals and validated
+  after rounding; a viewport the API would reject (over 10 degrees, outside the
+  world map) disables the button with a hint and is never clamped. With an
+  active `bbox` the map fits that area and stays visible when the area has no
+  issues. The map still plots only the current page's issues.
+- **Limitations.** No radius/"near me" (per contract). Standalone punctuation
+  in `q` over-constrains results (see contract); the form hints that every
+  word must match but does not alter the query. A fitted bbox view can be
+  slightly larger than the bbox itself (Leaflet zoom snapping).
