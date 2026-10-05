@@ -37,7 +37,7 @@ export function MyKnowledgeList({ page, status }: { page: number; status?: Knowl
     () => getMyKnowledge({ page, status }),
     `mine:${page}:${status ?? ""}`,
   );
-  const base = "/protected/learn/mine";
+  const base = "/learn/mine";
 
   return (
     <div className="space-y-6">
@@ -87,7 +87,7 @@ export function MyKnowledgeList({ page, status }: { page: number; status?: Knowl
               action={
                 !status ? (
                   <Button asChild>
-                    <Link href="/protected/learn/new">Write an article</Link>
+                    <Link href="/learn/new">Write an article</Link>
                   </Button>
                 ) : undefined
               }
@@ -121,7 +121,7 @@ export function MyKnowledgeList({ page, status }: { page: number; status?: Knowl
  */
 export function ReviewQueueList({ page }: { page: number }) {
   const { resource, reload } = useApiResource(() => getReviewQueue({ page }), `queue:${page}`);
-  const base = "/protected/learn/review";
+  const base = "/learn/review";
 
   return (
     <div className="space-y-6">

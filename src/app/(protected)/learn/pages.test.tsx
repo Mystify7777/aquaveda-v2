@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-import MyKnowledgePage from "@/app/protected/learn/mine/page";
-import ReviewQueuePage from "@/app/protected/learn/review/page";
-import WorkflowArticlePage from "@/app/protected/learn/review/[id]/page";
+import MyKnowledgePage from "@/app/(protected)/learn/mine/page";
+import ReviewQueuePage from "@/app/(protected)/learn/review/page";
+import WorkflowArticlePage from "@/app/(protected)/learn/review/[id]/page";
 
 vi.mock("@/components/knowledge/workflow-list", () => ({
   MyKnowledgeList: ({ page, status }: { page: number; status?: string }) => (
@@ -26,7 +26,7 @@ describe("protected learn pages parse the URL and hand off to client components"
     render(await MyKnowledgePage({ searchParams: Promise.resolve(sp) }));
     expect(screen.getByTestId("mine")).toHaveTextContent(expected);
     expect(screen.getByRole("heading", { level: 1, name: "My articles" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Write an article" })).toHaveAttribute("href", "/protected/learn/new");
+    expect(screen.getByRole("link", { name: "Write an article" })).toHaveAttribute("href", "/learn/new");
   });
 
   it.each([[{}, "1"], [{ page: "4" }, "4"], [{ page: "-1" }, "1"]])("/review %j -> %s", async (sp, expected) => {
@@ -38,6 +38,6 @@ describe("protected learn pages parse the URL and hand off to client components"
   it("/review/[id] passes the id through and links back to My articles", async () => {
     render(await WorkflowArticlePage({ params: Promise.resolve({ id: "abc123" }) }));
     expect(screen.getByTestId("article")).toHaveTextContent("abc123");
-    expect(screen.getByRole("link", { name: /My articles/ })).toHaveAttribute("href", "/protected/learn/mine");
+    expect(screen.getByRole("link", { name: /My articles/ })).toHaveAttribute("href", "/learn/mine");
   });
 });

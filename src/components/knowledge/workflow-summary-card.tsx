@@ -17,7 +17,7 @@ export function WorkflowSummaryCard({
       <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
         <CardTitle className="text-base">
           <Link
-            href={`/protected/learn/review/${item._id}`}
+            href={`/learn/review/${item._id}`}
             className="focus-visible:ring-ring rounded-sm outline-none focus-visible:ring-2"
           >
             {item.title}

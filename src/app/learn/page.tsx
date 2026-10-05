@@ -92,7 +92,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <div className="flex flex-wrap gap-2">
           <LearnWorkflowLinks />
           <Button asChild>
-            <Link href="/protected/learn/new">Write an article</Link>
+            <Link href="/learn/new">Write an article</Link>
           </Button>
         </div>
       </div>

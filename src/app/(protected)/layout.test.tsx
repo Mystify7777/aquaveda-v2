@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-import ProtectedLayout from "@/app/protected/layout";
+import ProtectedLayout from "@/app/(protected)/layout";
 
 /**
  * Proves the route-group layout actually wires RequireAuth in front of

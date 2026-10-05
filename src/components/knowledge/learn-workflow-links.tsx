@@ -18,11 +18,11 @@ export function LearnWorkflowLinks() {
   return (
     <>
       <Button asChild variant="outline">
-        <Link href="/protected/learn/mine">My articles</Link>
+        <Link href="/learn/mine">My articles</Link>
       </Button>
       {user?.role === "EXPERT" && (
         <Button asChild variant="outline">
-          <Link href="/protected/learn/review">Review queue</Link>
+          <Link href="/learn/review">Review queue</Link>
         </Button>
       )}
     </>

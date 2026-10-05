@@ -121,9 +121,9 @@ describe("Learn links", () => {
     expectResolves(render(<KnowledgeCard article={a as never} />).container, ["/learn/k1"]);
   });
 
-  it("WorkflowSummaryCard -> /protected/learn/review/[id]", () => {
+  it("WorkflowSummaryCard -> /learn/review/[id]", () => {
     const item = { _id: "k1", title: "T", status: "draft", region: "", author: actor, createdAt: ts, updatedAt: ts };
-    expectResolves(render(<WorkflowSummaryCard item={item as never} />).container, ["/protected/learn/review/k1"]);
+    expectResolves(render(<WorkflowSummaryCard item={item as never} />).container, ["/learn/review/k1"]);
   });
 
   it("My articles list: items, status filters, empty-state CTA", async () => {
@@ -132,15 +132,15 @@ describe("Learn links", () => {
     const filled = render(<MyKnowledgeList page={1} />);
     await screen.findByRole("link", { name: "T" });
     const hrefs = internalHrefs(filled.container);
-    expect(hrefs).toContain("/protected/learn/review/k1");
-    expect(hrefs).toContain("/protected/learn/mine");
+    expect(hrefs).toContain("/learn/review/k1");
+    expect(hrefs).toContain("/learn/mine");
     expect(findBrokenLinks(hrefs)).toEqual([]);
     filled.unmount();
 
     mockMine.mockResolvedValue({ items: [], page: 1, limit: 20, total: 0, totalPages: 0 });
     const empty = render(<MyKnowledgeList page={1} />);
     await screen.findByRole("link", { name: "Write an article" });
-    expect(internalHrefs(empty.container)).toContain("/protected/learn/new");
+    expect(internalHrefs(empty.container)).toContain("/learn/new");
     expect(findBrokenLinks(internalHrefs(empty.container))).toEqual([]);
   });
 
@@ -163,7 +163,7 @@ describe("Learn links", () => {
     mockGetWorkflow.mockRejectedValue(new ApiError("Not found", "http", 404, "NOT_FOUND"));
     const missing = render(<WorkflowArticle knowledgeId="k1" />);
     await screen.findByRole("link", { name: "Back to your articles" });
-    expectResolves(missing.container, ["/protected/learn/mine"]);
+    expectResolves(missing.container, ["/learn/mine"]);
   });
 
   it("not-found -> /learn", () => {

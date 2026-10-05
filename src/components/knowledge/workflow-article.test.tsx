@@ -107,7 +107,7 @@ describe("WorkflowArticle — rendering the workflow DTO", () => {
     mockGet.mockRejectedValue(error);
     render(<WorkflowArticle knowledgeId="k1" />);
     expect(await screen.findByRole("heading", { name: "Article not found" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to your articles" })).toHaveAttribute("href", "/protected/learn/mine");
+    expect(screen.getByRole("link", { name: "Back to your articles" })).toHaveAttribute("href", "/learn/mine");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -216,7 +216,7 @@ describe("WorkflowArticle — approve / reject", () => {
     expect(mockApprove).toHaveBeenCalledWith("k1");
     expect(await screen.findByRole("heading", { name: "Article approved" })).toHaveFocus();
     expect(screen.getByRole("status")).toHaveTextContent(/is now published/);
-    expect(screen.getByRole("link", { name: "Back to review queue" })).toHaveAttribute("href", "/protected/learn/review");
+    expect(screen.getByRole("link", { name: "Back to review queue" })).toHaveAttribute("href", "/learn/review");
     expect(mockGet).toHaveBeenCalledTimes(1);
   });
 

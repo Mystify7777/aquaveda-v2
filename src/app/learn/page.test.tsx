@@ -50,7 +50,7 @@ describe("/learn", () => {
   it("authoring entry point: public link to the established draft route", async () => {
     mockGetKnowledgeList.mockResolvedValue({ items: [], page: 1, limit: 20, total: 0, totalPages: 0 });
     await renderPage();
-    expect(screen.getByRole("link", { name: "Write an article" })).toHaveAttribute("href", "/protected/learn/new");
+    expect(screen.getByRole("link", { name: "Write an article" })).toHaveAttribute("href", "/learn/new");
   });
 
   it("empty: copy speaks only of published articles", async () => {

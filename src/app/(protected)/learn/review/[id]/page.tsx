@@ -10,7 +10,7 @@ export default async function WorkflowArticlePage({ params }: { params: Promise<
   const { id } = await params;
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-16 sm:px-6">
-      <Link href="/protected/learn/mine" className="text-muted-foreground hover:text-foreground w-fit text-sm">
+      <Link href="/learn/mine" className="text-muted-foreground hover:text-foreground w-fit text-sm">
         ← My articles
       </Link>
       <WorkflowArticle knowledgeId={id} />

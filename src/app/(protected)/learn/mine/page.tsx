@@ -27,7 +27,7 @@ export default async function MyKnowledgePage({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="font-display text-3xl font-semibold tracking-tight">My articles</h1>
         <Button asChild>
-          <Link href="/protected/learn/new">Write an article</Link>
+          <Link href="/learn/new">Write an article</Link>
         </Button>
       </div>
       <MyKnowledgeList page={parsePage(sp.page)} status={parseKnowledgeStatus(sp.status)} />

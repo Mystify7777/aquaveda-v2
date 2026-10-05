@@ -109,7 +109,20 @@ describe("classifyHref", () => {
 
 describe("findBrokenLinks (real src/app)", () => {
   it("accepts existing static and dynamic routes", () => {
-    expect(findBrokenLinks(["/", "/explore", "/auth/login?next=/act", "/act/abc123", "/protected/learn/review/xyz"])).toEqual([]);
+    expect(findBrokenLinks(["/", "/explore", "/auth/login?next=/act", "/act/abc123", "/learn/review/xyz"])).toEqual([]);
+  });
+
+  it("resolves (protected) workflow pages at canonical URLs; the group and old /protected/* are not URLs (#83)", () => {
+    for (const href of ["/learn/new", "/learn/mine", "/learn/review", "/learn/review/k1", "/act/new"]) {
+      expect(resolveAppRoute(href)).not.toBe("missing");
+    }
+    for (const href of ["/protected/learn/new", "/protected/learn/mine", "/protected/learn/review", "/protected/learn/review/k1", "/protected/act/new", "/(protected)/learn/new"]) {
+      expect(resolveAppRoute(href)).toBe("missing");
+    }
+  });
+
+  it("keeps public Explore/Learn/Act routes resolvable alongside protected siblings (#83)", () => {
+    expect(findBrokenLinks(["/explore", "/explore/i1", "/learn", "/learn/k1", "/act", "/act/p1"])).toEqual([]);
   });
 
   it("flags the pre-#80 bad hrefs", () => {

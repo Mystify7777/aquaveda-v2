@@ -77,7 +77,7 @@ export function KnowledgeReviewActions({
         >
           <p>{failure.message}</p>
           <Button asChild size="sm" variant="outline">
-            <Link href={failure.kind === "session" ? "/auth/login" : "/protected/learn/review"}>
+            <Link href={failure.kind === "session" ? "/auth/login" : "/learn/review"}>
               {failure.kind === "session" ? "Sign in" : "Back to review queue"}
             </Link>
           </Button>

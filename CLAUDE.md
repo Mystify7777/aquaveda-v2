@@ -4,6 +4,15 @@
 
 ## Current Milestone
 
+Issue #83 — protected-route topology — **implemented (uncommitted, awaiting
+review).** `src/app/protected/` → `src/app/(protected)/` (`git mv`; layout/auth
+boundary unchanged). URLs are canonical (`/learn/new|mine|review[/id]`,
+`/act/new`); `(protected)` is an implementation-only route group, never a URL
+segment. All `/protected/...` links, test expectations and imports rewritten; no
+redirects or duplicate tree. Route-contract tests assert canonical paths resolve
+and `/protected/*` / `/(protected)/*` do not; public Explore/Learn/Act unchanged.
+Docs: `docs/engineering/testing.md`, `docs/architecture/nextjs-patterns.md`.
+
 Issue #82 — Explore adopts the #41 discovery filters — **implemented
 (uncommitted, awaiting review).** `category`, `severity`, `q`, `bbox` +
 existing `status`/`page`, all URL-driven (`src/lib/issues/discovery.ts`),

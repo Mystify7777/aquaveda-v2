@@ -58,7 +58,7 @@ export function WorkflowArticle({ knowledgeId }: { knowledgeId: string }) {
             This article doesn&apos;t exist, or you don&apos;t have access to it.
           </p>
           <Button asChild>
-            <Link href="/protected/learn/mine">Back to your articles</Link>
+            <Link href="/learn/mine">Back to your articles</Link>
           </Button>
         </div>
       );
@@ -85,7 +85,7 @@ export function WorkflowArticle({ knowledgeId }: { knowledgeId: string }) {
             : "was returned to its author with your feedback."}
         </p>
         <Button asChild>
-          <Link href="/protected/learn/review">Back to review queue</Link>
+          <Link href="/learn/review">Back to review queue</Link>
         </Button>
       </div>
     );
