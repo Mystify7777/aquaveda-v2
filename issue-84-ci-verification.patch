@@ -1,0 +1,128 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 0000000..a64d12e
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,69 @@
++name: CI
++
++# Runs the repo's own verification scripts; no logic is duplicated here.
++#   frontend -> npm run verify:frontend  (test, lint, typecheck, build)
++#   backend  -> npm --prefix server run verify  (needs real MongoDB)
++# Together they cover the frontend/backend verification commands invoked by
++# root `npm run verify`.
++on:
++  pull_request:
++    branches: [main]
++  push:
++    branches: [main]
++
++permissions:
++  contents: read
++
++concurrency:
++  group: ci-${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
++
++env:
++  NODE_VERSION: "22"
++
++jobs:
++  frontend:
++    name: Frontend (test, lint, typecheck, build)
++    runs-on: ubuntu-latest
++    timeout-minutes: 15
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version: ${{ env.NODE_VERSION }}
++          cache: npm
++          cache-dependency-path: package-lock.json
++      - run: npm ci
++      # next/font/google fetches fonts at build time; hosted runners have network access.
++      - run: npm run verify:frontend
++
++  backend:
++    name: Backend (tests, verify scripts; MongoDB)
++    runs-on: ubuntu-latest
++    timeout-minutes: 15
++    services:
++      mongo:
++        # Major-pinned (not `latest`). No project-stated server version exists;
++        # see docs/engineering/testing.md ("CI") for rationale.
++        image: mongo:7
++        ports:
++          - 27017:27017
++        options: >-
++          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
++          --health-interval 5s
++          --health-timeout 5s
++          --health-retries 12
++    env:
++      # Test-only values. TEST_MONGO_URI must differ from MONGO_URI (unset here).
++      TEST_MONGO_URI: mongodb://127.0.0.1:27017/aquaveda_v2_test
++      JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production-0001
++      JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production-0002
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version: ${{ env.NODE_VERSION }}
++          cache: npm
++          cache-dependency-path: server/package-lock.json
++      - run: npm ci --prefix server
++      - run: npm --prefix server run verify
+diff --git a/CLAUDE.md b/CLAUDE.md
+index d0df06b..e96906c 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -4,6 +4,13 @@
+ 
+ ## Current Milestone
+ 
++Issue #84 — CI verification — **implemented (uncommitted, awaiting review).**
++`.github/workflows/ci.yml`: PRs to `main` + pushes to `main`. `frontend` job runs
++`npm run verify:frontend`; `backend` job runs `npm --prefix server run verify`
++against a pinned `mongo:7` service container (rationale in testing.md) (no skipped/mocked Mongo tests). Node 22,
++lockfile-strict `npm ci` for root and `server/`. No app behavior changes.
++Details: `docs/engineering/testing.md` ("CI").
++
+ Issue #83 — protected-route topology — **implemented (uncommitted, awaiting
+ review).** `src/app/protected/` → `src/app/(protected)/` (`git mv`; layout/auth
+ boundary unchanged). URLs are canonical (`/learn/new|mine|review[/id]`,
+diff --git a/docs/engineering/testing.md b/docs/engineering/testing.md
+index 54df109..89bdb81 100644
+--- a/docs/engineering/testing.md
++++ b/docs/engineering/testing.md
+@@ -94,3 +94,30 @@ placeholder pages to satisfy it.
+ route topology: authenticated pages live in the `(protected)` route group,
+ which is implementation-only and never a URL segment; `/protected/*` is not
+ a canonical URL and the contract reports it as missing), #85 (browser e2e, out of scope here).
++
++## CI (#84)
++
++`.github/workflows/ci.yml` runs on pull requests to `main` and on pushes to `main`.
++It only invokes existing scripts; the two jobs cover the frontend/backend verification commands invoked by root `npm run verify`.
++
++| Job | Runs | Needs |
++|---|---|---|
++| `frontend` | `npm ci` → `npm run verify:frontend` (vitest, `test:node`, lint, typecheck, build) | network for `next/font/google` at build |
++| `backend` | `npm ci --prefix server` → `npm --prefix server run verify` (service/route tests, `verify:models`, `verify:validation`, `verify:cookie-config`) | MongoDB 7 service container |
++
++Backend tests use a real MongoDB (`TEST_MONGO_URI`, see `server/README.md`); they are
++never skipped or mocked in CI. Job env supplies only what the server requires and the
++tests do not set themselves: `TEST_MONGO_URI` and throwaway `JWT_ACCESS_SECRET` /
++`JWT_REFRESH_SECRET` (read via `getRequiredEnv`; test-only, not real credentials).
++`ALLOWED_ORIGINS` is deliberately not set: `app.js` reads it optionally (empty =
++no-Origin requests only), and the two suites that exercise CORS assign it themselves.
++
++**Why `mongo:7`:** the repo states no MongoDB server version. The only constraint is the
++driver (Mongoose 8.x / `mongodb` 6.x), which supports 7.x, and the features the code
++relies on (2dsphere, `$near`/`$geoWithin`, conditional `update`/`findOneAndDelete`) are
++long-stable and not 8.0-specific. `7` is a supported major line pinned so CI does not
++drift; it is not derived from a deployment target. If production (e.g. Atlas) runs a
++different major, align the image tag to it.
++
++Node is pinned to major 22 in the workflow (`NODE_VERSION`), matching local development;
++the repo declares no root `engines` field (`server` requires `>=20.11.0`).

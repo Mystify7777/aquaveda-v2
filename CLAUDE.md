@@ -4,6 +4,13 @@
 
 ## Current Milestone
 
+Issue #84 — CI verification — **implemented (uncommitted, awaiting review).**
+`.github/workflows/ci.yml`: PRs to `main` + pushes to `main`. `frontend` job runs
+`npm run verify:frontend`; `backend` job runs `npm --prefix server run verify`
+against a pinned `mongo:7` service container (rationale in testing.md) (no skipped/mocked Mongo tests). Node 22,
+lockfile-strict `npm ci` for root and `server/`. No app behavior changes.
+Details: `docs/engineering/testing.md` ("CI").
+
 Issue #83 — protected-route topology — **implemented (uncommitted, awaiting
 review).** `src/app/protected/` → `src/app/(protected)/` (`git mv`; layout/auth
 boundary unchanged). URLs are canonical (`/learn/new|mine|review[/id]`,
