@@ -94,3 +94,30 @@ placeholder pages to satisfy it.
 route topology: authenticated pages live in the `(protected)` route group,
 which is implementation-only and never a URL segment; `/protected/*` is not
 a canonical URL and the contract reports it as missing), #85 (browser e2e, out of scope here).
+
+## CI (#84)
+
+`.github/workflows/ci.yml` runs on pull requests to `main` and on pushes to `main`.
+It only invokes existing scripts; the two jobs cover the frontend/backend verification commands invoked by root `npm run verify`.
+
+| Job | Runs | Needs |
+|---|---|---|
+| `frontend` | `npm ci` → `npm run verify:frontend` (vitest, `test:node`, lint, typecheck, build) | network for `next/font/google` at build |
+| `backend` | `npm ci --prefix server` → `npm --prefix server run verify` (service/route tests, `verify:models`, `verify:validation`, `verify:cookie-config`) | MongoDB 7 service container |
+
+Backend tests use a real MongoDB (`TEST_MONGO_URI`, see `server/README.md`); they are
+never skipped or mocked in CI. Job env supplies only what the server requires and the
+tests do not set themselves: `TEST_MONGO_URI` and throwaway `JWT_ACCESS_SECRET` /
+`JWT_REFRESH_SECRET` (read via `getRequiredEnv`; test-only, not real credentials).
+`ALLOWED_ORIGINS` is deliberately not set: `app.js` reads it optionally (empty =
+no-Origin requests only), and the two suites that exercise CORS assign it themselves.
+
+**Why `mongo:7`:** the repo states no MongoDB server version. The only constraint is the
+driver (Mongoose 8.x / `mongodb` 6.x), which supports 7.x, and the features the code
+relies on (2dsphere, `$near`/`$geoWithin`, conditional `update`/`findOneAndDelete`) are
+long-stable and not 8.0-specific. `7` is a supported major line pinned so CI does not
+drift; it is not derived from a deployment target. If production (e.g. Atlas) runs a
+different major, align the image tag to it.
+
+Node is pinned to major 22 in the workflow (`NODE_VERSION`), matching local development;
+the repo declares no root `engines` field (`server` requires `>=20.11.0`).
