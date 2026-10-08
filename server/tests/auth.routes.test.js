@@ -6,6 +6,7 @@ import { createApp } from "../src/app.js";
 import { User } from "../src/models/User.js";
 import { Session } from "../src/models/Session.js";
 import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.js";
+import { defaultStore } from "../src/middleware/rate-limiter.js";
 
 /**
  * Minimal, dependency-free HTTP test client built on node:http directly.
@@ -34,7 +35,18 @@ after(async () => {
   await teardownTestDb();
 });
 
-beforeEach(clearCollections);
+beforeEach(async () => {
+  await clearCollections();
+  // Reset all in-memory rate-limiter state so that earlier test cases
+  // that exhaust the register/login/refresh limits (5/10/10 requests)
+  // do not bleed into later, independent test cases and cause spurious
+  // 429s where a 400, 401, or 201 is expected.
+  // defaultStore is the shared store used by registerLimiter,
+  // loginLimiter, and refreshLimiter in auth.routes.js; resetting it
+  // here is the minimal, production-transparent fix the PR reviewer
+  // requested — no thresholds are changed, no middleware is bypassed.
+  defaultStore.reset();
+});
 
 function request(method, path, { body, cookies } = {}) {
   return new Promise((resolve, reject) => {
@@ -496,5 +508,33 @@ describe("CORS (review-pass correction: regression coverage)", () => {
     // (already implicit in corsRequest resolving at all), restated
     // explicitly for clarity.
     assert.ok(headers);
+  });
+});
+describe("Rate-limiter state isolation between auth test cases (regression)", () => {
+  it("rate-limit state from one test does not affect a subsequent independent test", async () => {
+    // Exhaust the register limit (5 requests) in this test.
+    for (let i = 0; i < 5; i++) {
+      await request("POST", "/api/v1/auth/register", {
+        body: registerBody({ email: `isolation${i}@example.com` }),
+      });
+    }
+    // Confirm the 6th is indeed rate-limited within this test.
+    const limited = await request("POST", "/api/v1/auth/register", {
+      body: registerBody({ email: "isolation5@example.com" }),
+    });
+    assert.equal(limited.status, 429, "6th register in same test must be rate-limited");
+  });
+
+  it("after the previous test exhausted the limit, this fresh test gets a clean counter and can register normally", async () => {
+    // beforeEach resets defaultStore, so the 5 hits from the previous
+    // test are gone. A single register must succeed with 201.
+    const res = await request("POST", "/api/v1/auth/register", {
+      body: registerBody({ email: "fresh@example.com" }),
+    });
+    assert.equal(
+      res.status,
+      201,
+      "First register after a rate-limit-exhausting test must succeed — proves beforeEach isolation"
+    );
   });
 });
