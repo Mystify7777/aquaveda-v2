@@ -127,10 +127,10 @@ the repo declares no root `engines` field (`server` requires `>=20.11.0`).
 
 Playwright (`@playwright/test`, Chromium only), `e2e/*.spec.ts`. Run locally with MongoDB
 available (`E2E_MONGO_URI`, default `mongodb://127.0.0.1:27017/aquaveda_v2_e2e`) and Chromium
-installed (`npx playwright install chromium`): `npm run test:e2e` (builds, then runs).
+installed (`npx playwright install chromium`): `npm run test:e2e` (Playwright builds and serves the app itself).
 
 - **Processes:** `playwright.config.ts` starts the Express backend and `next start`
-  (production build), blocking on `/api/v1/health` and the web origin. No mocks; real auth and DB.
+  (production build; `NEXT_PUBLIC_API_URL` is set for the build too, since Next inlines it at build time), blocking on `/api/v1/health` and the web origin. No mocks; real auth and DB.
 - **Data:** `globalSetup` runs `server/scripts/seed-e2e.js`, which wipes every collection and
   therefore refuses to run unless `MONGO_URI` is a loopback host (`127.0.0.1`, `localhost`, `::1`)
   AND a database ending in `_e2e`, checked before connecting (`server/scripts/e2e-seed-guard.js`,

@@ -95,8 +95,9 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix server
       - run: npx playwright install --with-deps chromium
-      # Builds the app, then Playwright starts the backend and `next start`,
-      # waits on their URLs, seeds fixtures and runs the suite (see playwright.config.ts).
+      # Playwright builds+starts the web app (with NEXT_PUBLIC_API_URL at build time)
+      # and the backend, waits on their URLs, seeds fixtures, runs the suite
+      # (see playwright.config.ts).
       - run: npm run test:e2e
       - if: failure()
         uses: actions/upload-artifact@v4

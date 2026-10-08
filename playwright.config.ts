@@ -2,7 +2,6 @@ import { defineConfig, devices } from "@playwright/test";
 
 import {
   API_ORIGIN,
-  API_PORT,
   BACKEND_ENV,
   WEB_ORIGIN,
   WEB_PORT,
@@ -36,11 +35,15 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      command: `npm run start -- --port ${WEB_PORT}`,
+      // Build and serve in ONE process env: Next inlines NEXT_PUBLIC_* at BUILD
+      // time (src/lib/api/client.ts has no default), so the build must see
+      // NEXT_PUBLIC_API_URL too, not just `next start`. Otherwise browser auth
+      // calls go same-origin and 404.
+      command: `npm run build && npm run start -- --port ${WEB_PORT}`,
       url: WEB_ORIGIN,
-      env: { NEXT_PUBLIC_API_URL: `http://localhost:${API_PORT}` },
+      env: { NEXT_PUBLIC_API_URL: API_ORIGIN },
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 300_000,
     },
   ],
 });
