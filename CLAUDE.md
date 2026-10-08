@@ -4,6 +4,11 @@
 
 ## Current Milestone
 
+Issue #91 — Expert onboarding/verification — **implemented**
+ADMIN-only approve/reject (EXP-L1); embedded `User.expertApplication` + append-only history (EXP-L2/L3);
+atomic role grant (EXP-L4). Routes `/api/v1/expert-application`. Fixture: `server/tests/helpers/expert.js`.
+Frontend + ADMIN provisioning deferred (#89). Details: decision-register "Locked — Expert Authority (#91)".
+
 Issue #87 — copyable issue IDs — **implemented.**
 `CopyIssueId` (`src/components/issues/`): ID + copy on Issue detail, compact copy button on
 IssueCard; shown only for project-eligible statuses (`isProjectEligible`, mirrors server
@@ -11,21 +16,20 @@ IssueCard; shown only for project-eligible statuses (`isProjectEligible`, mirror
 failure → inline status, ID stays selectable. No backend/contract change. Frontend-only;
 local state, no new deps.
 
-Issue #85 — browser smoke coverage — **implemented (uncommitted, awaiting review).**
+Issue #85 — browser smoke coverage — **implemented.**
 Playwright (Chromium) in `e2e/`; real backend + MongoDB, no mocks; seeded via domain
 services (`server/scripts/seed-e2e.js`, `_e2e` DB only). New `e2e` CI job. Not yet
 run end-to-end in the author's sandbox (no mongod / browser download); first CI run is
 the verification. Details: `docs/engineering/testing.md` ("Browser smoke suite").
 
-Issue #84 — CI verification — **implemented (uncommitted, awaiting review).**
+Issue #84 — CI verification — **implemented.**
 `.github/workflows/ci.yml`: PRs to `main` + pushes to `main`. `frontend` job runs
 `npm run verify:frontend`; `backend` job runs `npm --prefix server run verify`
 against a pinned `mongo:7` service container (rationale in testing.md) (no skipped/mocked Mongo tests). Node 22,
 lockfile-strict `npm ci` for root and `server/`. No app behavior changes.
 Details: `docs/engineering/testing.md` ("CI").
 
-Issue #83 — protected-route topology — **implemented (uncommitted, awaiting
-review).** `src/app/protected/` → `src/app/(protected)/` (`git mv`; layout/auth
+Issue #83 — protected-route topology — **implemented** `src/app/protected/` → `src/app/(protected)/` (`git mv`; layout/auth
 boundary unchanged). URLs are canonical (`/learn/new|mine|review[/id]`,
 `/act/new`); `(protected)` is an implementation-only route group, never a URL
 segment. All `/protected/...` links, test expectations and imports rewritten; no
@@ -33,8 +37,7 @@ redirects or duplicate tree. Route-contract tests assert canonical paths resolve
 and `/protected/*` / `/(protected)/*` do not; public Explore/Learn/Act unchanged.
 Docs: `docs/engineering/testing.md`, `docs/architecture/nextjs-patterns.md`.
 
-Issue #82 — Explore adopts the #41 discovery filters — **implemented
-(uncommitted, awaiting review).** `category`, `severity`, `q`, `bbox` +
+Issue #82 — Explore adopts the #41 discovery filters — **implemented** `category`, `severity`, `q`, `bbox` +
 existing `status`/`page`, all URL-driven (`src/lib/issues/discovery.ts`),
 validated with the backend's own `issue-search.js`. Native GET filter form
 (blank params redirect to the canonical URL), "Search this area" bbox

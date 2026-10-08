@@ -200,3 +200,7 @@ Issue and Knowledge live in `docs/adr/ADR-0003-issue-lifecycle.md` and
 `docs/adr/ADR-0004-knowledge-lifecycle.md`. The complete decision record
 from the Domain Model milestone — including deferred and dispositioned
 items — lives in `docs/architecture/decision-register.md`.
+
+## Expert acquisition (#91)
+
+`User.role` becomes `EXPERT` only through an ADMIN-approved `expertApplication` (pending → approved), never by client input. See decision-register EXP-L1–L8.
