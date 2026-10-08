@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { IssueCard } from "@/components/issues/issue-card";
 import { IssueDetail } from "@/components/issues/issue-detail";
@@ -79,7 +80,8 @@ describe("IssueDetail", () => {
 
   it("offers no lifecycle/transition controls (D-3a stays out of this surface)", () => {
     render(<IssueDetail issue={makeIssue({ status: "acknowledged" })} />);
-    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    // The only control is the Issue ID copy action (#87) — not a lifecycle write.
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Copy ID"]);
     for (const name of [/acknowledge/i, /resolve/i, /verify/i, /progress/i]) {
       expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
@@ -129,5 +131,38 @@ describe("IssueStatusFilter", () => {
   it("with no filter, All is current", () => {
     render(<IssueStatusFilter filters={{}} />);
     expect(screen.getByRole("link", { name: "All" })).toHaveAttribute("aria-current", "page");
+  });
+});
+
+const ID = "64b7f0c2a1b2c3d4e5f60718";
+
+function stubClipboard(writeText: ReturnType<typeof vi.fn>) {
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+}
+
+describe("Issue ID copy surfaces (#87)", () => {
+  it("detail shows the ID + copy for an eligible issue and preserves existing content", () => {
+    render(<IssueDetail issue={makeIssue({ _id: ID, status: "acknowledged" })} />);
+    expect(screen.getByText(ID)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy id/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Burst pipe" })).toBeInTheDocument();
+  });
+
+  it("detail omits the ID for an open (ineligible) issue", () => {
+    render(<IssueDetail issue={makeIssue({ _id: ID, status: "open" })} />);
+    expect(screen.queryByText(ID)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /copy/i })).not.toBeInTheDocument();
+  });
+
+  it("card offers copy for eligible issues without altering its link; none for open", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    const { unmount } = render(<IssueCard issue={makeIssue({ _id: ID, status: "in_progress" })} />);
+    expect(screen.getByRole("link", { name: "Burst pipe" })).toHaveAttribute("href", `/explore/${ID}`);
+    await userEvent.click(screen.getByRole("button", { name: "Copy issue ID" }));
+    expect(writeText).toHaveBeenCalledWith(ID);
+    unmount();
+    render(<IssueCard issue={makeIssue({ _id: ID, status: "open" })} />);
+    expect(screen.queryByRole("button", { name: "Copy issue ID" })).not.toBeInTheDocument();
   });
 });

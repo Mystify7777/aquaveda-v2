@@ -4,6 +4,13 @@
 
 ## Current Milestone
 
+Issue #87 — copyable issue IDs — **implemented.**
+`CopyIssueId` (`src/components/issues/`): ID + copy on Issue detail, compact copy button on
+IssueCard; shown only for project-eligible statuses (`isProjectEligible`, mirrors server
+`ELIGIBLE_ISSUE_STATUSES` — `open` excluded). Copies raw `_id` (= `originIssue`). Clipboard
+failure → inline status, ID stays selectable. No backend/contract change. Frontend-only;
+local state, no new deps.
+
 Issue #85 — browser smoke coverage — **implemented (uncommitted, awaiting review).**
 Playwright (Chromium) in `e2e/`; real backend + MongoDB, no mocks; seeded via domain
 services (`server/scripts/seed-e2e.js`, `_e2e` DB only). New `e2e` CI job. Not yet

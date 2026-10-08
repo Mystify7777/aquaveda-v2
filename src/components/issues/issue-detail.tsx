@@ -1,10 +1,11 @@
+import { CopyIssueId } from "@/components/issues/copy-issue-id";
 import { IssueMapLoader } from "@/components/issues/issue-map-loader";
 import { IssueStatusBadge } from "@/components/issues/issue-status-badge";
 import { formatDate } from "@/lib/format-date";
 import type { Issue } from "@/lib/api/types/issue";
 import { toLatLng } from "@/lib/issues/geo";
 import { categoryLabel, severityLabel } from "@/lib/issues/labels";
-import { ISSUE_STATUS_LABELS } from "@/lib/issues/status";
+import { ISSUE_STATUS_LABELS, isProjectEligible } from "@/lib/issues/status";
 
 /**
  * Read-only public Issue detail. Status history is displayed as recorded
@@ -43,6 +44,16 @@ export function IssueDetail({ issue }: { issue: Issue }) {
           <div className="space-y-1">
             <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Severity</dt>
             <dd>{severity}</dd>
+          </div>
+        )}
+        {isProjectEligible(issue.status) && (
+          <div className="space-y-1 sm:col-span-2">
+            <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              Issue ID <span className="font-normal normal-case">(for creating a project)</span>
+            </dt>
+            <dd>
+              <CopyIssueId issueId={issue._id} showId />
+            </dd>
           </div>
         )}
         {position && (
