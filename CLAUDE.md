@@ -4,6 +4,12 @@
 
 ## Current Milestone
 
+Issue #85 — browser smoke coverage — **implemented (uncommitted, awaiting review).**
+Playwright (Chromium) in `e2e/`; real backend + MongoDB, no mocks; seeded via domain
+services (`server/scripts/seed-e2e.js`, `_e2e` DB only). New `e2e` CI job. Not yet
+run end-to-end in the author's sandbox (no mongod / browser download); first CI run is
+the verification. Details: `docs/engineering/testing.md` ("Browser smoke suite").
+
 Issue #84 — CI verification — **implemented (uncommitted, awaiting review).**
 `.github/workflows/ci.yml`: PRs to `main` + pushes to `main`. `frontend` job runs
 `npm run verify:frontend`; `backend` job runs `npm --prefix server run verify`

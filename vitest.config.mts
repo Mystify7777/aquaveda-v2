@@ -39,6 +39,7 @@ export default defineConfig({
       "**/node_modules/**",
       "**/.next/**",
       "**/server/**",
+      "**/e2e/**",
       "**/dist/**",
       "**/assists/**",
       // Test-runner boundary: plain .test.js files are Node's own

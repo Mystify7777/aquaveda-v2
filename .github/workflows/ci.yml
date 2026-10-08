@@ -3,8 +3,9 @@ name: CI
 # Runs the repo's own verification scripts; no logic is duplicated here.
 #   frontend -> npm run verify:frontend  (test, lint, typecheck, build)
 #   backend  -> npm --prefix server run verify  (needs real MongoDB)
-# Together they cover the frontend/backend verification commands invoked by
-# root `npm run verify`.
+#   e2e      -> npm run test:e2e  (Playwright smoke; real backend + MongoDB, #85)
+# frontend + backend cover the verification commands invoked by root
+# `npm run verify`; e2e is additional browser-level coverage.
 on:
   pull_request:
     branches: [main]
@@ -67,3 +68,42 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci --prefix server
       - run: npm --prefix server run verify
+
+  e2e:
+    name: Browser smoke (Playwright; MongoDB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix server
+      - run: npx playwright install --with-deps chromium
+      # Playwright builds+starts the web app (with NEXT_PUBLIC_API_URL at build time)
+      # and the backend, waits on their URLs, seeds fixtures, runs the suite
+      # (see playwright.config.ts).
+      - run: npm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

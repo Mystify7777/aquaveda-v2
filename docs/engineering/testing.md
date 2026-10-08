@@ -98,12 +98,13 @@ a canonical URL and the contract reports it as missing), #85 (browser e2e, out o
 ## CI (#84)
 
 `.github/workflows/ci.yml` runs on pull requests to `main` and on pushes to `main`.
-It only invokes existing scripts; the two jobs cover the frontend/backend verification commands invoked by root `npm run verify`.
+It only invokes existing scripts; the `frontend` and `backend` jobs cover the frontend/backend verification commands invoked by root `npm run verify`, and `e2e` adds browser coverage.
 
 | Job | Runs | Needs |
 |---|---|---|
 | `frontend` | `npm ci` → `npm run verify:frontend` (vitest, `test:node`, lint, typecheck, build) | network for `next/font/google` at build |
 | `backend` | `npm ci --prefix server` → `npm --prefix server run verify` (service/route tests, `verify:models`, `verify:validation`, `verify:cookie-config`) | MongoDB 7 service container |
+| `e2e` | root + `server/` `npm ci`, `playwright install --with-deps chromium`, `npm run test:e2e` | MongoDB 7 service container; network for fonts |
 
 Backend tests use a real MongoDB (`TEST_MONGO_URI`, see `server/README.md`); they are
 never skipped or mocked in CI. Job env supplies only what the server requires and the
@@ -121,3 +122,24 @@ different major, align the image tag to it.
 
 Node is pinned to major 22 in the workflow (`NODE_VERSION`), matching local development;
 the repo declares no root `engines` field (`server` requires `>=20.11.0`).
+
+## Browser smoke suite (#85)
+
+Playwright (`@playwright/test`, Chromium only), `e2e/*.spec.ts`. Run locally with MongoDB
+available (`E2E_MONGO_URI`, default `mongodb://127.0.0.1:27017/aquaveda_v2_e2e`) and Chromium
+installed (`npx playwright install chromium`): `npm run test:e2e` (Playwright builds and serves the app itself).
+
+- **Processes:** `playwright.config.ts` starts the Express backend and `next start`
+  (production build; `NEXT_PUBLIC_API_URL` is set for the build too, since Next inlines it at build time), blocking on `/api/v1/health` and the web origin. No mocks; real auth and DB.
+- **Data:** `globalSetup` runs `server/scripts/seed-e2e.js`, which wipes every collection and
+  therefore refuses to run unless `MONGO_URI` is a loopback host (`127.0.0.1`, `localhost`, `::1`)
+  AND a database ending in `_e2e`, checked before connecting (`server/scripts/e2e-seed-guard.js`,
+  tested in `server/tests/e2e-seed-guard.test.js`; no bypass). It builds one Issue, approved Knowledge article and Project via
+  the domain services. Only the two User docs (reporter, EXPERT) are written directly, because
+  EXPERT has no provisioning path yet (#89/#91); they never sign in.
+- **Flows:** home + primary nav (Explore/Learn/Act); Explore -> issue detail; Learn ->
+  knowledge detail; Act -> project detail; anonymous gating of `/learn/new` and `/learn/mine`;
+  `/protected/*` and `/(protected)/*` return 404; `/auth/login` and `/auth/register` render;
+  register -> protected pages render -> sign out -> gated again -> login -> access restored.
+- **Out of scope:** Community/Dashboard (deferred routes), moderation, rich-text, visual regression.
+- Vitest excludes `e2e/`; Playwright owns `*.spec.ts`.
