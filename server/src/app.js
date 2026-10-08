@@ -9,6 +9,7 @@ import { issueRouter } from "./routes/issue.routes.js";
 import { knowledgeRouter } from "./routes/knowledge.routes.js";
 import { commentRouter } from "./routes/comment.routes.js";
 import { projectRouter } from "./routes/project.routes.js";
+import { expertApplicationRouter } from "./routes/expert-application.routes.js";
 import { sendError } from "./http/respond.js";
 
 /**
@@ -95,6 +96,7 @@ export function createApp() {
   app.use("/api/v1/knowledge", knowledgeRouter);
   app.use("/api/v1/comments", commentRouter);
   app.use("/api/v1/projects", projectRouter);
+  app.use("/api/v1/expert-application", expertApplicationRouter);
 
   // No route matched. Conforms to the ApiResponse<T> envelope
   // (ROUTE-L6) via the same shared sendError used by every router —

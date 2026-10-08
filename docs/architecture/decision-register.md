@@ -433,7 +433,7 @@ for the resolved values.
 | Item | Note |
 |---|---|
 | User suspension/deactivation | No current requirement; adding a status field now would be speculative |
-| Expert role acquisition mechanism | Belongs to the Authentication/Governance milestone — `role: EXPERT` as a fact is established, the assignment *process* is not |
+| Expert role acquisition mechanism | **Resolved by #91** — see "🔒 Locked — Expert Authority (#91)". ADMIN provisioning remains #89 |
 | Comment deletion (soft/hard) | No v1 precedent, no current requirement |
 | Project status field | Explicitly decided against for V2; revisit only if the Act milestone proves a need |
 | Leaving a project | No v1 precedent, no current requirement |
@@ -919,3 +919,22 @@ Restated below only as locked conclusions, resolving
 route, D-3a resolution in any form (ROUTE-L4 changes only its HTTP
 *representation*, not the underlying unresolved policy), any change to
 `authMiddleware`'s advisory (non-rejecting) behavior.
+
+---
+
+## 🔒 Locked — Expert Authority (#91)
+
+Status: implemented; offline checks pass (verify:models 45/45, verify:validation 85/85). DB-backed tests written but **not yet run against real MongoDB** — pending developer run.
+
+| ID | Decision |
+|---|---|
+| EXP-L1 | Expert acquisition is a **governance** act: `USER → apply → ADMIN approval → EXPERT`. Reviewer authority = `requireRole(ctx, "ADMIN")`. Never `ADMIN \|\| EXPERT` (AUTH-L2); EXPERT does not decide who becomes EXPERT (self-perpetuating reviewer class). Resolves the D-2 deferral. ADMIN provisioning stays #89. |
+| EXP-L2 | Persistence: embedded `User.expertApplication { status, history[] }`; absence = never applied. No new collection, no flat `reviewer`/`verifiedBy` (ADR-0005). |
+| EXP-L3 | Lifecycle: `none→pending`, `pending→approved`, `pending→rejected`, `rejected→pending` (re-apply, same object, append-only history). `approved` terminal. Every transition, including `null→pending`, is a history entry `{fromStatus,toStatus,actor,note?,timestamp}`. |
+| EXP-L4 | Approval is one conditional atomic write on `{_id, role:"USER", "expertApplication.status":"pending"}` setting `role:"EXPERT"` + status + `$push` history (ADR-0006). Invariant `role==="EXPERT" ⇔ status==="approved"` holds for applied users; no transaction. Losers get `STATE_RACE`. |
+| EXP-L5 | Client never supplies role, status, applicant, or reviewer. Applicant = actor; reviewer = actor; bodies are `.strict()`. Only USER may apply (stored role authoritative). Reviewer cannot decide own application. |
+| EXP-L6 | Contract (`/api/v1/expert-application`): `POST /` apply, `GET /me` own status (`none` if absent; no reviewer identity), `GET /` pending queue (ADMIN), `POST /:userId/approve`, `POST /:userId/reject {note?}` (ADMIN). Queue oldest-first by `updatedAt`; excludes email. |
+| EXP-L7 | Role takes effect immediately: `authMiddleware` reads role fresh from DB per request (L11); no session revocation needed. |
+| EXP-L8 | Dev/test provisioning: `tests/helpers/expert.js` drives the real apply+approve services with a fixture ADMIN (direct write, because #89 owns ADMIN provisioning). No HTTP endpoint, not importable from `src/`. |
+
+Deferred: frontend applicant/admin surfaces; ADMIN provisioning CLI (#89); notifications; application motivation/evidence fields; expert profiles. Dependency chain: #89 → #91 → #90.

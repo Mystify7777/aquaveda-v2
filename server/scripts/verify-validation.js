@@ -39,6 +39,11 @@ import {
 import { createCommentSchema } from "../src/validation/comment.validation.js";
 import { createProjectSchema } from "../src/validation/project.validation.js";
 import { objectIdString } from "../src/validation/shared/objectId.js";
+import {
+  applicantIdParamSchema,
+  applyExpertApplicationSchema,
+  rejectExpertApplicationSchema,
+} from "../src/validation/expert-application.validation.js";
 import { registerSchema, loginSchema } from "../src/validation/auth.validation.js";
 
 const results = [];
@@ -608,6 +613,27 @@ check("13c. Discovery query rejects unknown category/severity and malformed or o
   ]) {
     assert.equal(listIssuesQuerySchema.safeParse(bad).success, false, JSON.stringify(bad));
   }
+});
+
+check("EA-1. applicant id param must be an ObjectId", () => {
+  assert.equal(applicantIdParamSchema.safeParse({ userId: VALID_OID }).success, true);
+  assert.equal(applicantIdParamSchema.safeParse({ userId: "nope" }).success, false);
+});
+
+check("EA-2. apply body is empty and strict: smuggled role/status/applicant rejected", () => {
+  assert.equal(applyExpertApplicationSchema.safeParse({}).success, true);
+  for (const k of ["role", "status", "applicant", "reviewer", "expertApplication"]) {
+    assert.equal(applyExpertApplicationSchema.safeParse({ [k]: "EXPERT" }).success, false, k);
+    assert.equal(rejectExpertApplicationSchema.safeParse({ [k]: "EXPERT" }).success, false, k);
+  }
+});
+
+check("EA-3. reject note optional, trimmed, non-blank, max 500", () => {
+  assert.equal(rejectExpertApplicationSchema.safeParse({}).success, true);
+  assert.equal(rejectExpertApplicationSchema.safeParse({ note: "needs detail" }).success, true);
+  assert.equal(rejectExpertApplicationSchema.safeParse({ note: "   " }).success, false);
+  assert.equal(rejectExpertApplicationSchema.safeParse({ note: "x".repeat(501) }).success, false);
+  assert.equal(rejectExpertApplicationSchema.parse({ note: "  hi  " }).note, "hi");
 });
 
 // ---------------------------------------------------------------------
