@@ -51,3 +51,33 @@ export function toWorkflowKnowledgeDTO(doc) {
     })),
   };
 }
+
+/**
+ * Public approved-Knowledge DTO (#90).
+ *
+ * The public reads previously returned the raw document, which exposed
+ * `reviewHistory[].feedback` — rejection feedback from an EARLIER review
+ * cycle of an article that was later revised and approved. Moderation
+ * feedback is private to the author and EXPERT reviewers. This mapper
+ * keeps the established public shape (reviewer stays an unpopulated id,
+ * body present, author as PublicActor) and removes everything else:
+ * `feedback` and any storage-internal field (`__v`).
+ */
+export function toPublicKnowledgeDTO(doc) {
+  const d = typeof doc?.toObject === "function" ? doc.toObject() : doc;
+  return {
+    _id: String(d._id),
+    title: d.title,
+    body: d.body,
+    region: d.region,
+    status: d.status,
+    author: toActor(d.author),
+    reviewHistory: (d.reviewHistory ?? []).map((entry) => ({
+      decision: entry.decision,
+      reviewer: String(entry.reviewer),
+      timestamp: entry.timestamp,
+    })),
+    createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
+  };
+}

@@ -16,6 +16,7 @@ import {
 } from "../src/services/knowledge.service.js";
 import { DomainErrorCode } from "../src/services/errors.js";
 import { setupTestDb, teardownTestDb, clearCollections, fakeObjectId } from "./helpers/testDb.js";
+import { promoteToExpertViaLifecycle } from "./helpers/expert.js";
 
 /**
  * Issue #74 — authenticated Knowledge workflow reads, against real
@@ -34,7 +35,10 @@ async function makeActor(role = "USER", name = `Person ${++seq}`) {
     email: `u${seq}-${Date.now()}-${Math.random()}@example.com`,
     password: "correcthorsebatterystaple",
   });
-  if (role !== "USER") await User.updateOne({ _id: user.id }, { $set: { role } });
+  // EXPERT is acquired through the real #91 lifecycle, never a direct write.
+  // ADMIN has no lifecycle yet (#89): direct fixture write only.
+  if (role === "EXPERT") await promoteToExpertViaLifecycle(user.id);
+  else if (role !== "USER") await User.updateOne({ _id: user.id }, { $set: { role } });
   return { id: String(user.id), role };
 }
 

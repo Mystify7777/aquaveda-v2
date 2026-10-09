@@ -938,3 +938,15 @@ Status: implemented; offline checks pass (verify:models 45/45, verify:validation
 | EXP-L8 | Dev/test provisioning: `tests/helpers/expert.js` drives the real apply+approve services with a fixture ADMIN (direct write, because #89 owns ADMIN provisioning). No HTTP endpoint, not importable from `src/`. |
 
 Deferred: frontend applicant/admin surfaces; ADMIN provisioning CLI (#89); notifications; application motivation/evidence fields; expert profiles. Dependency chain: #89 → #91 → #90.
+
+---
+
+## 🔒 Locked — Knowledge Moderation Workflow (#90)
+
+Status: implemented. Offline checks pass; DB-backed suites (incl. `knowledge.moderation.test.js`) - pass.
+
+| ID | Decision |
+|---|---|
+| MOD-L1 | Lifecycle unchanged (ADR-0004): `draft → pending_review → approved \| rejected → draft`. #90's "create → pending" is create (draft) + submit (pending_review); no state added. Authority unchanged: EXPERT-only review, `reviewer ≠ author`, ADMIN has no Knowledge review authority. |
+| MOD-L2 | **Finding:** the public reads (`GET /knowledge`, `GET /knowledge/:id`) returned the raw document, exposing `reviewHistory[].feedback` from earlier rejection cycles of later-approved articles. Moderation feedback is private to the author and EXPERT reviewers. Fixed at the route layer with `toPublicKnowledgeDTO` (same public shape minus `feedback` and storage internals; reviewer stays an unpopulated id). Service return types unchanged. |
+| MOD-L3 | Test fixtures acquire EXPERT only through the real #91 lifecycle (`promoteToExpertViaLifecycle`); the end-to-end suite does it over HTTP. ADMIN fixtures remain direct writes until #89. |
