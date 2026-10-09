@@ -12,6 +12,7 @@ import {
   listReviewQueue,
   getKnowledgeForWorkflow,
 } from "../services/knowledge.service.js";
+import { toPublicKnowledgeDTO } from "../services/knowledge.dto.js";
 import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
 import {
   createKnowledgeSchema,
@@ -64,7 +65,11 @@ knowledgeRouter.get("/", async (req, res) => {
 
   try {
     const result = await listApprovedKnowledge(parsed.data);
-    sendSuccess(res, result, "Knowledge articles retrieved");
+    sendSuccess(
+      res,
+      { ...result, items: result.items.map(toPublicKnowledgeDTO) },
+      "Knowledge articles retrieved",
+    );
   } catch (err) {
     sendError(res, err);
   }
@@ -114,7 +119,7 @@ knowledgeRouter.get("/review-queue", async (req, res) => {
 knowledgeRouter.get("/:knowledgeId", async (req, res) => {
   try {
     const knowledge = await getApprovedKnowledgeById(req.params.knowledgeId);
-    sendSuccess(res, knowledge, "Knowledge article retrieved");
+    sendSuccess(res, toPublicKnowledgeDTO(knowledge), "Knowledge article retrieved");
   } catch (err) {
     sendError(res, err);
   }

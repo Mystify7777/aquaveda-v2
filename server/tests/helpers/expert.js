@@ -44,3 +44,17 @@ export async function provisionVerifiedExpert({ admin } = {}) {
     expert: { id: applicant.id, role: "EXPERT", ctx: { id: applicant.id, role: "EXPERT" } },
   };
 }
+
+/**
+ * Promote an EXISTING registered user (e.g. one holding a real access
+ * token) to EXPERT through the real lifecycle — apply, then approval by a
+ * fixture ADMIN. Replaces direct `role: "EXPERT"` writes in suites that
+ * need a persisted Expert (#90). The caller's token stays valid: the
+ * middleware reads role fresh from the database on every request (L11).
+ */
+export async function promoteToExpertViaLifecycle(userId) {
+  const id = String(userId);
+  const admin = await createFixtureUser("ADMIN");
+  await applyForExpert({ id, role: "USER" });
+  await approveExpertApplication(admin.ctx, id);
+}

@@ -9,6 +9,7 @@ import { knowledgeRouter } from "../src/routes/knowledge.routes.js";
 import { User } from "../src/models/User.js";
 import { register } from "../src/services/auth.service.js";
 import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.js";
+import { promoteToExpertViaLifecycle } from "./helpers/expert.js";
 
 /**
  * Issue #74 — HTTP tests for the three workflow reads, plus route-order
@@ -74,7 +75,10 @@ async function makeUser(role = "USER", name = `Person ${++seq}`) {
     email: `${role.toLowerCase()}-${seq}-${Date.now()}-${Math.random()}@example.com`,
     password: "correcthorsebatterystaple",
   });
-  if (role !== "USER") await User.updateOne({ _id: user.id }, { $set: { role } });
+  // EXPERT is acquired through the real #91 lifecycle, never a direct write.
+  // ADMIN has no lifecycle yet (#89): direct fixture write only.
+  if (role === "EXPERT") await promoteToExpertViaLifecycle(user.id);
+  else if (role !== "USER") await User.updateOne({ _id: user.id }, { $set: { role } });
   return { id: String(user.id), token: accessToken };
 }
 

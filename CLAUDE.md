@@ -4,6 +4,10 @@
 
 ## Current Milestone
 
+Issue #90 — Knowledge moderation workflow — **implemented**
+Lifecycle/authority already complete (ADR-0004); added public-read feedback-leak fix (MOD-L2), real-#91-Expert fixtures (MOD-L3),
+end-to-end `knowledge.moderation.test.js`. No frontend change.
+
 Issue #91 — Expert onboarding/verification — **implemented**
 ADMIN-only approve/reject (EXP-L1); embedded `User.expertApplication` + append-only history (EXP-L2/L3);
 atomic role grant (EXP-L4). Routes `/api/v1/expert-application`. Fixture: `server/tests/helpers/expert.js`.
