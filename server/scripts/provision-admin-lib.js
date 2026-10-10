@@ -6,7 +6,11 @@
  *   - NODE_ENV is not "production";
  *   - ALLOW_DEV_ADMIN_PROVISIONING === "true" (explicit local opt-in);
  *   - MONGO_URI is a loopback host AND a database ending `_dev`
- *     (local-db-guard.js — NODE_ENV alone is never treated as proof);
+ *     (local-db-guard.js — NODE_ENV alone is never treated as proof).
+ *     MONGO_URI is the ONLY database setting: the string that is
+ *     validated is carried in the returned config as `mongoUri`, and
+ *     `runProvisioning` connects with exactly that string — the checked
+ *     target and the used target cannot differ;
  *   - the bootstrap identity passes the same Zod rules as registration.
  *
  * `provisionAdmin(config)` provisions exactly ONE explicit identity
@@ -32,7 +36,7 @@ export function resolveProvisioningConfig(env) {
       'Refusing to provision: set ALLOW_DEV_ADMIN_PROVISIONING=true to explicitly opt in (local development only).',
     );
   }
-  assertLocalDatabase(env.DEV_MONGO_URI, {
+  assertLocalDatabase(env.MONGO_URI, {
     suffix: "_dev",
     action: "provision",
     subject: "Admin provisioning",
@@ -51,7 +55,7 @@ export function resolveProvisioningConfig(env) {
       .join("; ");
     throw new ProvisioningRefusal(`Refusing to provision: invalid bootstrap configuration (${problems}).`);
   }
-  return Object.freeze({ ...parsed.data });
+  return Object.freeze({ ...parsed.data, mongoUri: env.MONGO_URI });
 }
 
 /**
@@ -89,4 +93,18 @@ async function describeExisting(user, password) {
     // Reported, never applied: an existing password is not overwritten.
     passwordMatchesConfig: await verifyPassword(password, user.passwordHash),
   };
+}
+
+/**
+ * Resolve (refusing first), connect to the VALIDATED target, provision.
+ * `connect` and `provision` are injectable so the wiring is testable
+ * without a database; the CLI passes the real ones.
+ *
+ * @param {Record<string,string|undefined>} env
+ * @param {{ connect: (uri: string) => Promise<unknown>, provision?: typeof provisionAdmin }} deps
+ */
+export async function runProvisioning(env, { connect, provision = provisionAdmin }) {
+  const config = resolveProvisioningConfig(env); // throws before any DB work
+  await connect(config.mongoUri);
+  return provision(config);
 }

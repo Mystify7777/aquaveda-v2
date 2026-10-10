@@ -119,6 +119,7 @@ ADMIN_BOOTSTRAP_NAME=Local Admin                      # optional
 npm run provision:admin
 ```
 
+- **One database variable:** `MONGO_URI` is the only database setting this tool reads. The exact string it validates is the exact string it connects to (there is no second, separately configured URI).
 - **Safety (fails closed, checked before any DB connection):** refuses if
   `NODE_ENV=production`, if `ALLOW_DEV_ADMIN_PROVISIONING` is not exactly
   `true`, or if `MONGO_URI` is not a loopback host (`127.0.0.1`, `localhost`,

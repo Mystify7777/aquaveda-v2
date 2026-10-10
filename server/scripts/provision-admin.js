@@ -12,12 +12,11 @@
  * the password, its hash, or any token.
  */
 import { connectDB, disconnectDB } from "../src/config/db.js"; // loads .env
-import { provisionAdmin, resolveProvisioningConfig } from "./provision-admin-lib.js";
+import { runProvisioning } from "./provision-admin-lib.js";
 
 async function main() {
-  const config = resolveProvisioningConfig(process.env); // refuses before any DB work
-  await connectDB();
-  const result = await provisionAdmin(config);
+  // Refuses before any DB work, then connects to exactly the validated MONGO_URI.
+  const result = await runProvisioning(process.env, { connect: (uri) => connectDB({ uri }) });
 
   if (result.outcome === "created") {
     console.log(`[provision-admin] created ADMIN ${result.email}`);

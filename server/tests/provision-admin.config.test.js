@@ -1,10 +1,10 @@
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 
-import { resolveProvisioningConfig, ProvisioningRefusal } from "../scripts/provision-admin-lib.js";
+import { resolveProvisioningConfig, runProvisioning, ProvisioningRefusal } from "../scripts/provision-admin-lib.js";
 
 /**
  * #89 — the provisioning safety boundary. Pure/no-MongoDB: every refusal
@@ -30,7 +30,12 @@ const withEnv = (patch) => {
 describe("resolveProvisioningConfig", () => {
   it("accepts a local _dev target with explicit opt-in; canonicalizes email; default name", () => {
     const cfg = resolveProvisioningConfig(GOOD);
-    assert.deepEqual(cfg, { name: "Local Admin", email: "admin@example.test", password: PASSWORD });
+    assert.deepEqual(cfg, {
+      name: "Local Admin",
+      email: "admin@example.test",
+      password: PASSWORD,
+      mongoUri: GOOD.MONGO_URI,
+    });
   });
 
   it("accepts localhost and ::1 and custom name", () => {
@@ -87,10 +92,16 @@ describe("provision-admin CLI refuses before any database work", () => {
     ["remote host", { MONGO_URI: "mongodb://db.example.com:27017/aquaveda_v2_dev" }, /not local/],
     ["non-_dev database", { MONGO_URI: "mongodb://127.0.0.1:27017/aquaveda_v2" }, /_dev/],
     ["missing bootstrap password", { ADMIN_BOOTSTRAP_PASSWORD: undefined }, /ADMIN_BOOTSTRAP_PASSWORD/],
+    [
+      "a local _dev DEV_MONGO_URI cannot authorize a remote MONGO_URI",
+      { DEV_MONGO_URI: GOOD.MONGO_URI, MONGO_URI: "mongodb://db.example.com:27017/aquaveda_v2_dev" },
+      /not local/,
+    ],
+    ["only DEV_MONGO_URI set (MONGO_URI missing)", { DEV_MONGO_URI: GOOD.MONGO_URI, MONGO_URI: undefined }, /missing/],
   ]) {
     it(`exits 1 for ${name}; output carries no secret`, () => {
       const env = { ...process.env };
-      for (const k of ["NODE_ENV", ...Object.keys(GOOD)]) delete env[k];
+      for (const k of ["NODE_ENV", "DEV_MONGO_URI", ...Object.keys(GOOD)]) delete env[k];
       Object.assign(env, withEnv(patch));
       if (patch.NODE_ENV) env.NODE_ENV = patch.NODE_ENV;
 
@@ -108,6 +119,77 @@ describe("provision-admin CLI refuses before any database work", () => {
       assert.doesNotMatch(result.stdout, /created ADMIN/);
       assert.ok(!(result.stdout + result.stderr).includes(PASSWORD));
       assert.ok(Date.now() - started < 10_000, "must fail fast, not on a connection timeout");
+    });
+  }
+});
+
+describe("runProvisioning: the validated target is the connected target", () => {
+  const fakeProvision = () => mock.fn(async (cfg) => ({ outcome: "created", email: cfg.email }));
+
+  it("connects exactly once, with the exact validated MONGO_URI, before provisioning", async () => {
+    const order = [];
+    const connect = mock.fn(async () => order.push("connect"));
+    const provision = mock.fn(async (cfg) => {
+      order.push("provision");
+      return { outcome: "created", email: cfg.email };
+    });
+    const uri = "mongodb://127.0.0.1:27017/aquaveda_v2_dev";
+
+    const result = await runProvisioning(withEnv({ MONGO_URI: uri }), { connect, provision });
+
+    assert.equal(result.outcome, "created");
+    assert.equal(connect.mock.callCount(), 1);
+    assert.deepEqual(connect.mock.calls[0].arguments, [uri]);
+    assert.deepEqual(order, ["connect", "provision"]);
+    assert.equal(provision.mock.calls[0].arguments[0].mongoUri, uri);
+  });
+
+  it("a guarded local DEV_MONGO_URI cannot authorize a different remote MONGO_URI", async () => {
+    const connect = mock.fn(async () => {});
+    const provision = fakeProvision();
+    await assert.rejects(
+      runProvisioning(
+        withEnv({
+          DEV_MONGO_URI: "mongodb://127.0.0.1:27017/aquaveda_v2_dev",
+          MONGO_URI: "mongodb://db.example.com:27017/aquaveda_v2_dev",
+        }),
+        { connect, provision },
+      ),
+      /not local/,
+    );
+    assert.equal(connect.mock.callCount(), 0);
+    assert.equal(provision.mock.callCount(), 0);
+  });
+
+  it("a local DEV_MONGO_URI is ignored: the connection can only ever use MONGO_URI", async () => {
+    const connect = mock.fn(async () => {});
+    const uri = "mongodb://127.0.0.1:27017/aquaveda_v2_dev";
+    await runProvisioning(
+      withEnv({ MONGO_URI: uri, DEV_MONGO_URI: "mongodb://127.0.0.1:27017/some_other_dev" }),
+      { connect, provision: fakeProvision() },
+    );
+    assert.deepEqual(connect.mock.calls[0].arguments, [uri]);
+  });
+
+  for (const [name, patch] of [
+    ["the default development database", { MONGO_URI: "mongodb://localhost:27017/aquaveda_v2" }],
+    ["the test database", { MONGO_URI: "mongodb://127.0.0.1:27017/aquaveda_v2_test" }],
+    ["the E2E database", { MONGO_URI: "mongodb://127.0.0.1:27017/aquaveda_v2_e2e" }],
+    ["a remote MongoDB", { MONGO_URI: "mongodb://db.example.com:27017/aquaveda_v2_dev" }],
+    ["a mongodb+srv cluster", { MONGO_URI: "mongodb+srv://cluster0.example.mongodb.net/aquaveda_v2_dev" }],
+    ["production", { NODE_ENV: "production" }],
+    ["a missing opt-in", { ALLOW_DEV_ADMIN_PROVISIONING: undefined }],
+    ["a missing MONGO_URI", { MONGO_URI: undefined }],
+    ["a malformed MONGO_URI", { MONGO_URI: "not a uri" }],
+    ["a missing bootstrap email", { ADMIN_BOOTSTRAP_EMAIL: undefined }],
+    ["a too-short bootstrap password", { ADMIN_BOOTSTRAP_PASSWORD: "short" }],
+  ]) {
+    it(`never connects or provisions for ${name}`, async () => {
+      const connect = mock.fn(async () => {});
+      const provision = fakeProvision();
+      await assert.rejects(runProvisioning(withEnv(patch), { connect, provision }));
+      assert.equal(connect.mock.callCount(), 0, "no connection attempt");
+      assert.equal(provision.mock.callCount(), 0, "no write attempt");
     });
   }
 });
