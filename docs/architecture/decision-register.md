@@ -950,3 +950,18 @@ Status: implemented. Offline checks pass; DB-backed suites (incl. `knowledge.mod
 | MOD-L1 | Lifecycle unchanged (ADR-0004): `draft → pending_review → approved \| rejected → draft`. #90's "create → pending" is create (draft) + submit (pending_review); no state added. Authority unchanged: EXPERT-only review, `reviewer ≠ author`, ADMIN has no Knowledge review authority. |
 | MOD-L2 | **Finding:** the public reads (`GET /knowledge`, `GET /knowledge/:id`) returned the raw document, exposing `reviewHistory[].feedback` from earlier rejection cycles of later-approved articles. Moderation feedback is private to the author and EXPERT reviewers. Fixed at the route layer with `toPublicKnowledgeDTO` (same public shape minus `feedback` and storage internals; reviewer stays an unpopulated id). Service return types unchanged. |
 | MOD-L3 | Test fixtures acquire EXPERT only through the real #91 lifecycle (`promoteToExpertViaLifecycle`); the end-to-end suite does it over HTTP. ADMIN fixtures remain direct writes until #89. |
+
+---
+
+## 🔒 Locked — Local ADMIN Provisioning (#89)
+
+Status: implemented. Offline checks pass; DB-backed suite (`provision-admin.test.js`) pass.
+
+| ID | Decision |
+|---|---|
+| ADM-L1 | Mechanism: `npm run provision:admin` (`server/scripts/provision-admin.js`, logic in `provision-admin-lib.js`). Lives under `scripts/`, never imported by `src/`, no HTTP surface. The stale `seed:users` script (pointing at a nonexistent `src/seed/seedUsers.js`) was removed: a generic user seeder is exactly the broad elevation tool this decision avoids. |
+| ADM-L2 | Fail-closed boundary, all required, checked before any DB connection: `NODE_ENV !== production`; `ALLOW_DEV_ADMIN_PROVISIONING === "true"`; `MONGO_URI` loopback host AND database ending `_dev`. No bypass. `NODE_ENV` alone is never proof. Shared host/suffix guard extracted to `scripts/local-db-guard.js` (E2E guard now delegates; its `_e2e` behavior unchanged). Consequence: the dev database must be named `*_dev`. |
+| ADM-L3 | One explicit identity (`ADMIN_BOOTSTRAP_EMAIL`), validated by the registration schema, hashed by the production `hashPassword`. Created directly (no session/tokens). Existing ADMIN → no-op (password never overwritten; mismatch only reported). Existing USER/EXPERT with that email → refused, untouched. No credentials in the repo; output never contains password, hash or tokens. |
+| ADM-L4 | Authority unchanged: ADMIN governs (EXP-L1) and has no Knowledge review authority (#90). The provisioned account authenticates through the normal login path and is recognized by `authMiddleware`'s fresh role read. |
+
+Deferred: production/staging ADMIN bootstrap (out of scope; needs its own decision), ADMIN credential rotation.
