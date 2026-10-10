@@ -4,6 +4,10 @@
 
 ## Current Milestone
 
+Issue #89 — local ADMIN provisioning — **implemented (uncommitted); DB-backed tests NOT yet run against real MongoDB.**
+`npm run provision:admin` (loopback + `_dev` DB + explicit opt-in, fail-closed); `seed:users` removed; shared
+`local-db-guard.js`. See decision-register ADM-L1–L4 and server/README.md. Dev DB must be named `*_dev`.
+
 Issue #90 — Knowledge moderation workflow — **implemented**
 Lifecycle/authority already complete (ADR-0004); added public-read feedback-leak fix (MOD-L2), real-#91-Expert fixtures (MOD-L3),
 end-to-end `knowledge.moderation.test.js`. No frontend change.

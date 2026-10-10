@@ -71,6 +71,7 @@ exploration data therefore remains a future read-surface milestone.
 PORT=5000
 MONGO_URI=mongodb://localhost:27017/aquaveda_v2
 TEST_MONGO_URI=mongodb://127.0.0.1:27017/aquaveda_v2_test   # required for `npm test`; must differ from MONGO_URI
+# Local ADMIN provisioning variables: see "Local ADMIN provisioning" below.
 CLIENT_URL=http://localhost:3000
 ALLOWED_ORIGINS=http://localhost:3000
 JWT_ACCESS_SECRET=    # generate: openssl rand -base64 32
@@ -100,6 +101,43 @@ calls needed elsewhere.
 `{ envVar: "TEST_MONGO_URI" }` and refuses to run if `TEST_MONGO_URI`
 equals `MONGO_URI`, so `npm test` can never silently operate against the
 development database.
+
+### Local ADMIN provisioning (development only)
+
+There is no other way to obtain an `ADMIN` (registration always creates a
+`USER`; `EXPERT` comes only from an ADMIN-approved Expert application).
+To exercise governance locally:
+
+```bash
+# server/.env (git-ignored) — never commit these values
+ALLOW_DEV_ADMIN_PROVISIONING=true
+MONGO_URI=mongodb://127.0.0.1:27017/aquaveda_v2_dev   # must be loopback AND end in _dev
+ADMIN_BOOTSTRAP_EMAIL=admin@example.test
+ADMIN_BOOTSTRAP_PASSWORD=<choose a local password, min 8 chars>
+ADMIN_BOOTSTRAP_NAME=Local Admin                      # optional
+
+npm run provision:admin
+```
+
+- **One database variable:** `MONGO_URI` is the only database setting this tool reads. The exact string it validates is the exact string it connects to (there is no second, separately configured URI).
+- **Safety (fails closed, checked before any DB connection):** refuses if
+  `NODE_ENV=production`, if `ALLOW_DEV_ADMIN_PROVISIONING` is not exactly
+  `true`, or if `MONGO_URI` is not a loopback host (`127.0.0.1`, `localhost`,
+  `::1`) with a database name ending `_dev`. There is no override. The
+  previously documented `aquaveda_v2` development database must be renamed
+  `aquaveda_v2_dev` to use this tool.
+- **Idempotent:** the first run creates the ADMIN; later runs change nothing
+  (a warning is printed if the stored password differs from the configured
+  one — it is never overwritten).
+- **No escalation:** if the email already belongs to a `USER` or `EXPERT`,
+  the tool refuses and modifies nothing. It provisions only the one
+  configured identity and has no HTTP surface.
+- **Secret-safe:** output never contains the password, its hash, or tokens.
+- **Use:** sign in through the normal `/auth/login` with those credentials.
+  ADMIN governs (e.g. approves/rejects Expert applications); it does **not**
+  review Knowledge — that stays EXPERT-only. To get an EXPERT locally,
+  register a user, `POST /api/v1/expert-application`, then approve it as the
+  ADMIN.
 
 Run backend tests from this directory with `npm test`. The suite uses the
 real MongoDB instance named by `TEST_MONGO_URI`; the database must be

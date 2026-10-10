@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "seed:users": "node src/seed/seedUsers.js",
+    "provision:admin": "node scripts/provision-admin.js",
     "verify:models": "node scripts/verify-models.js",
     "verify:validation": "node scripts/verify-validation.js",
     "verify:cookie-config": "node scripts/verify-cookie-config.js",

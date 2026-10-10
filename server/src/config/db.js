@@ -35,13 +35,16 @@ let connectionPromise = null;
  * connection if already connected, or the in-flight promise if a
  * connection attempt is already underway.
  *
- * @param {{ envVar?: string }} [options] - envVar selects which env var
- *   holds the connection string. Defaults to MONGO_URI (application
- *   runtime). Test code must pass `{ envVar: "TEST_MONGO_URI" }`
+ * @param {{ envVar?: string, uri?: string }} [options] - envVar selects
+ *   which env var holds the connection string. Defaults to MONGO_URI
+ *   (application runtime). Test code must pass `{ envVar: "TEST_MONGO_URI" }`
  *   explicitly — there is no implicit fallback to MONGO_URI, so a test
  *   run can never silently point at the development database.
+ *   `uri` connects to exactly that string and bypasses the environment
+ *   lookup: for scripts that have ALREADY validated a target (admin
+ *   provisioning, #89) and must connect to precisely what they validated.
  */
-export async function connectDB({ envVar = "MONGO_URI" } = {}) {
+export async function connectDB({ envVar = "MONGO_URI", uri: explicitUri } = {}) {
   if (mongoose.connection.readyState === 1) {
     return mongoose.connection;
   }
@@ -50,7 +53,7 @@ export async function connectDB({ envVar = "MONGO_URI" } = {}) {
     return connectionPromise;
   }
 
-  const uri = getRequiredEnv(envVar);
+  const uri = explicitUri ?? getRequiredEnv(envVar);
 
   mongoose.connection.on("error", (err) => {
     console.error("[db] MongoDB connection error:", err.message);
