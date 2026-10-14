@@ -35,11 +35,15 @@ import { sendError } from "./http/respond.js";
  * through, since credentialed-cookie CORS restrictions only meaningfully
  * apply to cross-origin browser requests that DO send an Origin header.
  */
-function buildCorsOptions() {
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
+function getAllowedOrigins() {
+  return (process.env.ALLOWED_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
+}
+
+function buildCorsOptions() {
+  const allowedOrigins = getAllowedOrigins();
 
   return {
     origin(requestOrigin, callback) {
@@ -61,12 +65,56 @@ function buildCorsOptions() {
   };
 }
 
+/**
+ * CORS controls whether a browser may read a response; it does not stop a
+ * browser from sending a credentialed state-changing request. Validate the
+ * browser's origin separately for methods that can mutate state, while still
+ * allowing headerless non-browser clients such as tests and service calls.
+ */
+function csrfOriginGuard(req, res, next) {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    next();
+    return;
+  }
+
+  const origin = req.get("origin");
+  const referer = req.get("referer");
+  if (!origin && !referer) {
+    next();
+    return;
+  }
+
+  const allowedOrigins = getAllowedOrigins();
+  if (origin && !allowedOrigins.includes(origin)) {
+    sendError(res, { code: "FORBIDDEN", message: "Forbidden" });
+    return;
+  }
+
+  if (referer) {
+    let refererOrigin;
+    try {
+      refererOrigin = new URL(referer).origin;
+    } catch {
+      sendError(res, { code: "FORBIDDEN", message: "Forbidden" });
+      return;
+    }
+
+    if (!allowedOrigins.includes(refererOrigin)) {
+      sendError(res, { code: "FORBIDDEN", message: "Forbidden" });
+      return;
+    }
+  }
+
+  next();
+}
+
 export function createApp() {
   const app = express();
 
   app.use(express.json());
   app.use(cookieParser());
   app.use(cors(buildCorsOptions()));
+  app.use(csrfOriginGuard);
 
   // Global actor resolution (Phase E/L6): every route, present and
   // future, receives req.actorContext (populated or null) before it

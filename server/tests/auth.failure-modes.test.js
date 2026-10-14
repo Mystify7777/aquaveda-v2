@@ -439,6 +439,58 @@ describe("Failure Modes — CORS Defenses & Preflight Edge Cases", () => {
 
     assert.equal(res.headers["access-control-allow-origin"], undefined);
   });
+
+  it("CSRF-01: disallowed origin cannot trigger a state-changing auth request", async () => {
+    const res = await request("POST", "/api/v1/auth/logout", {
+      headers: { Origin: DISALLOWED_ORIGIN },
+    });
+
+    assert.equal(res.status, 403);
+    assert.equal(res.json.code, "FORBIDDEN");
+  });
+
+  it("CSRF-02: configured frontend origin can trigger a state-changing auth request", async () => {
+    const res = await request("POST", "/api/v1/auth/logout", {
+      headers: { Origin: ALLOWED_ORIGIN },
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.json.success, true);
+  });
+
+  it("CSRF-03: disallowed Referer is rejected when Origin is absent", async () => {
+    const res = await request("POST", "/api/v1/auth/logout", {
+      headers: { Referer: `${DISALLOWED_ORIGIN}/account` },
+    });
+
+    assert.equal(res.status, 403);
+    assert.equal(res.json.code, "FORBIDDEN");
+  });
+
+  it("CSRF-04: allowed Referer can trigger a state-changing auth request", async () => {
+    const res = await request("POST", "/api/v1/auth/logout", {
+      headers: { Referer: `${ALLOWED_ORIGIN}/account` },
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.json.success, true);
+  });
+
+  it("CSRF-05: malformed Referer is rejected", async () => {
+    const res = await request("POST", "/api/v1/auth/logout", {
+      headers: { Referer: "not-a-url" },
+    });
+
+    assert.equal(res.status, 403);
+    assert.equal(res.json.code, "FORBIDDEN");
+  });
+
+  it("CSRF-06: headerless state-changing requests remain available to server-to-server clients", async () => {
+    const res = await request("POST", "/api/v1/auth/logout");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.json.success, true);
+  });
 });
 
 // =====================================================================
