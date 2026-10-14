@@ -474,7 +474,19 @@ identifiable read benefit.
 - `2dsphere` on `location` — required for all geo queries: map display
   (`$geoWithin` bounding box for the Explore map viewport), nearby lookup
   (`$near` for radius search), and geospatial filtering. No geo query
-  works without this; it is not optional.
+  works without this; it is not optional. (Issue #41: bounding-box
+  discovery uses this index via a `$geoWithin` `$centerSphere` candidate
+  filter plus exact planar bounds; `$near` radius search is **not**
+  implemented — see `issue-discovery-contract.md`.)
+- Text index `issue_text_search` on `title` + `description`
+  (`default_language: "none"`) — **added by Issue #41** for the public
+  `q` search; the only text index on the collection. It selects
+  candidates only (no stemming, so multilingual reports tokenize
+  predictably); the contract's whole-word, every-term semantics are
+  enforced by a per-term exact check on those candidates — see
+  `issue-discovery-contract.md`. No other index was added for #41: `category`/`severity`
+  are low-cardinality enums that are always combined with another filter
+  or served from a page-bounded sort, so no access pattern justifies one.
 - Index on `status` — the public Issue listing and Explore map filter both
   filter by status (`{ status: 'open' }`, `{ status: { $in: [...] } }`).
   Without this, every listing query scans the full collection.

@@ -358,8 +358,40 @@ function topLevelFields(schema) {
 }
 
 check("8a. User has exactly the expected top-level fields", () => {
-  const expected = ["name", "email", "passwordHash", "role", "bio"].sort();
+  const expected = [
+    "name",
+    "email",
+    "passwordHash",
+    "role",
+    "bio",
+    "expertApplication",
+  ].sort();
   assert.deepEqual(topLevelFields(User.schema), expected);
+});
+
+check("8a-2. User.expertApplication: absent by default; status enum; history entry shape", () => {
+  const u = new User({ name: "A", email: "a@example.test", passwordHash: "x" });
+  assert.equal(u.expertApplication, undefined, "absence === never applied");
+  const bad = new User({
+    name: "A",
+    email: "a@example.test",
+    passwordHash: "x",
+    expertApplication: { status: "verified", history: [] },
+  });
+  assert.ok(bad.validateSync()?.errors["expertApplication.status"], "unknown status rejected");
+  const ok = new User({
+    name: "A",
+    email: "a@example.test",
+    passwordHash: "x",
+    expertApplication: {
+      status: "pending",
+      history: [{ fromStatus: null, toStatus: "pending", actor: "507f1f77bcf86cd799439011" }],
+    },
+  });
+  assert.equal(ok.validateSync(), undefined);
+  assert.equal(ok.expertApplication.history[0].fromStatus, null);
+  const flat = ["reviewer", "verifiedBy", "approvedBy", "resolvedBy"];
+  for (const f of flat) assert.equal(User.schema.path(f), undefined, `no flat ${f}`);
 });
 
 check("8b. Issue has exactly the expected top-level fields", () => {

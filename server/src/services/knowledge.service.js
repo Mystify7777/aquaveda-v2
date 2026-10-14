@@ -11,6 +11,7 @@ import {
   DomainErrorCode,
 } from "./errors.js";
 import { requireActor, requireRole } from "./authorization.js";
+import { toWorkflowKnowledgeDTO, toWorkflowKnowledgeSummaryDTO } from "./knowledge.dto.js";
 
 /**
  * Knowledge domain service.
@@ -388,4 +389,125 @@ export async function getApprovedKnowledgeById(knowledgeId) {
     throw notFound(`Knowledge ${knowledgeId} not found`);
   }
   return knowledge;
+}
+
+// ---------------------------------------------------------------------
+// Authenticated workflow reads (Issue #74)
+//
+// Read-only. No lifecycle state, role, permission, or schema field is
+// added; authorization reuses requireActor / requireRole exactly as the
+// write operations do. Public reads above are unchanged.
+// ---------------------------------------------------------------------
+
+function paginated(items, { page, limit, total }) {
+  return {
+    items,
+    page,
+    limit,
+    total,
+    totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
+  };
+}
+
+/**
+ * listMyKnowledge(actorContext, {page, limit, status}) — the caller's own
+ * Knowledge in every status.
+ *
+ * The owner filter comes exclusively from `actorContext.id`; no
+ * caller-supplied author is ever accepted. Items are summaries (no
+ * `body`, no `reviewHistory`) — the full article is the workflow detail
+ * read's job. Newest-touched first; `_id` breaks ties so pages are stable.
+ */
+export async function listMyKnowledge(actorContext, { page = 1, limit = 20, status } = {}) {
+  requireActor(actorContext);
+
+  const filter = { author: actorContext.id };
+  if (status) filter.status = status;
+
+  const skip = (page - 1) * limit;
+  const [items, total] = await Promise.all([
+    Knowledge.find(filter)
+      .select("-body -reviewHistory")
+      .sort({ updatedAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("author", PUBLIC_ACTOR_FIELDS)
+      .lean(),
+    Knowledge.countDocuments(filter),
+  ]);
+
+  return paginated(items.map(toWorkflowKnowledgeSummaryDTO), { page, limit, total });
+}
+
+/**
+ * listReviewQueue(actorContext, {page, limit}) — Knowledge awaiting review.
+ *
+ * EXPERT only, via the same requireRole call as approve/reject (AUTH-L2:
+ * exact single role, ADMIN excluded). The caller's own submissions are
+ * excluded: approve/reject already forbid reviewer === author, so listing
+ * them would only produce items whose every action fails. This follows
+ * from that existing invariant; it is not a new rule.
+ *
+ * Ordering is oldest-first on `updatedAt`. No `submittedAt` field exists
+ * (and none is added): content is immutable while `pending_review`, so
+ * `updatedAt` is the submission time for every article in this queue.
+ */
+export async function listReviewQueue(actorContext, { page = 1, limit = 20 } = {}) {
+  requireActor(actorContext);
+  requireRole(actorContext, "EXPERT");
+
+  const filter = { status: "pending_review", author: { $ne: actorContext.id } };
+
+  const skip = (page - 1) * limit;
+  const [items, total] = await Promise.all([
+    Knowledge.find(filter)
+      .select("-body -reviewHistory")
+      .sort({ updatedAt: 1, _id: 1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("author", PUBLIC_ACTOR_FIELDS)
+      .lean(),
+    Knowledge.countDocuments(filter),
+  ]);
+
+  return paginated(items.map(toWorkflowKnowledgeSummaryDTO), { page, limit, total });
+}
+
+/**
+ * getKnowledgeForWorkflow(actorContext, knowledgeId) — one article in
+ * full, in any status, for the author / reviewer workflow.
+ *
+ * Readable iff the caller is the article's author, or the caller is an
+ * EXPERT and the article is `pending_review`. Every other case —
+ * including a document that doesn't exist — is the same NOT_FOUND
+ * (never FORBIDDEN), for the reason getApprovedKnowledgeById documents:
+ * a distinguishing error would confirm that a specific non-public
+ * article exists.
+ *
+ * Authorization is decided on the raw (unpopulated) document; population
+ * happens only after access is granted.
+ */
+export async function getKnowledgeForWorkflow(actorContext, knowledgeId) {
+  requireActor(actorContext);
+
+  let knowledge;
+  try {
+    knowledge = await Knowledge.findById(knowledgeId).lean();
+  } catch (err) {
+    throw wrapMongooseValidationError(err);
+  }
+  if (!knowledge) throw notFound(`Knowledge ${knowledgeId} not found`);
+
+  const isAuthor = String(knowledge.author) === String(actorContext.id);
+  const isReviewerOfPending =
+    actorContext.role === "EXPERT" && knowledge.status === "pending_review";
+  if (!isAuthor && !isReviewerOfPending) {
+    throw notFound(`Knowledge ${knowledgeId} not found`);
+  }
+
+  await Knowledge.populate(knowledge, [
+    { path: "author", select: PUBLIC_ACTOR_FIELDS },
+    { path: "reviewHistory.reviewer", select: PUBLIC_ACTOR_FIELDS },
+  ]);
+  return toWorkflowKnowledgeDTO(knowledge);
 }

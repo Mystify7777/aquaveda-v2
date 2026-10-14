@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+import {
+  ISSUE_CATEGORY_VALUES,
+  ISSUE_SEVERITY_VALUES,
+} from "../domain/issue-classification.js";
+import {
+  bboxProblem,
+  parseBbox,
+  searchTextProblem,
+} from "../domain/issue-search.js";
 import { paginationQuerySchema } from "./shared/pagination.js";
 
 /**
@@ -42,12 +51,11 @@ export const createIssueSchema = z.object({
   title: z.string().trim().min(1, "title is required"),
   description: z.string().trim().min(1, "description is required"),
   location: geoPointSchema,
-  // severity/category are deliberately unconstrained strings — no fixed
-  // vocabulary was ever locked by any approved document (see
-  // decision-register.md D-9). Inventing an enum here would be making a
-  // product decision inside a validation schema.
-  severity: z.string().trim().optional(),
-  category: z.string().trim().optional(),
+  // Optional at creation; when supplied, must be a canonical value from
+  // domain/issue-classification.js (Issue #67, decision-register D-9).
+  // Omit the key to leave unclassified — empty strings are rejected.
+  severity: z.enum(ISSUE_SEVERITY_VALUES).optional(),
+  category: z.enum(ISSUE_CATEGORY_VALUES).optional(),
 });
 
 /**
@@ -75,6 +83,39 @@ export const changeIssueStatusSchema = z.object({
  * rather than re-deriving it, since it's the same underlying vocabulary
  * for a different purpose (filtering, not transitioning).
  */
+const searchTextSchema = z
+  .string()
+  .superRefine((value, ctx) => {
+    const problem = searchTextProblem(value);
+    if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+  })
+  .transform((value) => value.trim());
+
+const bboxSchema = z.string().transform((raw, ctx) => {
+  const tuple = parseBbox(raw);
+  const problem = tuple ? bboxProblem(tuple) : "bbox must be four numbers: west,south,east,north";
+  if (problem) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+    return z.NEVER;
+  }
+  return tuple;
+});
+
+/**
+ * Public Issue discovery query (Issues #40/#48/#41) — contract:
+ * docs/architecture/issue-discovery-contract.md.
+ *
+ * All parameters are optional and combinable. A recognized parameter with
+ * an invalid value is a 400, never clamped or dropped. `category` and
+ * `severity` are the canonical vocabularies (domain/issue-classification.js);
+ * `q` and `bbox` rules live in domain/issue-search.js so the service layer
+ * enforces the same definition. `bbox` parses to
+ * [west, south, east, north].
+ */
 export const listIssuesQuerySchema = paginationQuerySchema.extend({
   status: z.enum(ISSUE_STATUSES).optional(),
+  category: z.enum(ISSUE_CATEGORY_VALUES).optional(),
+  severity: z.enum(ISSUE_SEVERITY_VALUES).optional(),
+  q: searchTextSchema.optional(),
+  bbox: bboxSchema.optional(),
 });

@@ -45,6 +45,16 @@ describe("getIssues", () => {
     );
   });
 
+  it("serializes the #41 discovery params exactly (q/bbox encoded, no extras)", async () => {
+    mockFetchOnce({ success: true, data: { items: [], page: 1, limit: 20, total: 0, totalPages: 0 }, message: "ok" });
+    await getIssues({ page: 1, category: "water_quality", severity: "high", q: "main road", bbox: "77.5,12.8,77.7,13.1" });
+    const url = new URL((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+    expect(url.origin + url.pathname).toBe("https://api.aquaveda.com/api/v1/issues");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      page: "1", category: "water_quality", severity: "high", q: "main road", bbox: "77.5,12.8,77.7,13.1",
+    });
+  });
+
   it("serializes the status filter and pagination params into the query string", async () => {
     mockFetchOnce({ success: true, data: { items: [], page: 2, limit: 10, total: 0, totalPages: 0 }, message: "ok" });
     await getIssues({ status: "acknowledged", page: 2, limit: 10 });
@@ -113,5 +123,19 @@ describe("getIssue", () => {
   it("throws a 404 ApiError for a nonexistent Issue", async () => {
     mockFetchOnce({ success: false, data: null, message: "Issue x not found", code: "NOT_FOUND" }, false, 404);
     await expect(getIssue("x")).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+  });
+});
+
+describe("createIssue", () => {
+  it("POSTs JSON with content-type to /api/v1/issues and returns the created issue", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "https://api.aquaveda.com";
+    mockFetchOnce({ success: true, data: SAMPLE_ISSUE, message: "Issue created" }, true, 201);
+    const { createIssue } = await import("@/lib/api/issues");
+    const payload = { title: "Leaking pipe", description: "d", location: { type: "Point" as const, coordinates: [77.5, 12.9] as [number, number] } };
+    await expect(createIssue(payload)).resolves.toMatchObject({ _id: "issue-1" });
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(url)).toContain("/api/v1/issues");
+    expect(init).toMatchObject({ method: "POST", body: JSON.stringify(payload) });
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
 });

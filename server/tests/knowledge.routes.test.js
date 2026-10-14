@@ -9,6 +9,7 @@ import { knowledgeRouter } from "../src/routes/knowledge.routes.js";
 import { User } from "../src/models/User.js";
 import { register } from "../src/services/auth.service.js";
 import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.js";
+import { promoteToExpertViaLifecycle } from "./helpers/expert.js";
 
 /**
  * Focused HTTP tests for knowledge.routes.js.
@@ -87,7 +88,11 @@ async function makeAuthedUser(role = "USER") {
     email: `${role.toLowerCase()}-${Date.now()}-${Math.random()}@example.com`,
     password: VALID_PASSWORD,
   });
-  if (role !== "USER") {
+  // EXPERT is acquired through the real #91 lifecycle, never a direct write.
+  // ADMIN has no lifecycle yet (#89): direct fixture write only.
+  if (role === "EXPERT") {
+    await promoteToExpertViaLifecycle(user.id);
+  } else if (role !== "USER") {
     await User.updateOne({ _id: user.id }, { $set: { role } });
   }
   return { user, accessToken };

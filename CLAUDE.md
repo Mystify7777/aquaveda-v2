@@ -4,6 +4,129 @@
 
 ## Current Milestone
 
+Issue #89 — local ADMIN provisioning — **implemented (uncommitted); DB-backed tests NOT yet run against real MongoDB.**
+`npm run provision:admin` (loopback + `_dev` DB + explicit opt-in, fail-closed); `seed:users` removed; shared
+`local-db-guard.js`. See decision-register ADM-L1–L4 and server/README.md. Dev DB must be named `*_dev`.
+
+Issue #90 — Knowledge moderation workflow — **implemented**
+Lifecycle/authority already complete (ADR-0004); added public-read feedback-leak fix (MOD-L2), real-#91-Expert fixtures (MOD-L3),
+end-to-end `knowledge.moderation.test.js`. No frontend change.
+
+Issue #91 — Expert onboarding/verification — **implemented**
+ADMIN-only approve/reject (EXP-L1); embedded `User.expertApplication` + append-only history (EXP-L2/L3);
+atomic role grant (EXP-L4). Routes `/api/v1/expert-application`. Fixture: `server/tests/helpers/expert.js`.
+Frontend + ADMIN provisioning deferred (#89). Details: decision-register "Locked — Expert Authority (#91)".
+
+Issue #87 — copyable issue IDs — **implemented.**
+`CopyIssueId` (`src/components/issues/`): ID + copy on Issue detail, compact copy button on
+IssueCard; shown only for project-eligible statuses (`isProjectEligible`, mirrors server
+`ELIGIBLE_ISSUE_STATUSES` — `open` excluded). Copies raw `_id` (= `originIssue`). Clipboard
+failure → inline status, ID stays selectable. No backend/contract change. Frontend-only;
+local state, no new deps.
+
+Issue #85 — browser smoke coverage — **implemented.**
+Playwright (Chromium) in `e2e/`; real backend + MongoDB, no mocks; seeded via domain
+services (`server/scripts/seed-e2e.js`, `_e2e` DB only). New `e2e` CI job. Not yet
+run end-to-end in the author's sandbox (no mongod / browser download); first CI run is
+the verification. Details: `docs/engineering/testing.md` ("Browser smoke suite").
+
+Issue #84 — CI verification — **implemented.**
+`.github/workflows/ci.yml`: PRs to `main` + pushes to `main`. `frontend` job runs
+`npm run verify:frontend`; `backend` job runs `npm --prefix server run verify`
+against a pinned `mongo:7` service container (rationale in testing.md) (no skipped/mocked Mongo tests). Node 22,
+lockfile-strict `npm ci` for root and `server/`. No app behavior changes.
+Details: `docs/engineering/testing.md` ("CI").
+
+Issue #83 — protected-route topology — **implemented** `src/app/protected/` → `src/app/(protected)/` (`git mv`; layout/auth
+boundary unchanged). URLs are canonical (`/learn/new|mine|review[/id]`,
+`/act/new`); `(protected)` is an implementation-only route group, never a URL
+segment. All `/protected/...` links, test expectations and imports rewritten; no
+redirects or duplicate tree. Route-contract tests assert canonical paths resolve
+and `/protected/*` / `/(protected)/*` do not; public Explore/Learn/Act unchanged.
+Docs: `docs/engineering/testing.md`, `docs/architecture/nextjs-patterns.md`.
+
+Issue #82 — Explore adopts the #41 discovery filters — **implemented** `category`, `severity`, `q`, `bbox` +
+existing `status`/`page`, all URL-driven (`src/lib/issues/discovery.ts`),
+validated with the backend's own `issue-search.js`. Native GET filter form
+(blank params redirect to the canonical URL), "Search this area" bbox
+control on the map (explicit, never clamped). Backend contract and
+protected-route topology untouched. Details:
+`docs/architecture/issue-discovery-contract.md` ("Frontend adoption").
+
+Issue #81 — route/link contract — **implemented.** Shared test-only
+resolver `src/test-utils/app-routes.ts` (static, `[param]`, `(group)`,
+catch-all reported-not-trusted; no Next router reimplementation, no new
+deps). #80's auth test now uses it; new `navigation-links.test.tsx` covers
+Navbar/MobileNav/Learn workflow links; `product-links.test.tsx` covers the
+Explore/Learn/Act link-producing components. `/community` and `/dashboard` are
+linked in the nav but unimplemented — explicitly listed as deferred, and the
+test fails when a page appears. Details: `docs/engineering/testing.md`.
+Not touched: auth, routes, #82/#83/#85.
+
+Issue #80 — public auth page URLs — **fixed.** Canonical URLs are
+`/auth/login` and `/auth/register` (where the pages actually live; also
+what 16 components and their tests already used). `LoginForm`,
+`RegisterForm` and `AuthControls` (Navbar/MobileNav) linked to
+`/login` / `/register`, which 404ed; they now use the canonical URLs.
+No redirects, duplicate pages, or auth/API changes (`/api/v1/auth/*` is
+unrelated). `src/app/auth/auth-routes.test.tsx` maps each rendered auth
+href to its `page.tsx`, with a negative control for the old paths. The
+planned `(auth)` route group never shipped; docs that said `/login` /
+`/register` were corrected. Broader route/link audit: Issue #81.
+
+Issue #6 — client-boundary audit — **complete; no code change.** All 29
+`"use client"` modules reviewed against the dependency graph; none is an
+unnecessary boundary (hooks/context/events, browser APIs or client-only
+libraries, `ssr:false` dynamic import, framework requirement, or the
+documented `providers/` boundary). Findings and the deliberately retained
+borderline cases are recorded in `docs/architecture/nextjs-patterns.md`
+("Client boundary audit"); the same change corrects a statement there that
+the `FoundationStatusCard` shell was not a Client Component.
+
+Issue #41 — public Issue discovery (backend) — **implemented; ready for
+review.** `GET /api/v1/issues` now also accepts `category`, `severity`,
+`q` (text) and `bbox` (`west,south,east,north`), all optional and
+combinable; ordering is `createdAt` desc then `_id` desc. Contract:
+`docs/architecture/issue-discovery-contract.md`; decisions: register
+ROUTE-L2e. One new index (`issue_text_search`); persistence-design
+amended. No lifecycle, auth, or D-3a change. Verified against a real
+`mongod` (3.6.8 — see the PR report for the version caveat); the
+production-version run is the developer's.
+
+Issue #50 — frontend Explore surface — **implemented; ready for
+review.** Public `/explore` (server-rendered from `GET /issues`: `status`
+filter as links + URL pagination, list + Leaflet map of the issues on the
+*current page*, skip-link past the map, loading/empty/filtered-empty/
+past-the-end/error states) and `/explore/[issueId]` (public detail:
+description, classification, location + single-marker map, read-only
+status history, ISSUE discussion via `CommentThread`/`DiscussionComposer`;
+404/400 → not-found, transport failure → retryable alert). Reporting stays
+the #44 dialog behind `RequireAuth`; it now refreshes the list after a
+successful report and links to the new issue. Leaflet/react-leaflet added
+(first consumer; map is client-only via `next/dynamic` ssr:false, uses a
+`divIcon` to avoid bundler-hostile default marker assets, markers are
+keyboard-focusable and titled). Only the contract the backend has is
+used: no geo, search, category/severity filter or sort parameters are
+sent. No backend, lifecycle, or D-3a change; the detail page exposes no
+transition controls and omits the unpopulated status-history `actor` id.
+
+Issue #74 — authenticated Knowledge workflow reads — **implemented;
+real-MongoDB verification pending** (the implementation environment has
+no `mongod`; a wire-compatible stand-in was used for iteration only, so
+no pass count is recorded here until the developer's real run).
+3 read-only routes: `GET /api/v1/knowledge/mine`,
+`GET /api/v1/knowledge/review-queue`,
+`GET /api/v1/knowledge/:knowledgeId/workflow`. Unblocks the review
+lifecycle portion of frontend #51 (approve/reject/revise had no
+reachable target). No schema, index, role, permission, or lifecycle
+change; D-3a untouched; public Knowledge routes/DTO unchanged
+(regression-tested). Decisions: review queue excludes the caller's own
+submissions; list items are summaries (no `body`/`reviewHistory`), the
+detail read carries them; separate workflow DTO. Full detail:
+`docs/architecture/decision-register.md` ROUTE-L2 amendment (#74) and
+ROUTE-L2a–L2d. Remaining #51 frontend (mine/review pages, submit/
+approve/reject/revise UI) follows this milestone.
+
 Routes — **implemented, reviewed, and verified for real against real
 MongoDB: 232/232 tests, 54 suites, 0 failures.** Executed as 6 reviewed
 checkpoints (A: shared HTTP error infra; B: 4 validation modules; C:
@@ -426,6 +549,9 @@ logout-vs-access-token-expiry trade-off.
   build plan in `server/README.md` — backend built here, not in a separate repo.
   Future evolution path: `apps/web` + `apps/server` workspace layout.
 
+- Issue category/severity contract (#67): canonical optional vocabularies in `server/src/domain/issue-classification.js` (single source of truth) → Zod enum validation, Issue schema enum, frontend selects/types via `src/lib/issues/classification.ts`. No filtering/lifecycle/auth changes. Documented in `docs/domain/domain-model.md`.
+- Frontend issue reporting (#44): `IssueReportForm` + `ReportIssueButton` (Radix Dialog, `RequireAuth` around content only), mounted on minimal public `/explore`; `createIssue()` in `lib/api/issues.ts`; hand-rolled validation in `lib/issues/report-validation.ts` (no new deps). Fixed `RequireAuth` links `/login`→`/auth/login`.
+
 ## Architectural Decisions
 
 - New repository over in-place migration (ADR-0001)
@@ -468,6 +594,19 @@ logout-vs-access-token-expiry trade-off.
 
 ## Technical Debt
 
+- **Explore has not yet adopted the #41 discovery parameters.** The
+  backend contract (`category`, `severity`, `q`, `bbox` on
+  `GET /api/v1/issues`) is implemented and documented in
+  `docs/architecture/issue-discovery-contract.md`; `/explore` still sends
+  only `status`/`page`, so its map still shows the current page of
+  results rather than the viewport. Adoption (filters UI, search box,
+  viewport-driven `bbox` fetching with the 10° cap) is a frontend
+  follow-up. Radius/proximity search is intentionally not part of the
+  contract.
+- Public Knowledge detail still returns `reviewHistory` (incl. rejection
+  `feedback`, unpopulated reviewer ids) for articles rejected then
+  approved. Left unchanged by #74 (public contract locked); a narrower
+  public DTO is a candidate follow-up (register: ROUTE-L2d).
 - `not-found.tsx` copy says "hasn't been built yet" — will need updating
   as real routes ship (acceptable for now, honest placeholder)
 - **D-3a (remediation-assertion authority) remains unresolved** — not
@@ -487,6 +626,10 @@ logout-vs-access-token-expiry trade-off.
   30 suites** against real MongoDB — Phases A–H, all closed.
 
 ## Next Milestone
+
+After #74's real-MongoDB verification and merge: resume frontend #51
+(review lifecycle UI against the new reads). The paragraph below is the
+prior milestone's status and is otherwise unchanged.
 
 Authentication (Phases A–H), Authorization & Ownership Policy, and
 Routes are all fully complete, reviewed, and verified: **232/232

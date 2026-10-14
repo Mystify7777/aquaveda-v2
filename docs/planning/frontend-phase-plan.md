@@ -4,7 +4,7 @@
 implemented by Issue #36; this document continues to describe the broader
 frontend sequence and the work that remains future or backend-dependent.
 
-Issue #36 added the root `AuthProvider`, `/login` and `/register` pages,
+Issue #36 added the root `AuthProvider`, `/auth/login` and `/auth/register` pages,
 `RequireAuth` for contribution entry points, session-aware navigation, the
 credentialed API base URL, and focused pure session-state tests. See
 `docs/architecture/auth-boundaries.md` for the current contract.
@@ -305,8 +305,9 @@ backend track that only started once someone noticed F2 was done.
 src/app/
 ├── (marketing)/              existing home page, no auth requirement
 │   └── page.tsx
-├── (auth)/                   Phase F1
-│   ├── layout.tsx             centered, minimal chrome — no Navbar product links
+├── auth/                     Phase F1 — a real segment, not a route group:
+│   │                          the public URLs are /auth/login and /auth/register
+│   ├── layout.tsx             (planned, not built) minimal chrome — no Navbar product links
 │   ├── login/page.tsx
 │   └── register/page.tsx
 ├── explore/                  Phase F2 (report form, as a component
@@ -343,9 +344,11 @@ src/app/
     └── page.tsx
 ```
 
-Route-group parentheses (`(marketing)`, `(auth)`) don't affect URLs —
-used here only to give the auth flow its own layout (no product nav)
-without affecting `/login`'s actual path.
+Route-group parentheses (`(marketing)`) don't affect URLs. The auth pages
+were planned as an `(auth)` group (which would have served `/login`), but
+shipped as a real `auth/` segment, so the canonical public URLs are
+`/auth/login` and `/auth/register` (Issue #80); no auth-specific layout
+exists yet.
 
 **On avoiding the throwaway route**: `explore/page.tsx` is created
 once, in F2, as a minimal page hosting only the Issue-report

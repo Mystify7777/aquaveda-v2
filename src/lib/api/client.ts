@@ -42,8 +42,15 @@ export async function apiRequest<T>(
   let response: Response;
 
   try {
+    const headers = new Headers(init?.headers);
+
+    if (typeof init?.body === "string" && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+
     response = await fetch(buildUrl(input), {
       ...init,
+      headers,
       credentials: "include",
     });
   } catch (error) {

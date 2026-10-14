@@ -17,16 +17,33 @@
 
 import assert from "node:assert/strict";
 
-import { createIssueSchema, changeIssueStatusSchema } from "../src/validation/issue.validation.js";
+import {
+  createIssueSchema,
+  changeIssueStatusSchema,
+  listIssuesQuerySchema,
+} from "../src/validation/issue.validation.js";
+import {
+  ISSUE_CATEGORIES,
+  ISSUE_SEVERITIES,
+  ISSUE_CATEGORY_VALUES,
+  ISSUE_SEVERITY_VALUES,
+} from "../src/domain/issue-classification.js";
 import {
   createKnowledgeSchema,
   reviewKnowledgeSchema,
   rejectKnowledgeSchema,
   reviseKnowledgeSchema,
+  myKnowledgeQuerySchema,
+  reviewQueueQuerySchema,
 } from "../src/validation/knowledge.validation.js";
 import { createCommentSchema } from "../src/validation/comment.validation.js";
 import { createProjectSchema } from "../src/validation/project.validation.js";
 import { objectIdString } from "../src/validation/shared/objectId.js";
+import {
+  applicantIdParamSchema,
+  applyExpertApplicationSchema,
+  rejectExpertApplicationSchema,
+} from "../src/validation/expert-application.validation.js";
 import { registerSchema, loginSchema } from "../src/validation/auth.validation.js";
 
 const results = [];
@@ -82,21 +99,51 @@ check("1d. Issue payload missing location fails", () => {
   assert.equal(result.success, false);
 });
 
-check("1e. Issue payload accepts optional severity/category, and works without them", () => {
-  const withOptional = createIssueSchema.safeParse({
-    title: "Broken pipeline",
-    description: "Water leaking near the main road",
-    location: validPoint([77.5, 12.9]),
-    severity: "high",
-    category: "infrastructure",
-  });
-  const withoutOptional = createIssueSchema.safeParse({
+check("1e. Issue payload accepts omitted category/severity", () => {
+  const result = createIssueSchema.safeParse({
     title: "Broken pipeline",
     description: "Water leaking near the main road",
     location: validPoint([77.5, 12.9]),
   });
-  assert.equal(withOptional.success, true);
-  assert.equal(withoutOptional.success, true);
+  assert.equal(result.success, true);
+});
+
+check("1f. Every canonical category and severity is accepted", () => {
+  const base = {
+    title: "t",
+    description: "d",
+    location: validPoint([77.5, 12.9]),
+  };
+  for (const category of ISSUE_CATEGORY_VALUES) {
+    assert.equal(createIssueSchema.safeParse({ ...base, category }).success, true, category);
+  }
+  for (const severity of ISSUE_SEVERITY_VALUES) {
+    assert.equal(createIssueSchema.safeParse({ ...base, severity }).success, true, severity);
+  }
+});
+
+check("1g. Non-canonical category/severity are rejected (incl. legacy, case, blank)", () => {
+  const base = {
+    title: "t",
+    description: "d",
+    location: validPoint([77.5, 12.9]),
+  };
+  for (const category of ["infrastructure", "Leakage_Wastage", "", " other "]) {
+    assert.equal(createIssueSchema.safeParse({ ...base, category }).success, false, `category ${JSON.stringify(category)}`);
+  }
+  for (const severity of ["HIGH", "urgent", "", " low"]) {
+    assert.equal(createIssueSchema.safeParse({ ...base, severity }).success, false, `severity ${JSON.stringify(severity)}`);
+  }
+});
+
+check("1h. Classification contract is well-formed (unique values, labels, descriptions)", () => {
+  for (const list of [ISSUE_CATEGORIES, ISSUE_SEVERITIES]) {
+    assert.equal(new Set(list.map((e) => e.value)).size, list.length);
+    for (const e of list) {
+      assert.match(e.value, /^[a-z]+(_[a-z]+)*$/);
+      assert.ok(e.label.length > 0 && e.description.length > 0);
+    }
+  }
 });
 
 // ---------------------------------------------------------------------
@@ -483,6 +530,110 @@ check("11g. Revise with only title passes (all fields independently optional)", 
 
 check("11h. Revise with an empty-string title fails (not empty, just absent, is what's allowed)", () => {
   assert.equal(reviseKnowledgeSchema.safeParse({ title: "" }).success, false);
+});
+
+// ---------------------------------------------------------------------
+// 12. Knowledge workflow read queries (Issue #74)
+// ---------------------------------------------------------------------
+check("12a. My Knowledge query defaults to page 1 / limit 20 with no status", () => {
+  const r = myKnowledgeQuerySchema.safeParse({});
+  assert.equal(r.success, true);
+  assert.deepEqual(r.data, { page: 1, limit: 20 });
+});
+
+check("12b. My Knowledge accepts each of the four existing lifecycle statuses", () => {
+  for (const status of ["draft", "pending_review", "approved", "rejected"]) {
+    assert.equal(myKnowledgeQuerySchema.safeParse({ status }).success, true, status);
+  }
+});
+
+check("12c. My Knowledge rejects an unknown status", () => {
+  assert.equal(myKnowledgeQuerySchema.safeParse({ status: "published" }).success, false);
+});
+
+check("12d. My Knowledge and Review queue reject out-of-range pagination", () => {
+  for (const schema of [myKnowledgeQuerySchema, reviewQueueQuerySchema]) {
+    assert.equal(schema.safeParse({ page: "0" }).success, false);
+    assert.equal(schema.safeParse({ limit: "51" }).success, false);
+    assert.equal(schema.safeParse({ limit: "abc" }).success, false);
+  }
+});
+
+check("12e. Review queue takes no status parameter (it is fixed to pending_review at the service)", () => {
+  const r = reviewQueueQuerySchema.safeParse({ status: "draft" });
+  assert.equal(r.success, true);
+  assert.equal("status" in r.data, false);
+});
+
+// ---------------------------------------------------------------------
+// 13. Public Issue discovery query (Issue #41)
+// ---------------------------------------------------------------------
+check("13a. Discovery query with no parameters keeps the pre-#41 defaults", () => {
+  const r = listIssuesQuerySchema.safeParse({});
+  assert.equal(r.success, true);
+  assert.deepEqual(r.data, { page: 1, limit: 20 });
+});
+
+check("13b. Discovery query parses every filter; bbox becomes [west,south,east,north]; q is trimmed", () => {
+  const r = listIssuesQuerySchema.safeParse({
+    status: "open",
+    category: "water_quality",
+    severity: "high",
+    q: "  burst pipe ",
+    bbox: "77, 12, 78, 13",
+    page: "2",
+    limit: "10",
+  });
+  assert.equal(r.success, true);
+  assert.deepEqual(r.data, {
+    status: "open",
+    category: "water_quality",
+    severity: "high",
+    q: "burst pipe",
+    bbox: [77, 12, 78, 13],
+    page: 2,
+    limit: 10,
+  });
+});
+
+check("13c. Discovery query rejects unknown category/severity and malformed or out-of-bounds q/bbox", () => {
+  for (const bad of [
+    { category: "nope" },
+    { severity: "nope" },
+    { q: "a" },
+    { q: '""' },
+    { q: "a".repeat(101) },
+    { q: ["ab", "cd"] },
+    { bbox: "1,2,3" },
+    { bbox: "a,b,c,d" },
+    { bbox: "78,12,77,13" },
+    { bbox: "0,0,10.01,1" },
+    { bbox: "-180,-85,180,85" },
+    { bbox: ["0,0,1,1", "0,0,2,2"] },
+  ]) {
+    assert.equal(listIssuesQuerySchema.safeParse(bad).success, false, JSON.stringify(bad));
+  }
+});
+
+check("EA-1. applicant id param must be an ObjectId", () => {
+  assert.equal(applicantIdParamSchema.safeParse({ userId: VALID_OID }).success, true);
+  assert.equal(applicantIdParamSchema.safeParse({ userId: "nope" }).success, false);
+});
+
+check("EA-2. apply body is empty and strict: smuggled role/status/applicant rejected", () => {
+  assert.equal(applyExpertApplicationSchema.safeParse({}).success, true);
+  for (const k of ["role", "status", "applicant", "reviewer", "expertApplication"]) {
+    assert.equal(applyExpertApplicationSchema.safeParse({ [k]: "EXPERT" }).success, false, k);
+    assert.equal(rejectExpertApplicationSchema.safeParse({ [k]: "EXPERT" }).success, false, k);
+  }
+});
+
+check("EA-3. reject note optional, trimmed, non-blank, max 500", () => {
+  assert.equal(rejectExpertApplicationSchema.safeParse({}).success, true);
+  assert.equal(rejectExpertApplicationSchema.safeParse({ note: "needs detail" }).success, true);
+  assert.equal(rejectExpertApplicationSchema.safeParse({ note: "   " }).success, false);
+  assert.equal(rejectExpertApplicationSchema.safeParse({ note: "x".repeat(501) }).success, false);
+  assert.equal(rejectExpertApplicationSchema.parse({ note: "  hi  " }).note, "hi");
 });
 
 // ---------------------------------------------------------------------

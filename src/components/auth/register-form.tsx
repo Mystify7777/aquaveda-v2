@@ -54,7 +54,7 @@ export function RegisterForm() {
             <div className="space-y-2"><label htmlFor="register-email" className="text-sm font-medium">Email</label><Input id="register-email" name="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div>
             <div className="space-y-2"><label htmlFor="register-password" className="text-sm font-medium">Password</label><Input id="register-password" name="password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /><p className="text-muted-foreground text-xs">Use 8 to 128 characters.</p></div>
             <AuthSubmitButton pending={pending}>Create account</AuthSubmitButton>
-            <p className="text-muted-foreground text-center text-sm">Already have an account? <Link href="/login" className="text-primary font-medium hover:underline">Sign in</Link></p>
+            <p className="text-muted-foreground text-center text-sm">Already have an account? <Link href="/auth/login" className="text-primary font-medium hover:underline">Sign in</Link></p>
         </form>
     );
 }

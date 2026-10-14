@@ -14,6 +14,7 @@ import {
   emailAlreadyRegistered,
   refreshFailed,
   authorizationPolicyUnresolved,
+  tooManyRequests,
   DomainError,
 } from "../src/services/errors.js";
 
@@ -69,6 +70,7 @@ describe("sendError — mapped DomainErrorCodes", () => {
     [() => invalidCredentials("bad creds"), 401],
     [() => emailAlreadyRegistered("dupe email"), 409],
     [() => refreshFailed("bad refresh"), 401],
+    [() => tooManyRequests("rate limit exceeded"), 429],
   ];
 
   for (const [makeErr, expectedStatus] of cases) {

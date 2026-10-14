@@ -52,7 +52,7 @@ failed refresh resolves to confirmed `anonymous`; a network error or an
 unexpected backend response remains an explicit failure state.
 
 `RequireAuth` is a contribution-entry UX primitive. It links anonymous users
-to `/login` or `/register`, renders its children for authenticated users, and
+to `/auth/login` or `/auth/register`, renders its children for authenticated users, and
 does not protect public routes or navigation. Broad authenticated route/layout
 protection remains outside this issue.
 

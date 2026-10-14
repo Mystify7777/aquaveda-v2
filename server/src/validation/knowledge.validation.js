@@ -120,3 +120,20 @@ export const reviseKnowledgeSchema = z.object({
  * not a requested one.
  */
 export const listApprovedKnowledgeQuerySchema = paginationQuerySchema;
+
+/**
+ * Authenticated workflow read queries (Issue #74).
+ *
+ * `status` on "My Knowledge" is validated against the four existing
+ * lifecycle states (Knowledge.js / ADR-0004) — no new state is
+ * introduced. The review queue takes no `status`: it is fixed to
+ * `pending_review` at the service layer. Neither accepts an author or
+ * region parameter.
+ */
+export const KNOWLEDGE_WORKFLOW_STATUSES = ["draft", "pending_review", "approved", "rejected"];
+
+export const myKnowledgeQuerySchema = paginationQuerySchema.extend({
+  status: z.enum(KNOWLEDGE_WORKFLOW_STATUSES).optional(),
+});
+
+export const reviewQueueQuerySchema = paginationQuerySchema;

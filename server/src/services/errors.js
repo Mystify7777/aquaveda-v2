@@ -46,6 +46,13 @@ export const DomainErrorCode = Object.freeze({
   // distinguish these cases from its result without a second, non-atomic
   // diagnostic read this project has deliberately declined to add — see
   // authentication-implementation-plan.md's Phase C correction
+
+  // --- Rate-limiting addition (Issue #42) ---
+  TOO_MANY_REQUESTS: "TOO_MANY_REQUESTS", // the client has exceeded the
+  // allowed number of requests within a time window. Identified strictly
+  // by IP address / request signature — never by email, username, or any
+  // user-payload field, to prevent account enumeration and account
+  // lock-out attacks. The HTTP layer maps this to 429 Too Many Requests.
 });
 
 export class DomainError extends Error {
@@ -109,3 +116,6 @@ export const refreshFailed = (message, details) =>
  */
 export const authorizationPolicyUnresolved = (message, details) =>
   new DomainError(DomainErrorCode.AUTHORIZATION_POLICY_UNRESOLVED, message, details);
+
+export const tooManyRequests = (message, details) =>
+  new DomainError(DomainErrorCode.TOO_MANY_REQUESTS, message, details);

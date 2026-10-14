@@ -17,6 +17,11 @@ import {
   DomainErrorCode,
 } from "./errors.js";
 import { requireActor, requireRole } from "./authorization.js";
+import {
+  ISSUE_CATEGORY_VALUES,
+  ISSUE_SEVERITY_VALUES,
+} from "../domain/issue-classification.js";
+import { bboxProblem, searchTextProblem, searchTerms } from "../domain/issue-search.js";
 
 /**
  * Issue domain service.
@@ -277,7 +282,101 @@ export async function changeStatus(actorContext, issueId, targetStatus) {
 }
 
 /**
- * listIssues({status?, page, limit}) — public, Issue #48.
+ * Extra radius (radians; ~0.1 degree) added to the index-assisted circle
+ * so every point of the box lies strictly inside it. The circle is only a
+ * candidate filter; the exact bounds below decide membership, so no
+ * boundary behavior of the spherical operator is ever relied upon.
+ */
+const BBOX_CIRCLE_MARGIN_RADIANS = (0.1 * Math.PI) / 180;
+
+const toRadians = (degrees) => (degrees * Math.PI) / 180;
+
+/** Great-circle distance in radians between two [lng, lat] points (haversine). */
+function angularDistance([lng1, lat1], [lng2, lat2]) {
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * Regex source matching `term` literally (every metacharacter escaped, so
+ * user input is never interpreted as a pattern) only where it is not
+ * directly preceded or followed by a letter or digit — i.e. as a whole
+ * word. Case-insensitivity comes from the `i` option; Unicode letters and
+ * digits count as word characters, so non-Latin scripts work.
+ */
+function wordMatcher(term) {
+  const literal = term.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
+  return `(?<![\\p{L}\\p{N}])${literal}(?![\\p{L}\\p{N}])`;
+}
+
+/**
+ * Builds the MongoDB filter for a public Issue discovery query (Issue #41,
+ * docs/architecture/issue-discovery-contract.md). Exported so tests can
+ * run the *same* filter through `explain()`.
+ *
+ * - `q`: every term must appear as a whole word in the title or the
+ *   description. Two cooperating parts, because neither alone is correct:
+ *   1. `$text` over the text index selects *candidates* (index-assisted).
+ *      Each term is quoted so MongoDB's query syntax (`-term`, phrases) has
+ *      no meaning. Multiple quoted terms are ANDed — but quoted-phrase
+ *      matching is a *substring* test on whatever the index scan returned,
+ *      and the scan is an OR over the terms' tokens, so on its own a term
+ *      could match inside a longer word ("main" in "maintenance") whenever
+ *      another term supplied the candidate.
+ *   2. Per term, an exact whole-word check (`wordMatcher`) over title or
+ *      description, applied to those candidates only, makes every term
+ *      required as a whole word, with no stemming.
+ * - `bbox` ([west, south, east, north]): an index-assisted `$geoWithin`
+ *   `$centerSphere` circle that strictly encloses the box (its center is
+ *   the box center, its radius reaches the farthest corner plus a margin),
+ *   plus exact edge-inclusive planar bounds on the stored
+ *   [longitude, latitude] — the Issue's affected location. The circle
+ *   makes the query use the 2dsphere index; the bounds make it exact.
+ */
+export function buildIssueListFilter({ status, category, severity, q, bbox } = {}) {
+  const filter = {};
+  if (status !== undefined) filter.status = status;
+  if (category !== undefined) filter.category = category;
+  if (severity !== undefined) filter.severity = severity;
+
+  if (q !== undefined) {
+    const terms = searchTerms(q);
+    filter.$text = { $search: terms.map((term) => `"${term}"`).join(" ") };
+    filter.$and = terms.map((term) => {
+      const matcher = { $regex: wordMatcher(term), $options: "i" };
+      return { $or: [{ title: matcher }, { description: matcher }] };
+    });
+  }
+
+  if (bbox !== undefined) {
+    const [west, south, east, north] = bbox;
+    const center = [(west + east) / 2, (south + north) / 2];
+    const radius =
+      Math.max(
+        ...[
+          [west, south],
+          [east, south],
+          [east, north],
+          [west, north],
+        ].map((corner) => angularDistance(center, corner)),
+      ) + BBOX_CIRCLE_MARGIN_RADIANS;
+    filter.location = { $geoWithin: { $centerSphere: [center, radius] } };
+    filter["location.coordinates.0"] = { $gte: west, $lte: east };
+    filter["location.coordinates.1"] = { $gte: south, $lte: north };
+  }
+  return filter;
+}
+
+const validationFailed = (message, details) =>
+  new DomainError(DomainErrorCode.VALIDATION_FAILED, message, details);
+
+/**
+ * listIssues({status?, category?, severity?, q?, bbox?, page, limit}) —
+ * public, Issues #48 and #41.
  *
  * No requireActor() call: this is a genuinely anonymous-accessible read
  * (Product Invariant: anonymous users must still be able to browse
@@ -285,22 +384,48 @@ export async function changeStatus(actorContext, issueId, targetStatus) {
  * read" — the established public-read boundary Issue #48's own
  * constraints require, not a step toward role-based read filtering
  * that no approved document has ever specified.
+ *
+ * Ordering is always newest first with `_id` as the tiebreaker, so offset
+ * pagination is total and stable under every filter combination.
  */
-export async function listIssues({ status, page = 1, limit = 20 } = {}) {
-  const filter = {};
-  if (status !== undefined) {
-    if (!ISSUE_STATUSES.includes(status)) {
-      throw invalidState(`"${status}" is not a recognized Issue status`, {
-        status,
-      });
-    }
-    filter.status = status;
+export async function listIssues({
+  status,
+  category,
+  severity,
+  q,
+  bbox,
+  page = 1,
+  limit = 20,
+} = {}) {
+  if (status !== undefined && !ISSUE_STATUSES.includes(status)) {
+    throw invalidState(`"${status}" is not a recognized Issue status`, {
+      status,
+    });
   }
+  // Services are also called directly (tests, future callers), bypassing
+  // the route's Zod schema, so the new filters are re-checked here against
+  // the same definitions rather than trusted.
+  if (category !== undefined && !ISSUE_CATEGORY_VALUES.includes(category)) {
+    throw validationFailed(`"${category}" is not a recognized Issue category`, { category });
+  }
+  if (severity !== undefined && !ISSUE_SEVERITY_VALUES.includes(severity)) {
+    throw validationFailed(`"${severity}" is not a recognized Issue severity`, { severity });
+  }
+  if (q !== undefined) {
+    const problem = searchTextProblem(q);
+    if (problem) throw validationFailed(problem, { q });
+  }
+  if (bbox !== undefined) {
+    const problem = bboxProblem(bbox);
+    if (problem) throw validationFailed(problem, { bbox });
+  }
+
+  const filter = buildIssueListFilter({ status, category, severity, q, bbox });
 
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
     Issue.find(filter)
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
       .populate("reportedBy", PUBLIC_ACTOR_FIELDS),
