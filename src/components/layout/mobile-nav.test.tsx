@@ -20,6 +20,13 @@ vi.mock("@/components/layout/auth-controls", () => ({
   AuthControls: () => <div data-testid="auth-controls-stub" />,
 }));
 
+// RoleNavLinks (#91 UI) reads the session via useAuth; these tests cover the
+// static navigation only, so the session is anonymous (no role links).
+// Role-aware links have their own coverage in role-nav-links.test.tsx.
+vi.mock("@/components/providers/auth-provider", () => ({
+  useAuth: () => ({ status: "anonymous", user: null }),
+}));
+
 // MobileNav is imported after the mock is registered (vi.mock is
 // hoisted above imports by Vitest, so this ordering in source is fine,
 // but the dynamic import below keeps the mock reset lifecycle explicit
