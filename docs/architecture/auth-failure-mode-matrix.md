@@ -139,7 +139,7 @@ All authentication error responses across the AquaVeda API conform to a uniform 
   3. `HttpOnly=true` is locked on all auth cookies, immunizing tokens against XSS theft.
   4. Path restriction: `refresh_token` is restricted to `path=/api/v1/auth`, preventing transmission on general API calls.
   5. CORS allowlist: Wildcard `*` with credentials is explicitly rejected.
-  6. State-changing requests also pass through an `Origin`/`Referer` allowlist gate. This is required because CORS controls response access, not whether a browser sends a credentialed request. Headerless non-browser requests remain supported.
+  6. State-changing requests also pass through an `Origin`/`Referer` allowlist gate. This is required because CORS controls response access, not whether a browser sends a credentialed request. The gate preserves exact origin matching and parses `Referer` to its origin. If both headers are absent, the request is rejected; missing provenance is never treated as trusted server-to-server traffic. An empty `ALLOWED_ORIGINS` is also fail-closed and rejects every state-changing request until an explicit allowlist is configured.
 
 ---
 

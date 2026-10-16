@@ -20,8 +20,10 @@ import { defaultStore } from "../src/middleware/rate-limiter.js";
  */
 let server;
 let baseUrl;
+const ALLOWED_ORIGIN = "http://allowed.example.com";
 
 before(async () => {
+  process.env.ALLOWED_ORIGINS = ALLOWED_ORIGIN;
   await setupTestDb();
   const app = createApp();
   server = http.createServer(app);
@@ -51,7 +53,7 @@ beforeEach(async () => {
 function request(method, path, { body, cookies } = {}) {
   return new Promise((resolve, reject) => {
     const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
-    const headers = {};
+    const headers = { Origin: ALLOWED_ORIGIN };
     if (bodyStr !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(bodyStr);

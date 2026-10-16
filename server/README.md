@@ -73,7 +73,7 @@ MONGO_URI=mongodb://localhost:27017/aquaveda_v2
 TEST_MONGO_URI=mongodb://127.0.0.1:27017/aquaveda_v2_test   # required for `npm test`; must differ from MONGO_URI
 # Local ADMIN provisioning variables: see "Local ADMIN provisioning" below.
 CLIENT_URL=http://localhost:3000
-ALLOWED_ORIGINS=http://localhost:3000
+ALLOWED_ORIGINS=http://localhost:3000  # exact origins trusted for CORS and state-changing requests
 JWT_ACCESS_SECRET=    # generate: openssl rand -base64 32
 JWT_REFRESH_SECRET=   # generate: openssl rand -base64 32
 JWT_ACCESS_EXPIRES=15m
@@ -90,6 +90,15 @@ COOKIE_SAME_SITE=none  # locked: frontend/backend are different registrable
 COOKIE_DOMAIN=          # leave unset. No cross-registrable-domain use case
                         # exists for the Domain attribute in this topology.
 ```
+
+`ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist. For
+state-changing requests (`POST`, `PUT`, `PATCH`, and `DELETE`), the CSRF
+provenance guard requires an allowed `Origin` or a `Referer` whose parsed
+origin is allowed. Requests with neither header are rejected; they are not
+treated as trusted server-to-server traffic. If `ALLOWED_ORIGINS` is empty,
+no browser provenance is trusted and every state-changing request is rejected
+until an explicit allowlist is configured. This fail-closed behavior does
+not disable CSRF protection.
 
 Env vars are loaded by `src/config/db.js` itself (via `dotenv/config`),
 not by `server.js`. Both the app entry point and the test suite import

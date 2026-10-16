@@ -26,8 +26,10 @@ import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.
 
 let server;
 let baseUrl;
+const ALLOWED_ORIGIN = "http://allowed.example.com";
 
 before(async () => {
+  process.env.ALLOWED_ORIGINS = ALLOWED_ORIGIN;
   await setupTestDb();
   server = http.createServer(createApp());
   await new Promise((resolve) => server.listen(0, resolve));
@@ -44,7 +46,7 @@ beforeEach(clearCollections);
 function request(method, path, { body, token } = {}) {
   return new Promise((resolve, reject) => {
     const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
-    const headers = {};
+    const headers = { Origin: ALLOWED_ORIGIN };
     if (bodyStr !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(bodyStr);

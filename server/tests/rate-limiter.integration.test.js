@@ -18,8 +18,10 @@ import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.
 
 let server;
 let baseUrl;
+const ALLOWED_ORIGIN = "http://allowed.example.com";
 
 before(async () => {
+  process.env.ALLOWED_ORIGINS = ALLOWED_ORIGIN;
   await setupTestDb();
   const app = createApp();
   server = http.createServer(app);
@@ -44,7 +46,7 @@ beforeEach(clearCollections);
 function request(method, path, { body, cookies, headers: extraHeaders } = {}) {
   return new Promise((resolve, reject) => {
     const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
-    const headers = { ...extraHeaders };
+    const headers = { Origin: ALLOWED_ORIGIN, ...extraHeaders };
     if (bodyStr !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(bodyStr);

@@ -32,10 +32,9 @@ import { sendError } from "./http/respond.js";
  * both meaningless (browsers reject it) and a common credentialed-CORS
  * misconfiguration this project explicitly avoids. `ALLOWED_ORIGINS` is
  * a comma-separated allowlist (already reserved in server/README.md's
- * env block); requests with no Origin header at all (server-to-server,
- * curl, same-origin requests in some browser contexts) are allowed
- * through, since credentialed-cookie CORS restrictions only meaningfully
- * apply to cross-origin browser requests that DO send an Origin header.
+ * env block). CORS itself may still omit response headers for requests
+ * without an Origin, but state-changing requests are separately subject
+ * to the fail-closed CSRF provenance check below.
  */
 function getAllowedOrigins() {
   return (process.env.ALLOWED_ORIGINS || "")
@@ -70,8 +69,9 @@ function buildCorsOptions() {
 /**
  * CORS controls whether a browser may read a response; it does not stop a
  * browser from sending a credentialed state-changing request. Validate the
- * browser's origin separately for methods that can mutate state, while still
- * allowing headerless non-browser clients such as tests and service calls.
+ * browser's origin separately for methods that can mutate state. A missing
+ * allowlist or missing provenance headers is rejected: this cookie-based
+ * API has no safe implicit trust boundary for headerless state changes.
  */
 function csrfOriginGuard(req, res, next) {
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
@@ -81,12 +81,15 @@ function csrfOriginGuard(req, res, next) {
 
   const origin = req.get("origin");
   const referer = req.get("referer");
-  if (!origin && !referer) {
-    next();
+  const allowedOrigins = getAllowedOrigins();
+
+  // An empty allowlist means that no browser provenance is trusted. It is
+  // intentionally fail-closed rather than disabling CSRF protection.
+  if (allowedOrigins.length === 0 || (!origin && !referer)) {
+    sendError(res, { code: "FORBIDDEN", message: "Forbidden" });
     return;
   }
 
-  const allowedOrigins = getAllowedOrigins();
   if (origin && !allowedOrigins.includes(origin)) {
     sendError(res, { code: "FORBIDDEN", message: "Forbidden" });
     return;

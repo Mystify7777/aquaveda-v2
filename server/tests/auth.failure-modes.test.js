@@ -60,9 +60,16 @@ after(async () => {
 /**
  * Minimal HTTP client returning status, headers, parsed setCookieHeaders, and json.
  */
-function request(method, path, { body, rawBody, cookies, headers = {} } = {}) {
+function request(
+  method,
+  path,
+  { body, rawBody, cookies, headers = {}, includeOrigin = true } = {}
+) {
   return new Promise((resolve, reject) => {
     const reqHeaders = { ...headers };
+    if (includeOrigin && !reqHeaders.Origin && !reqHeaders.origin && !reqHeaders.Referer && !reqHeaders.referer) {
+      reqHeaders.Origin = "http://allowed.example.com";
+    }
     let payload = rawBody;
 
     if (payload === undefined && body !== undefined) {
@@ -485,11 +492,11 @@ describe("Failure Modes — CORS Defenses & Preflight Edge Cases", () => {
     assert.equal(res.json.code, "FORBIDDEN");
   });
 
-  it("CSRF-06: headerless state-changing requests remain available to server-to-server clients", async () => {
-    const res = await request("POST", "/api/v1/auth/logout");
+  it("CSRF-06: headerless state-changing requests are rejected by the fail-closed policy", async () => {
+    const res = await request("POST", "/api/v1/auth/logout", { includeOrigin: false });
 
-    assert.equal(res.status, 200);
-    assert.equal(res.json.success, true);
+    assert.equal(res.status, 403);
+    assert.equal(res.json.code, "FORBIDDEN");
   });
 });
 
