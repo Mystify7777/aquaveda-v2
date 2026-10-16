@@ -11,6 +11,7 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "provision:admin": "node scripts/provision-admin.js",
+    "bootstrap:admin": "node scripts/bootstrap-admin.js",
     "verify:models": "node scripts/verify-models.js",
     "verify:validation": "node scripts/verify-validation.js",
     "verify:cookie-config": "node scripts/verify-cookie-config.js",
