@@ -16,16 +16,26 @@ describe("LearnWorkflowLinks", () => {
     }
   });
 
-  it("signed-in USER: My articles only", () => {
+  it("signed-in USER: My articles and the Expert application entry; no review queue", () => {
     mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role: "USER" } });
     render(<LearnWorkflowLinks />);
     expect(screen.getByRole("link", { name: "My articles" })).toHaveAttribute("href", "/learn/mine");
+    expect(screen.getByRole("link", { name: "Become an Expert" })).toHaveAttribute("href", "/learn/expert-application");
     expect(screen.queryByRole("link", { name: "Review queue" })).not.toBeInTheDocument();
+  });
+
+  it("ADMIN: My articles only — no Knowledge review entry, no application entry (governance is under /admin)", () => {
+    mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "a1", role: "ADMIN" } });
+    render(<LearnWorkflowLinks />);
+    expect(screen.getByRole("link", { name: "My articles" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Review queue" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Become an Expert" })).not.toBeInTheDocument();
   });
 
   it("EXPERT: both links", () => {
     mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role: "EXPERT" } });
     render(<LearnWorkflowLinks />);
     expect(screen.getByRole("link", { name: "Review queue" })).toHaveAttribute("href", "/learn/review");
+    expect(screen.queryByRole("link", { name: "Become an Expert" })).not.toBeInTheDocument();
   });
 });

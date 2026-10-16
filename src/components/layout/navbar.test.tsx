@@ -26,6 +26,13 @@ vi.mock("@/components/layout/auth-controls", () => ({
   AuthControls: () => <div data-testid="auth-controls-stub" />,
 }));
 
+// RoleNavLinks (#91 UI) reads the session via useAuth; these tests cover the
+// static navigation only, so the session is anonymous (no role links).
+// Role-aware links have their own coverage in role-nav-links.test.tsx.
+vi.mock("@/components/providers/auth-provider", () => ({
+  useAuth: () => ({ status: "anonymous", user: null }),
+}));
+
 describe("Navbar", () => {
   it("renders a link to home", () => {
     render(<Navbar />);

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -19,6 +19,7 @@ vi.mock("@/components/layout/auth-controls", () => ({ AuthControls: () => null }
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 const mockUseAuth = vi.fn();
 vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => mockUseAuth() }));
+beforeEach(() => mockUseAuth.mockReturnValue({ status: "anonymous", user: null }));
 
 describe("navigation links resolve to implemented routes", () => {
   it("Navbar", () => {
@@ -42,5 +43,26 @@ describe("navigation links resolve to implemented routes", () => {
     const hrefs = internalHrefs(container);
     expect(hrefs.sort()).toEqual(["/learn/mine", "/learn/review"]);
     expect(findBrokenLinks(hrefs)).toEqual([]);
+  });
+
+  it("role-aware navigation entries resolve to implemented pages for every role (desktop and mobile)", async () => {
+    for (const role of ["USER", "EXPERT", "ADMIN"]) {
+      mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role } });
+      const { container, unmount } = render(<Navbar />);
+      const hrefs = internalHrefs(container);
+      expect(findBrokenLinks(hrefs, DEFERRED)).toEqual([]);
+      unmount();
+      const mobile = render(<MobileNav />);
+      await userEvent.setup().click(screen.getByRole("button", { name: "Open navigation menu" }));
+      expect(findBrokenLinks(internalHrefs(document.body), DEFERRED)).toEqual([]);
+      mobile.unmount();
+    }
+  });
+
+  it("the new Expert/governance routes are canonical (no /protected or (protected) URL segment)", () => {
+    for (const href of ["/learn/expert-application", "/admin/expert-applications"]) {
+      expect(findBrokenLinks([href])).toEqual([]);
+    }
+    expect(findBrokenLinks(["/protected/learn/expert-application", "/protected/admin/expert-applications"]).length).toBe(2);
   });
 });

@@ -965,3 +965,17 @@ Status: implemented. Offline checks pass; DB-backed suite (`provision-admin.test
 | ADM-L4 | Authority unchanged: ADMIN governs (EXP-L1) and has no Knowledge review authority (#90). The provisioned account authenticates through the normal login path and is recognized by `authMiddleware`'s fresh role read. |
 
 Deferred: production/staging ADMIN bootstrap (out of scope; needs its own decision), ADMIN credential rotation.
+
+---
+
+## 🔒 Locked — Role-Aware Expert UI (frontend over #91)
+
+Status: implemented; frontend suite 569/569, typecheck/lint clean, build verified with mocked Google Fonts (real build blocked only by sandbox network). No backend change. Browser smoke (Playwright) not run.
+
+| ID | Decision |
+|---|---|
+| UI-L1 | Entry points are discoverable per role but never authoritative: USER → "Become an Expert" (`/learn/expert-application`: apply + status); EXPERT → "Review queue" (`/learn/review`, existing Knowledge moderation, unchanged); ADMIN → "Expert applications" (`/admin/expert-applications`, governance). Shown in the desktop navbar, mobile drawer and (USER/EXPERT) the Learn workflow links via one pure helper (`lib/expert/role-links.ts`); unknown/missing roles get nothing (no default-allow). ADMIN is never shown the Knowledge review entry. |
+| UI-L2 | The UI sends only what the #91 contract defines: apply = empty POST (applicant is the session); approve = POST by the named pending applicant; reject = optional `note` (≤500). No role, status, applicant or reviewer field exists in any request. Role grant is the backend's atomic write; the UI changes no role. |
+| UI-L3 | Backend refusals are rendered, not pre-empted: non-ADMIN visiting `/admin/expert-applications` sees the backend 403; non-USER apply → 403 message; duplicate/pending/stale decisions (`INVALID_STATE`, `STATE_RACE`, `NOT_FOUND`) explain and refresh the view. In-flight guards prevent duplicate submissions. Approval requires an explicit confirm step. |
+| UI-L4 | The session role is read at sign-in/`/auth/me`; after an applicant is approved their open session shows the old role until reload. The status page says so and offers Reload (no auth-provider change). |
+| UI-L5 | No `/dashboard` exists (it and `/community` remain deferred routes); the Expert entries live in navigation and the Learn area rather than a new dashboard. |

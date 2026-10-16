@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { AuthControls } from "@/components/layout/auth-controls";
+import { RoleNavLinks } from "@/components/layout/role-nav-links";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 const NAV_ITEMS = [
@@ -50,6 +51,7 @@ export function Navbar() {
               {item.label}
             </Link>
           ))}
+          <RoleNavLinks className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md px-3 py-2 text-sm font-medium transition-colors" />
         </nav>
 
         {/* Right slot — session actions are UX only; public navigation stays available. */}
