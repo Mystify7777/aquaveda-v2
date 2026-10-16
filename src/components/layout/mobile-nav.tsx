@@ -8,6 +8,7 @@ import { Menu, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AuthControls } from "@/components/layout/auth-controls";
+import { RoleNavLinks } from "@/components/layout/role-nav-links";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -113,6 +114,10 @@ export function MobileNav() {
                 {item.label}
               </Link>
             ))}
+            <RoleNavLinks
+              className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md px-3 py-2.5 text-sm font-medium transition-colors"
+              currentPath={pathname}
+            />
           </nav>
 
           <div className="mt-auto border-t p-4">

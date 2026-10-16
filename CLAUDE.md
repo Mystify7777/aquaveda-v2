@@ -4,7 +4,11 @@
 
 ## Current Milestone
 
-Issue #89 — local ADMIN provisioning — **implemented (uncommitted); DB-backed tests NOT yet run against real MongoDB.**
+Role-aware Expert UI (frontend over #91) — **implemented**
+USER apply/status page, ADMIN Expert-application queue (approve/reject), role-aware nav (desktop/mobile/Learn).
+No backend change. See decision-register UI-L1–L5. (#102 production bootstrap remains deferred.)
+
+Issue #89 — local ADMIN provisioning — **implemented**
 `npm run provision:admin` (loopback + `_dev` DB + explicit opt-in, fail-closed); `seed:users` removed; shared
 `local-db-guard.js`. See decision-register ADM-L1–L4 and server/README.md. Dev DB must be named `*_dev`.
 
