@@ -27,8 +27,10 @@ const CFG = Object.freeze({
 let server;
 let baseUrl;
 const ALLOWED_ORIGIN = "http://allowed.example.com";
+let previousAllowedOrigins;
 
 before(async () => {
+  previousAllowedOrigins = process.env.ALLOWED_ORIGINS;
   process.env.ALLOWED_ORIGINS = ALLOWED_ORIGIN;
   await setupTestDb();
   server = http.createServer(createApp());
@@ -39,6 +41,11 @@ before(async () => {
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
   await teardownTestDb();
+  if (previousAllowedOrigins === undefined) {
+    delete process.env.ALLOWED_ORIGINS;
+  } else {
+    process.env.ALLOWED_ORIGINS = previousAllowedOrigins;
+  }
 });
 
 beforeEach(clearCollections);
