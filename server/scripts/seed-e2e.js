@@ -4,9 +4,11 @@
  * Writes the minimum data the public smoke flows need (one Issue, one approved
  * Knowledge article, one Project) by calling the real domain services, so
  * lifecycle rules (ADR-0003/0004, project eligibility) are exercised rather
- * than bypassed. The only direct writes are the two User documents: EXPERT has
- * no provisioning path yet (#89/#91), and acknowledging an Issue / approving
- * Knowledge is EXPERT-only. These users never sign in.
+ * than bypassed. Direct writes are User documents only: acknowledging an Issue
+ * / approving Knowledge is EXPERT-only, so a fixture EXPERT is written directly
+ * (it never signs in). The fixture ADMIN has a REAL password hash and signs in
+ * through the browser (#105); the EXPERT in that flow is produced by the real
+ * application -> ADMIN approval path, not seeded.
  *
  * Safety: it wipes every collection first (idempotent re-runs), so it refuses
  * to run unless MONGO_URI is a loopback host AND an `_e2e` database. Checked
@@ -29,6 +31,7 @@ import {
   createKnowledge,
   submitForReview,
 } from "../src/services/knowledge.service.js";
+import { hashPassword } from "../src/services/auth-tokens.js";
 import { createProject } from "../src/services/project.service.js";
 import { assertE2eDatabase } from "./e2e-seed-guard.js";
 
@@ -57,6 +60,12 @@ async function main() {
     passwordHash,
     role: "EXPERT",
   });
+  await User.create({
+    name: "E2E Admin",
+    email: fixtures.adminEmail,
+    passwordHash: await hashPassword(fixtures.adminPassword),
+    role: "ADMIN",
+  });
   const reporterCtx = { id: String(reporter._id), role: "USER" };
   const expertCtx = { id: String(expert._id), role: "EXPERT" };
 
@@ -73,6 +82,13 @@ async function main() {
   });
   await submitForReview(reporterCtx, String(article._id));
   await approve(expertCtx, String(article._id));
+
+  // Left in pending_review for the browser governance flow (#105).
+  const pending = await createKnowledge(reporterCtx, {
+    title: fixtures.pendingKnowledgeTitle,
+    body: "Route sink and washing-machine outflow to a mulch basin for trees.",
+  });
+  await submitForReview(reporterCtx, String(pending._id));
 
   await createProject(reporterCtx, {
     title: fixtures.projectTitle,

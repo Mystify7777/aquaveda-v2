@@ -1,5 +1,8 @@
 {
   "issueTitle": "E2E: Leaking main near the market",
   "knowledgeTitle": "E2E: Household rainwater harvesting basics",
-  "projectTitle": "E2E: Market pipe repair drive"
+  "projectTitle": "E2E: Market pipe repair drive",
+  "pendingKnowledgeTitle": "E2E: Pending greywater reuse guide",
+  "adminEmail": "e2e-admin@example.test",
+  "adminPassword": "e2e-Admin-Passw0rd!-throwaway"
 }

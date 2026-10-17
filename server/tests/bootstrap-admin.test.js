@@ -157,6 +157,10 @@ describe("bootstrap-admin CLI spawn safety", () => {
         env: {
           ...process.env,
           ...envOverrides,
+          // The CLI falls back to this alias when ADMIN_PASSWORD is empty; a
+          // developer shell that has it exported would defeat the "missing password"
+          // case and bootstrap against a real local mongod. Never inherit it.
+          ADMIN_BOOTSTRAP_PASSWORD: "",
           MONGO_URI: "mongodb://127.0.0.1:27017/dummy_prod",
         },
         cwd: os.tmpdir(),
