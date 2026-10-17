@@ -9,6 +9,10 @@
  * Security & Guardrails:
  * - Requires explicit production target (NODE_ENV=production or --target-env=production).
  * - Requires manual string confirmation (CONFIRM-PRODUCTION-BOOTSTRAP).
+ * - Requires an independently supplied expected database name (--expect-db /
+ *   BOOTSTRAP_EXPECTED_DB) that exactly matches the MONGO_URI database, is not a
+ *   dev/test/E2E/system name, and a TLS-capable, non-loopback URI (#109). All of
+ *   this is checked before any connection is attempted. See bootstrap-target.js.
  * - Refuses to elevate existing non-admin accounts (USER, EXPERT).
  * - Idempotent: repeated runs against an existing ADMIN report unchanged without
  *   modifying passwords or emitting tokens.
@@ -24,6 +28,7 @@ import { connectDB, disconnectDB } from "../src/config/db.js";
 import { User } from "../src/models/User.js";
 import { hashPassword, verifyPassword } from "../src/services/auth-tokens.js";
 import { registerSchema } from "../src/validation/auth.validation.js";
+import { TargetValidationError, validateBootstrapTarget } from "./bootstrap-target.js";
 
 export const REQUIRED_CONFIRMATION = "CONFIRM-PRODUCTION-BOOTSTRAP";
 export const DEFAULT_ADMIN_NAME = "Production Admin";
@@ -98,11 +103,29 @@ export async function resolveBootstrapConfig(env = process.env, argv = [], { pro
     );
   }
 
-  // 3. Database URI validation
-  const mongoUri = flags["mongo-uri"] || env.MONGO_URI;
-  if (!mongoUri || typeof mongoUri !== "string" || !mongoUri.trim()) {
+  // 3. Database target validation (#109). Independent of NODE_ENV, the
+  // production-intent flag and the confirmation above: it only looks at the URI
+  // and the separately supplied expected database name. For BOTH `--mongo-uri`
+  // and `--expect-db`, a flag that was supplied but is empty or bare (boolean)
+  // is passed through and refused; it never silently falls back to the
+  // environment variable. The environment is consulted only when the flag is
+  // genuinely absent, so the value validated is always the one the operator chose.
+  const rawMongoUri = flags["mongo-uri"] !== undefined ? flags["mongo-uri"] : env.MONGO_URI;
+  if (!rawMongoUri || typeof rawMongoUri !== "string" || !rawMongoUri.trim()) {
     throw new BootstrapRefusal("Refusing to bootstrap: MONGO_URI is missing or empty.");
   }
+  const expectedDb = flags["expect-db"] !== undefined ? flags["expect-db"] : env.BOOTSTRAP_EXPECTED_DB;
+  let target;
+  try {
+    target = validateBootstrapTarget({ uri: rawMongoUri, expectedDb });
+  } catch (error) {
+    if (error instanceof TargetValidationError) {
+      throw new BootstrapRefusal(`Refusing to bootstrap: ${error.message}`);
+    }
+    throw error;
+  }
+  // The exact validated string; never a normalised or re-derived copy.
+  const mongoUri = target.uri;
 
   // 4. Identity & Credential resolution (env vars, flags, or interactive prompt)
   let email = flags.email || env.ADMIN_EMAIL || env.ADMIN_BOOTSTRAP_EMAIL;
@@ -191,6 +214,8 @@ async function describeExisting(user, password) {
 
 /**
  * Coordinates configuration resolution, database connection, and execution.
+ * `connect` is only reached after the target has been fully validated, and it
+ * receives exactly the validated URI string.
  *
  * @param {Record<string, string | undefined>} [env]
  * @param {string[]} [argv]

@@ -31,10 +31,17 @@ const ADMIN_CFG = Object.freeze({
   password: PASSWORD,
 });
 
+// Test-only target fixture: a reserved `.example.invalid` host, obvious fake
+// credentials, and a neutral database name. None of this describes a real
+// deployment, and the name is NOT a claim about the real production database.
+const FIXTURE_DB = "bootstrap_fixture";
+const FIXTURE_URI = `mongodb+srv://fixture_user:fixture_pass@cluster.example.invalid/${FIXTURE_DB}?retryWrites=true`;
+
 const VALID_ENV = Object.freeze({
   NODE_ENV: "production",
   CONFIRM_PRODUCTION_BOOTSTRAP: REQUIRED_CONFIRMATION,
-  MONGO_URI: "mongodb://127.0.0.1:27017/aquaveda_prod",
+  MONGO_URI: FIXTURE_URI,
+  BOOTSTRAP_EXPECTED_DB: FIXTURE_DB,
   ADMIN_EMAIL: ADMIN_CFG.email,
   ADMIN_PASSWORD: ADMIN_CFG.password,
   ADMIN_NAME: ADMIN_CFG.name,
@@ -67,13 +74,14 @@ describe("resolveBootstrapConfig: environment & confirmation safety checks", () 
       `--email=${ADMIN_CFG.email}`,
       `--password=${PASSWORD}`,
       "--name=CLI Admin",
-      "--mongo-uri=mongodb://127.0.0.1:27017/aquaveda_prod",
+      `--mongo-uri=${FIXTURE_URI}`,
+      `--expect-db=${FIXTURE_DB}`,
     ];
     const config = await resolveBootstrapConfig({}, args);
     assert.equal(config.name, "CLI Admin");
     assert.equal(config.email, ADMIN_CFG.email);
     assert.equal(config.password, PASSWORD);
-    assert.equal(config.mongoUri, "mongodb://127.0.0.1:27017/aquaveda_prod");
+    assert.equal(config.mongoUri, FIXTURE_URI);
   });
 
   it("uses default name when none is provided", async () => {
@@ -123,6 +131,94 @@ describe("resolveBootstrapConfig: environment & confirmation safety checks", () 
     });
   }
 
+  for (const [scenario, patch, messagePattern] of [
+    ["missing expected database name", { BOOTSTRAP_EXPECTED_DB: undefined }, /expected database name is required/],
+    ["empty expected database name", { BOOTSTRAP_EXPECTED_DB: "" }, /expected database name is required/],
+    ["expected name that does not match the URI database", { BOOTSTRAP_EXPECTED_DB: "other_fixture" }, /does not match the expected database/],
+    ["unsupported URI scheme", { MONGO_URI: `http://cluster.example.invalid/${FIXTURE_DB}` }, /scheme is not supported/],
+    ["malformed URI", { MONGO_URI: "mongodb+srv://" }, /no host/],
+    ["URI without a database name", { MONGO_URI: "mongodb+srv://cluster.example.invalid/" }, /no database name/],
+    ["development database", { MONGO_URI: "mongodb+srv://cluster.example.invalid/aquaveda_v2_dev", BOOTSTRAP_EXPECTED_DB: "aquaveda_v2_dev" }, /development\/test marker/],
+    ["test database", { MONGO_URI: "mongodb+srv://cluster.example.invalid/aquaveda_v2_test", BOOTSTRAP_EXPECTED_DB: "aquaveda_v2_test" }, /development\/test marker/],
+    ["E2E database", { MONGO_URI: "mongodb+srv://cluster.example.invalid/aquaveda_v2_e2e", BOOTSTRAP_EXPECTED_DB: "aquaveda_v2_e2e" }, /development\/test marker/],
+    ["documented development default database", { MONGO_URI: "mongodb+srv://cluster.example.invalid/aquaveda_v2", BOOTSTRAP_EXPECTED_DB: "aquaveda_v2" }, /development, test or system database/],
+    ["loopback host", { MONGO_URI: `mongodb://127.0.0.1:27017/${FIXTURE_DB}?tls=true` }, /loopback or unspecified host/],
+    ["mongodb:// without TLS", { MONGO_URI: `mongodb://db0.example.invalid:27017/${FIXTURE_DB}` }, /without "tls=true"/],
+    ["TLS explicitly disabled", { MONGO_URI: `mongodb+srv://cluster.example.invalid/${FIXTURE_DB}?tls=false` }, /disables TLS/],
+    ["TLS verification bypass", { MONGO_URI: `mongodb+srv://cluster.example.invalid/${FIXTURE_DB}?tlsInsecure=true` }, /weakens TLS/],
+  ]) {
+    it(`refuses execution for target: ${scenario}`, async () => {
+      await assert.rejects(resolveBootstrapConfig(withEnv(patch), []), (err) => {
+        assert.ok(err instanceof BootstrapRefusal);
+        assert.match(err.message, messagePattern);
+        assert.ok(!/fixture_pass|fixture_user|example\.invalid/.test(err.message), "message leaked URI content");
+        return true;
+      });
+    });
+  }
+
+  it("takes --expect-db over BOOTSTRAP_EXPECTED_DB, and never falls back when the flag is empty or bare", async () => {
+    const ok = await resolveBootstrapConfig(withEnv({ BOOTSTRAP_EXPECTED_DB: "other_fixture" }), [`--expect-db=${FIXTURE_DB}`]);
+    assert.equal(ok.mongoUri, FIXTURE_URI);
+
+    for (const argv of [["--expect-db="], ["--expect-db"]]) {
+      await assert.rejects(resolveBootstrapConfig(withEnv({}), argv), /expected database name is required/);
+    }
+    await assert.rejects(
+      resolveBootstrapConfig(withEnv({}), ["--expect-db=other_fixture"]),
+      /does not match the expected database/,
+    );
+  });
+
+  it("never falls back to MONGO_URI when --mongo-uri is supplied but empty or bare", async () => {
+    // A valid environment target must not rescue an explicitly supplied, empty flag:
+    // the validated value must be the one the operator chose, not an environment fallback.
+    for (const argv of [["--mongo-uri="], ["--mongo-uri"], ["--mongo-uri", "--expect-db=" + FIXTURE_DB]]) {
+      await assert.rejects(resolveBootstrapConfig(withEnv({}), argv), (err) => {
+        assert.ok(err instanceof BootstrapRefusal);
+        assert.match(err.message, /MONGO_URI is missing or empty/);
+        return true;
+      });
+    }
+  });
+
+  it("uses MONGO_URI only when --mongo-uri is genuinely absent", async () => {
+    const config = await resolveBootstrapConfig(withEnv({}), []);
+    assert.equal(config.mongoUri, FIXTURE_URI);
+  });
+
+  it("validates the target independently of production intent flags and confirmation", async () => {
+    // The same invalid target is refused whether the flags/env are supplied
+    // as environment variables, as CLI arguments, or via the interactive prompt.
+    const bad = { MONGO_URI: `mongodb://127.0.0.1:27017/${FIXTURE_DB}?tls=true` };
+    await assert.rejects(resolveBootstrapConfig(withEnv(bad), []), /loopback or unspecified host/);
+    await assert.rejects(
+      resolveBootstrapConfig({}, [
+        "--target-env=production",
+        `--confirm=${REQUIRED_CONFIRMATION}`,
+        `--mongo-uri=${bad.MONGO_URI}`,
+        `--expect-db=${FIXTURE_DB}`,
+        `--email=${ADMIN_CFG.email}`,
+        `--password=${PASSWORD}`,
+      ]),
+      /loopback or unspecified host/,
+    );
+    await assert.rejects(
+      resolveBootstrapConfig(withEnv({ ...bad, CONFIRM_PRODUCTION_BOOTSTRAP: undefined }), [], {
+        prompt: async () => REQUIRED_CONFIRMATION,
+      }),
+      /loopback or unspecified host/,
+    );
+  });
+
+  it("accepts a multi-host replica-set seed list and returns it unchanged", async () => {
+    const uri =
+      "mongodb://fixture_user:fixture_pass@db0.example.invalid:27017,db1.example.invalid:27017,db2.example.invalid:27017/" +
+      `${FIXTURE_DB}?tls=true&replicaSet=rs0&authSource=admin`;
+    const config = await resolveBootstrapConfig(withEnv({ MONGO_URI: uri }), []);
+    assert.equal(config.mongoUri, uri);
+  });
+
   it("never echoes the submitted password in error messages", async () => {
     try {
       await resolveBootstrapConfig(withEnv({ ADMIN_PASSWORD: "short" }), []);
@@ -135,9 +231,110 @@ describe("resolveBootstrapConfig: environment & confirmation safety checks", () 
 });
 
 // ============================================================================
+// 1b. runBootstrap: no connection unless the target is fully validated (#109)
+// ============================================================================
+describe("runBootstrap: the connection function is never reached on an invalid target", () => {
+  const spies = () => {
+    const calls = { connect: [], bootstrap: [] };
+    return {
+      calls,
+      deps: {
+        connect: async (uri) => {
+          calls.connect.push(uri);
+        },
+        bootstrap: async (config) => {
+          calls.bootstrap.push(config);
+          return { outcome: "created", email: config.email };
+        },
+      },
+    };
+  };
+
+  for (const [scenario, patch] of [
+    ["missing expected database name", { BOOTSTRAP_EXPECTED_DB: undefined }],
+    ["empty expected database name", { BOOTSTRAP_EXPECTED_DB: "" }],
+    ["mismatched expected database name", { BOOTSTRAP_EXPECTED_DB: "other_fixture" }],
+    ["case-variant expected database name", { BOOTSTRAP_EXPECTED_DB: "Bootstrap_Fixture" }],
+    ["missing MONGO_URI", { MONGO_URI: undefined }],
+    ["unsupported scheme", { MONGO_URI: `http://cluster.example.invalid/${FIXTURE_DB}` }],
+    ["malformed URI", { MONGO_URI: "mongodb+srv://" }],
+    ["URI with embedded whitespace", { MONGO_URI: `mongodb+srv://cluster.example.invalid/${FIXTURE_DB} x` }],
+    ["missing database name", { MONGO_URI: "mongodb+srv://cluster.example.invalid/" }],
+    ["development database", { MONGO_URI: "mongodb+srv://cluster.example.invalid/aquaveda_v2_dev", BOOTSTRAP_EXPECTED_DB: "aquaveda_v2_dev" }],
+    ["test database", { MONGO_URI: "mongodb+srv://cluster.example.invalid/aquaveda_v2_test", BOOTSTRAP_EXPECTED_DB: "aquaveda_v2_test" }],
+    ["E2E database", { MONGO_URI: "mongodb+srv://cluster.example.invalid/aquaveda_v2_e2e", BOOTSTRAP_EXPECTED_DB: "aquaveda_v2_e2e" }],
+    ["documented development default database", { MONGO_URI: "mongodb+srv://cluster.example.invalid/aquaveda_v2", BOOTSTRAP_EXPECTED_DB: "aquaveda_v2" }],
+    ["loopback host", { MONGO_URI: `mongodb://localhost:27017/${FIXTURE_DB}?tls=true` }],
+    ["mongodb:// without TLS", { MONGO_URI: `mongodb://db0.example.invalid:27017/${FIXTURE_DB}` }],
+    ["TLS explicitly disabled", { MONGO_URI: `mongodb://db0.example.invalid:27017/${FIXTURE_DB}?tls=false` }],
+    ["TLS verification bypass", { MONGO_URI: `mongodb+srv://cluster.example.invalid/${FIXTURE_DB}?tlsAllowInvalidCertificates=true` }],
+    ["non-production environment (existing gate still applies)", { NODE_ENV: "development" }],
+    ["missing confirmation (existing gate still applies)", { CONFIRM_PRODUCTION_BOOTSTRAP: undefined }],
+  ]) {
+    it(`never calls connect or bootstrap: ${scenario}`, async () => {
+      const { calls, deps } = spies();
+      await assert.rejects(runBootstrap(withEnv(patch), [], deps), BootstrapRefusal);
+      assert.deepEqual(calls.connect, []);
+      assert.deepEqual(calls.bootstrap, []);
+    });
+  }
+
+  it("connects exactly once, with exactly the validated URI string, then bootstraps", async () => {
+    const { calls, deps } = spies();
+    const result = await runBootstrap(withEnv({}), [], deps);
+    assert.equal(result.outcome, "created");
+    assert.equal(calls.connect.length, 1);
+    assert.equal(calls.connect[0], FIXTURE_URI, "connected with a different string than the one validated");
+    assert.equal(calls.bootstrap.length, 1);
+  });
+
+  it("connects with the --mongo-uri value actually validated, not an environment fallback", async () => {
+    const { calls, deps } = spies();
+    const cliUri = `mongodb+srv://cluster.example.invalid/${FIXTURE_DB}`;
+    await runBootstrap(withEnv({ MONGO_URI: `mongodb+srv://elsewhere.example.invalid/${FIXTURE_DB}` }), [`--mongo-uri=${cliUri}`], deps);
+    assert.deepEqual(calls.connect, [cliUri]);
+  });
+
+  for (const argv of [["--mongo-uri="], ["--mongo-uri"]]) {
+    it(`never calls connect when ${argv[0]} is empty/bare, even with a valid MONGO_URI in the environment`, async () => {
+      const { calls, deps } = spies();
+      await assert.rejects(runBootstrap(withEnv({}), argv, deps), /MONGO_URI is missing or empty/);
+      assert.deepEqual(calls.connect, []);
+      assert.deepEqual(calls.bootstrap, []);
+    });
+  }
+
+  it("does not let a valid environment target rescue an invalid --mongo-uri", async () => {
+    const { calls, deps } = spies();
+    await assert.rejects(
+      runBootstrap(withEnv({}), [`--mongo-uri=mongodb://localhost/${FIXTURE_DB}?tls=true`], deps),
+      /loopback or unspecified host/,
+    );
+    assert.deepEqual(calls.connect, []);
+  });
+});
+
+// ============================================================================
 // 2. CLI Process Execution (Fast fail before DB, secret sanitization)
 // ============================================================================
 describe("bootstrap-admin CLI spawn safety", () => {
+  const runCli = (envOverrides, args = []) =>
+    spawnSync(process.execPath, [SCRIPT_PATH, ...args], {
+      env: {
+        ...process.env,
+        // Start from a clean slate: nothing from a developer shell may leak in.
+        ADMIN_BOOTSTRAP_PASSWORD: "",
+        ADMIN_BOOTSTRAP_EMAIL: "",
+        ADMIN_BOOTSTRAP_NAME: "",
+        BOOTSTRAP_EXPECTED_DB: FIXTURE_DB,
+        MONGO_URI: FIXTURE_URI,
+        ...envOverrides,
+      },
+      cwd: os.tmpdir(),
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+
   for (const [name, envOverrides, message] of [
     ["non-production NODE_ENV", { NODE_ENV: "test" }, /target environment must be "production"/],
     ["missing confirmation", { NODE_ENV: "production", CONFIRM_PRODUCTION_BOOTSTRAP: "" }, /explicit confirmation required/],
@@ -153,21 +350,7 @@ describe("bootstrap-admin CLI spawn safety", () => {
     ],
   ]) {
     it(`exits with status 1 on ${name} and outputs no secret`, () => {
-      const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-        env: {
-          ...process.env,
-          ...envOverrides,
-          // The CLI falls back to this alias when ADMIN_PASSWORD is empty; a
-          // developer shell that has it exported would defeat the "missing password"
-          // case and bootstrap against a real local mongod. Never inherit it.
-          ADMIN_BOOTSTRAP_PASSWORD: "",
-          MONGO_URI: "mongodb://127.0.0.1:27017/dummy_prod",
-        },
-        cwd: os.tmpdir(),
-        encoding: "utf8",
-        timeout: 10_000,
-      });
-
+      const result = runCli(envOverrides);
       assert.equal(result.status, 1);
       assert.match(result.stderr, /Refusing to bootstrap/);
       assert.match(result.stderr, message);
@@ -175,6 +358,43 @@ describe("bootstrap-admin CLI spawn safety", () => {
       assert.ok(!result.stderr.includes(PASSWORD));
     });
   }
+
+  // #109: every invalid target exits 1 with no database output at all. The
+  // `[db] MongoDB connected` / `[db] MongoDB disconnected` lines are emitted by
+  // the connection layer, so their absence shows connectDB was never invoked.
+  const FULL_ENV = {
+    NODE_ENV: "production",
+    CONFIRM_PRODUCTION_BOOTSTRAP: REQUIRED_CONFIRMATION,
+    ADMIN_EMAIL: ADMIN_CFG.email,
+    ADMIN_PASSWORD: PASSWORD,
+  };
+  for (const [name, envOverrides, message] of [
+    ["missing expected database name", { BOOTSTRAP_EXPECTED_DB: "" }, /expected database name is required/],
+    ["mismatched expected database name", { BOOTSTRAP_EXPECTED_DB: "other_fixture" }, /does not match the expected database/],
+    ["unsupported scheme", { MONGO_URI: `http://cluster.example.invalid/${FIXTURE_DB}` }, /scheme is not supported/],
+    ["missing database name", { MONGO_URI: "mongodb+srv://cluster.example.invalid/" }, /no database name/],
+    ["development database", { MONGO_URI: "mongodb+srv://cluster.example.invalid/aquaveda_v2_dev", BOOTSTRAP_EXPECTED_DB: "aquaveda_v2_dev" }, /development\/test marker/],
+    ["loopback host", { MONGO_URI: `mongodb://127.0.0.1:27017/${FIXTURE_DB}?tls=true` }, /loopback or unspecified host/],
+    ["mongodb:// without TLS", { MONGO_URI: `mongodb://db0.example.invalid:27017/${FIXTURE_DB}` }, /without "tls=true"/],
+  ]) {
+    it(`exits with status 1 on invalid target (${name}) before any database activity`, () => {
+      const result = runCli({ ...FULL_ENV, ...envOverrides });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /Refusing to bootstrap/);
+      assert.match(result.stderr, message);
+      assert.doesNotMatch(result.stdout + result.stderr, /\[db\]|created ADMIN|already exists/);
+      assert.ok(!(result.stdout + result.stderr).includes(PASSWORD));
+      assert.ok(!/fixture_pass|fixture_user/.test(result.stdout + result.stderr), "credentials leaked");
+    });
+  }
+
+  it("exits with status 1 on an empty --mongo-uri even though MONGO_URI is valid, before any database activity", () => {
+    const result = runCli(FULL_ENV, ["--mongo-uri="]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /MONGO_URI is missing or empty/);
+    assert.doesNotMatch(result.stdout + result.stderr, /\[db\]|created ADMIN|already exists/);
+    assert.ok(!(result.stdout + result.stderr).includes(PASSWORD));
+  });
 });
 
 // ============================================================================
