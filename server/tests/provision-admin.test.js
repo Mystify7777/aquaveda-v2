@@ -26,8 +26,12 @@ const CFG = Object.freeze({
 
 let server;
 let baseUrl;
+const ALLOWED_ORIGIN = "http://allowed.example.com";
+let previousAllowedOrigins;
 
 before(async () => {
+  previousAllowedOrigins = process.env.ALLOWED_ORIGINS;
+  process.env.ALLOWED_ORIGINS = ALLOWED_ORIGIN;
   await setupTestDb();
   server = http.createServer(createApp());
   await new Promise((resolve) => server.listen(0, resolve));
@@ -37,6 +41,11 @@ before(async () => {
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
   await teardownTestDb();
+  if (previousAllowedOrigins === undefined) {
+    delete process.env.ALLOWED_ORIGINS;
+  } else {
+    process.env.ALLOWED_ORIGINS = previousAllowedOrigins;
+  }
 });
 
 beforeEach(clearCollections);
@@ -44,7 +53,7 @@ beforeEach(clearCollections);
 function request(method, path, { body, token } = {}) {
   return new Promise((resolve, reject) => {
     const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
-    const headers = {};
+    const headers = { Origin: ALLOWED_ORIGIN };
     if (bodyStr !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(bodyStr);

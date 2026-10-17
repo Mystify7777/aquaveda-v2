@@ -4,6 +4,9 @@ import http from "node:http";
 
 import { createApp } from "../src/app.js";
 import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.js";
+import { register } from "../src/services/auth.service.js";
+import { Issue } from "../src/models/Issue.js";
+import { ACCESS_TOKEN_COOKIE_NAME } from "../src/middleware/auth.js";
 
 /**
  * Integration tests for app.js's router mounting (Phase 7) and global
@@ -15,8 +18,11 @@ import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.
 
 let server;
 let baseUrl;
+const ALLOWED_ORIGIN = "http://allowed.example.com";
+const DISALLOWED_ORIGIN = "http://disallowed.example.com";
 
 before(async () => {
+  process.env.ALLOWED_ORIGINS = ALLOWED_ORIGIN;
   await setupTestDb();
   const app = createApp();
   server = http.createServer(app);
@@ -32,16 +38,21 @@ after(async () => {
 
 beforeEach(clearCollections);
 
-function request(method, path, { body } = {}) {
+function request(method, path, { body, headers = {}, cookies } = {}) {
   return new Promise((resolve, reject) => {
     const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
-    const headers = {};
+    const requestHeaders = { ...headers };
     if (bodyStr !== undefined) {
-      headers["Content-Type"] = "application/json";
-      headers["Content-Length"] = Buffer.byteLength(bodyStr);
+      requestHeaders["Content-Type"] = "application/json";
+      requestHeaders["Content-Length"] = Buffer.byteLength(bodyStr);
+    }
+    if (cookies) {
+      requestHeaders.Cookie = Object.entries(cookies)
+        .map(([name, value]) => `${name}=${value}`)
+        .join("; ");
     }
 
-    const req = http.request(`${baseUrl}${path}`, { method, headers }, (res) => {
+    const req = http.request(`${baseUrl}${path}`, { method, headers: requestHeaders }, (res) => {
       const chunks = [];
       res.on("data", (chunk) => chunks.push(chunk));
       res.on("end", () => {
@@ -85,20 +96,104 @@ describe("full app router mounting (Phase 7)", () => {
 
   it("reaches issueRouter through the fully-assembled app (401 for anonymous create — proves the router is wired, not testing Issue logic itself)", async () => {
     const res = await request("POST", "/api/v1/issues", {
+      headers: { Origin: ALLOWED_ORIGIN },
       body: { title: "x", description: "y", location: { type: "Point", coordinates: [0, 0] } },
     });
     assert.equal(res.status, 401);
     assert.equal(res.json.code, "UNAUTHORIZED");
   });
 
+  describe("fail-closed CSRF provenance for Issue creation", () => {
+    async function createAuthenticatedUser() {
+      return register({
+        name: "CSRF Integration User",
+        email: `csrf-${Date.now()}-${Math.random()}@example.com`,
+        password: "correcthorsebatterystaple",
+      });
+    }
+
+    const issueBody = {
+      title: "Blocked mutation",
+      description: "This should only persist for an allowed origin.",
+      location: { type: "Point", coordinates: [77.5, 12.9] },
+    };
+
+    it("rejects disallowed Origin and Referer before the mutation handler runs", async () => {
+      const { accessToken } = await createAuthenticatedUser();
+
+      for (const headers of [
+        { Origin: DISALLOWED_ORIGIN },
+        { Referer: `${DISALLOWED_ORIGIN}/account` },
+      ]) {
+        const res = await request("POST", "/api/v1/issues", {
+          headers,
+          cookies: { [ACCESS_TOKEN_COOKIE_NAME]: accessToken },
+          body: issueBody,
+        });
+        assert.equal(res.status, 403);
+        assert.equal(res.json.code, "FORBIDDEN");
+      }
+
+      assert.equal(await Issue.countDocuments(), 0);
+    });
+
+    it("allows an exact configured Origin to reach the mutation handler", async () => {
+      const { accessToken } = await createAuthenticatedUser();
+      const res = await request("POST", "/api/v1/issues", {
+        headers: { Origin: ALLOWED_ORIGIN },
+        cookies: { [ACCESS_TOKEN_COOKIE_NAME]: accessToken },
+        body: issueBody,
+      });
+
+      assert.equal(res.status, 201);
+      assert.equal(res.json.success, true);
+      assert.equal(await Issue.countDocuments(), 1);
+    });
+
+    it("rejects a state-changing request with neither Origin nor Referer", async () => {
+      const { accessToken } = await createAuthenticatedUser();
+      const res = await request("POST", "/api/v1/issues", {
+        cookies: { [ACCESS_TOKEN_COOKIE_NAME]: accessToken },
+        body: issueBody,
+      });
+
+      assert.equal(res.status, 403);
+      assert.equal(res.json.code, "FORBIDDEN");
+      assert.equal(await Issue.countDocuments(), 0);
+    });
+
+    it("rejects every state-changing request when ALLOWED_ORIGINS is empty", async () => {
+      const previousAllowedOrigins = process.env.ALLOWED_ORIGINS;
+      process.env.ALLOWED_ORIGINS = "";
+      try {
+        const { accessToken } = await createAuthenticatedUser();
+        const res = await request("POST", "/api/v1/issues", {
+          headers: { Origin: ALLOWED_ORIGIN },
+          cookies: { [ACCESS_TOKEN_COOKIE_NAME]: accessToken },
+          body: issueBody,
+        });
+
+        assert.equal(res.status, 403);
+        assert.equal(res.json.code, "FORBIDDEN");
+        assert.equal(await Issue.countDocuments(), 0);
+      } finally {
+        process.env.ALLOWED_ORIGINS = previousAllowedOrigins;
+      }
+    });
+  });
+
   it("reaches knowledgeRouter through the fully-assembled app", async () => {
-    const res = await request("POST", "/api/v1/knowledge", { body: { title: "x", body: "y" } });
+    const res = await request("POST", "/api/v1/knowledge", {
+      headers: { Origin: ALLOWED_ORIGIN },
+      body: { title: "x", body: "y" },
+    });
     assert.equal(res.status, 401);
     assert.equal(res.json.code, "UNAUTHORIZED");
   });
 
   it("reaches commentRouter through the fully-assembled app", async () => {
     const res = await request("POST", "/api/v1/comments", {
+      headers: { Origin: ALLOWED_ORIGIN },
       body: { refType: "ISSUE", refId: "507f1f77bcf86cd799439011", body: "x" },
     });
     assert.equal(res.status, 401);
@@ -107,6 +202,7 @@ describe("full app router mounting (Phase 7)", () => {
 
   it("reaches projectRouter through the fully-assembled app", async () => {
     const res = await request("POST", "/api/v1/projects", {
+      headers: { Origin: ALLOWED_ORIGIN },
       body: { title: "x", description: "y", originIssue: "507f1f77bcf86cd799439011" },
     });
     assert.equal(res.status, 401);

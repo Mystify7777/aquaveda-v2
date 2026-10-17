@@ -32,16 +32,19 @@ import { sendError } from "./http/respond.js";
  * both meaningless (browsers reject it) and a common credentialed-CORS
  * misconfiguration this project explicitly avoids. `ALLOWED_ORIGINS` is
  * a comma-separated allowlist (already reserved in server/README.md's
- * env block); requests with no Origin header at all (server-to-server,
- * curl, same-origin requests in some browser contexts) are allowed
- * through, since credentialed-cookie CORS restrictions only meaningfully
- * apply to cross-origin browser requests that DO send an Origin header.
+ * env block). CORS itself may still omit response headers for requests
+ * without an Origin, but state-changing requests are separately subject
+ * to the fail-closed CSRF provenance check below.
  */
-function buildCorsOptions() {
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
+function getAllowedOrigins() {
+  return (process.env.ALLOWED_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
+}
+
+function buildCorsOptions() {
+  const allowedOrigins = getAllowedOrigins();
 
   return {
     origin(requestOrigin, callback) {
@@ -63,6 +66,53 @@ function buildCorsOptions() {
   };
 }
 
+/**
+ * CORS controls whether a browser may read a response; it does not stop a
+ * browser from sending a credentialed state-changing request. Validate the
+ * browser's origin separately for methods that can mutate state. A missing
+ * allowlist or missing provenance headers is rejected: this cookie-based
+ * API has no safe implicit trust boundary for headerless state changes.
+ */
+function csrfOriginGuard(req, res, next) {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    next();
+    return;
+  }
+
+  const origin = req.get("origin");
+  const referer = req.get("referer");
+  const allowedOrigins = getAllowedOrigins();
+
+  // An empty allowlist means that no browser provenance is trusted. It is
+  // intentionally fail-closed rather than disabling CSRF protection.
+  if (allowedOrigins.length === 0 || (!origin && !referer)) {
+    sendError(res, { code: "FORBIDDEN", message: "Forbidden" });
+    return;
+  }
+
+  if (origin && !allowedOrigins.includes(origin)) {
+    sendError(res, { code: "FORBIDDEN", message: "Forbidden" });
+    return;
+  }
+
+  if (referer) {
+    let refererOrigin;
+    try {
+      refererOrigin = new URL(referer).origin;
+    } catch {
+      sendError(res, { code: "FORBIDDEN", message: "Forbidden" });
+      return;
+    }
+
+    if (!allowedOrigins.includes(refererOrigin)) {
+      sendError(res, { code: "FORBIDDEN", message: "Forbidden" });
+      return;
+    }
+  }
+
+  next();
+}
+
 export function createApp() {
   const app = express();
 
@@ -70,6 +120,7 @@ export function createApp() {
   app.use(cookieParser());
   app.use(cors(buildCorsOptions()));
   app.use(requestLogger);
+  app.use(csrfOriginGuard);
 
   // Global actor resolution (Phase E/L6): every route, present and
   // future, receives req.actorContext (populated or null) before it

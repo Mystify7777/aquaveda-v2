@@ -110,8 +110,10 @@ Backend tests use a real MongoDB (`TEST_MONGO_URI`, see `server/README.md`); the
 never skipped or mocked in CI. Job env supplies only what the server requires and the
 tests do not set themselves: `TEST_MONGO_URI` and throwaway `JWT_ACCESS_SECRET` /
 `JWT_REFRESH_SECRET` (read via `getRequiredEnv`; test-only, not real credentials).
-`ALLOWED_ORIGINS` is deliberately not set: `app.js` reads it optionally (empty =
-no-Origin requests only), and the two suites that exercise CORS assign it themselves.
+`ALLOWED_ORIGINS` is deliberately not set: the app's state-changing CSRF
+guard treats an empty allowlist as fail-closed and rejects mutations. The
+two suites that exercise CORS/CSRF assign a deterministic allowlist
+themselves.
 
 **Why `mongo:7`:** the repo states no MongoDB server version. The only constraint is the
 driver (Mongoose 8.x / `mongodb` 6.x), which supports 7.x, and the features the code
