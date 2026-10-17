@@ -9,12 +9,13 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:vitest": "vitest run",
-    "test:node": "node --test \"src/**/*.test.js\"",
+    "test:node": "node --test \"src/**/*.test.js\" \"scripts/**/*.test.js\"",
     "test": "npm run test:vitest && npm run test:node",
     "test:e2e": "playwright test",
     "verify:frontend": "npm run test && npm run lint && npm run typecheck && npm run build",
     "verify:backend": "npm --prefix server run verify",
-    "verify": "npm run verify:backend && npm run verify:frontend"
+    "verify": "node scripts/verify.mjs",
+    "verify:sequential": "npm run verify:backend && npm run verify:frontend"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.10",
