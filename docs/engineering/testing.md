@@ -95,6 +95,80 @@ route topology: authenticated pages live in the `(protected)` route group,
 which is implementation-only and never a URL segment; `/protected/*` is not
 a canonical URL and the contract reports it as missing), #85 (browser e2e, out of scope here).
 
+## Local verification (`npm run verify`, #101)
+
+`npm run verify` runs the **backend** and **frontend** pipelines concurrently via
+`scripts/verify.mjs` (a dependency-free Node runner, `scripts/verify/run-pipelines.mjs`).
+Each pipeline is the unchanged package-level command, so coverage is identical to the
+serial run. Focused commands are unchanged: `verify:backend`, `verify:frontend`, and
+`verify:sequential` (the former serial `backend && frontend`, kept for debugging and as the
+timing baseline).
+
+```text
+npm run verify
+├─ [backend]  npm run verify:backend  (cwd server/)        needs MongoDB (TEST_MONGO_URI)
+│    npm test (node --test, --test-concurrency=1)
+│      → verify:models → verify:validation → verify:cookie-config      (serial, in order)
+└─ [frontend] npm run verify:frontend
+     vitest → test:node → lint → typecheck → build                     (serial, in order)
+```
+
+**Why only the two pipelines run in parallel.** Independence was checked, not assumed:
+
+| Resource | Backend | Frontend | Conflict? |
+|---|---|---|---|
+| MongoDB (`TEST_MONGO_URI`) | yes, serialised inside the package | none (no Mongo imports under `src/`) | no |
+| TCP ports | backend tests bind port `0` (ephemeral) | no server; `next build` binds none | no |
+| Temp files | none shared | `app-routes.test.ts` uses `mkdtemp` (unique) | no |
+| Build output (`.next/`, `tsconfig.tsbuildinfo`) | not touched | written by `build`; read by `typecheck` | **intra-frontend only** |
+
+Within a pipeline, steps stay serial on purpose. `typecheck` must not overlap `build`:
+`tsconfig.json` includes `.next/types/**` and `incremental` writes `tsbuildinfo`, both of
+which `next build` also writes. `vitest`, `test:node` and `lint` are read-only and could be
+parallelised later, but that was out of scope for #101 and is a candidate follow-up only if
+timings justify it. Backend steps are serial because `npm test` owns the test database and
+the three `verify:*` scripts are sub-second.
+
+**Behaviour.**
+- Output is prefixed per line with `[backend]` / `[frontend]`.
+- Both pipelines always run to completion (no fail-fast), so one run reports every
+  failing pipeline; a summary with per-pipeline status and duration is printed at the end.
+- The root exit code is non-zero if either pipeline fails, is killed, or cannot start.
+- `Ctrl+C` / `SIGTERM` signals each pipeline's whole process tree (process group on POSIX,
+  `taskkill /T /F` on Windows), then does not report completion until every group is empty.
+  The group id is retained after the pipeline's own process exits, so a descendant that
+  ignores `SIGTERM` (or outlives its parent) is still `SIGKILL`ed once the 5s grace period
+  ends. The runner exits `130` (`143` for `SIGTERM`); invoked through `npm run` on Windows the shell
+  instead reports npm's own Ctrl+C status, `-1073741510` (`0xC000013A`, `STATUS_CONTROL_C_EXIT`).
+  Either way the status is non-zero, and verified on Windows: the interrupted summary prints and no
+  `node.exe` survives. Limits: a hard `SIGKILL` of the runner itself
+  cannot be intercepted, and on Windows a descendant orphaned after its parent already exited
+  cannot be located by `taskkill /T`.
+- Because pipelines now share CPU, per-step interleaved output is expected.
+- Runner behaviour (prefixing, failure propagation, concurrency, tree termination) is covered
+  by `scripts/verify/run-pipelines.test.js`, executed by `npm run test:node`.
+
+**Timings.** Measured on the maintainer's Windows machine (11 Next.js build workers, MongoDB
+local), Oct 2026:
+
+| Command | Wall time | Notes |
+|---|---|---|
+| `npm run verify:sequential` | 93.2s | one run (`Measure-Command`) |
+| `npm run verify` | 63.1s, 67.2s | two passing runs; backend 63.1s / 67.2s, frontend 56.6s / 56.4s |
+
+That is roughly a 28-32% reduction in wall time (about 26-30s), with identical coverage. Wall time
+tracks the slower pipeline (backend), as expected. Caveats: the sequential figure is a single
+run with no per-pipeline breakdown, and when run concurrently the backend is slower than it is
+alone because the pipelines share CPU and disk, so the gain is less than `frontend`'s full
+duration. Two earlier `verify` runs were discarded: they showed 22-32 intermittent backend
+failures consistent with another process using the same `TEST_MONGO_URI` database
+(`clearCollections()` wipes it), and passed once no stray processes remained. Never run two
+backend test processes against one test database.
+
+Per-step durations from a 1-vCPU sandbox, for relative sizing only: `verify:models` 0.5s,
+`verify:validation` 0.2s, `verify:cookie-config` 0.1s, `test:node` 0.2s, `lint` 16.8s,
+`typecheck` 4.9s, `test:vitest` 124.8s.
+
 ## CI (#84)
 
 `.github/workflows/ci.yml` runs on pull requests to `main` and on pushes to `main`.
