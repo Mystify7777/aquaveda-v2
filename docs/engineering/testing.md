@@ -135,11 +135,25 @@ installed (`npx playwright install chromium`): `npm run test:e2e` (Playwright bu
   therefore refuses to run unless `MONGO_URI` is a loopback host (`127.0.0.1`, `localhost`, `::1`)
   AND a database ending in `_e2e`, checked before connecting (`server/scripts/e2e-seed-guard.js`,
   tested in `server/tests/e2e-seed-guard.test.js`; no bypass). It builds one Issue, approved Knowledge article and Project via
-  the domain services. Only the two User docs (reporter, EXPERT) are written directly, because
-  EXPERT has no provisioning path yet (#89/#91); they never sign in.
+  the domain services, plus one Knowledge article left in `pending_review` (`pendingKnowledgeTitle`)
+  for the governance flow. Direct User writes: the reporter and a fixture EXPERT (they never sign in; used
+  only to satisfy EXPERT-only fixture transitions), and a fixture ADMIN (`adminEmail` / `adminPassword`
+  in `e2e/fixtures.json`) with a real `hashPassword` hash that signs in through the browser. The ADMIN
+  credentials are throwaway test values that only exist behind the `_e2e` loopback guard; they are not a
+  provisioning mechanism (see the production bootstrap runbook for that).
 - **Flows:** home + primary nav (Explore/Learn/Act); Explore -> issue detail; Learn ->
   knowledge detail; Act -> project detail; anonymous gating of `/learn/new` and `/learn/mine`;
   `/protected/*` and `/(protected)/*` return 404; `/auth/login` and `/auth/register` render;
   register -> protected pages render -> sign out -> gated again -> login -> access restored.
-- **Out of scope:** Community/Dashboard (deferred routes), moderation, rich-text, visual regression.
+- **Governance lifecycle (#105, `governance-lifecycle.spec.ts`):** two isolated browser contexts
+  (USER, ADMIN), one test, `retries: 0` because the flow consumes seeded state (a retry would fail for
+  the wrong reason; `globalSetup` reseeds per run). Steps: USER registers and submits an Expert
+  application (pending, persists across reload) -> USER gets 403 on the ADMIN list
+  (`GET /expert-application`) but 200 on own status (`/me`) -> ADMIN signs in and approves via the UI ->
+  persisted state: applicant `/me` is `approved` and the application is absent from the ADMIN pending
+  list -> ADMIN gets 403 on `GET /knowledge/review-queue` and the review page shows the denial
+  (ADMIN != EXPERT) -> applicant's session now resolves `EXPERT` (role is read from the DB per request)
+  -> EXPERT approves the pending article -> it appears as a link on public `/learn`.
+- **Out of scope:** Community/Dashboard (deferred routes), rich-text, visual regression. Knowledge
+  moderation is covered only through the governance flow above; reject paths and re-application are not.
 - Vitest excludes `e2e/`; Playwright owns `*.spec.ts`.
