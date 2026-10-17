@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { getRequiredEnv } from "./env.js";
+import { safeErrorTag } from "./safe-error.js";
 
 /**
  * Mongoose connection boundary.
@@ -25,6 +26,17 @@ import { getRequiredEnv } from "./env.js";
  * `{ envVar }` mechanism are unchanged below.
  */
 
+/**
+ * Connection-error log line. With `redactErrors` the driver message is never
+ * printed, only a sanitized name/code tag (see safe-error.js).
+ *
+ * @param {unknown} err
+ * @param {{ redactErrors?: boolean, log?: (...args: unknown[]) => void }} [options]
+ */
+export function logConnectionError(err, { redactErrors = false, log = console.error } = {}) {
+  log("[db] MongoDB connection error:", redactErrors ? safeErrorTag(err) : err.message);
+}
+
 // Tracks an in-flight connection attempt so concurrent calls to connectDB()
 // (e.g. during startup) reuse the same attempt instead of racing to open a
 // second connection.
@@ -43,8 +55,12 @@ let connectionPromise = null;
  *   `uri` connects to exactly that string and bypasses the environment
  *   lookup: for scripts that have ALREADY validated a target (admin
  *   provisioning, #89) and must connect to precisely what they validated.
+ *   `redactErrors` makes the connection-error listener log only the error
+ *   name/code instead of its message: driver messages can embed hosts or URI
+ *   fragments, which operator-facing CLIs (#110) must not print. Default off,
+ *   so application runtime diagnostics are unchanged.
  */
-export async function connectDB({ envVar = "MONGO_URI", uri: explicitUri } = {}) {
+export async function connectDB({ envVar = "MONGO_URI", uri: explicitUri, redactErrors = false } = {}) {
   if (mongoose.connection.readyState === 1) {
     return mongoose.connection;
   }
@@ -56,7 +72,7 @@ export async function connectDB({ envVar = "MONGO_URI", uri: explicitUri } = {})
   const uri = explicitUri ?? getRequiredEnv(envVar);
 
   mongoose.connection.on("error", (err) => {
-    console.error("[db] MongoDB connection error:", err.message);
+    logConnectionError(err, { redactErrors });
   });
 
   mongoose.connection.on("disconnected", () => {

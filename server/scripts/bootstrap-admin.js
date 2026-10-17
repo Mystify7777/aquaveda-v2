@@ -17,7 +17,11 @@
  * - Idempotent: repeated runs against an existing ADMIN report unchanged without
  *   modifying passwords or emitting tokens.
  * - Zero session emission: creates no active session or JWT tokens.
- * - Secret-safe: never logs raw passwords or password hashes.
+ * - Secret-safe (#110): the ADMIN password is accepted only from deployment secret
+ *   injection (ADMIN_PASSWORD env) or a hidden, no-echo interactive prompt entered
+ *   twice. A plaintext `--password` CLI argument is refused (it is visible in
+ *   process listings and shell history). Unexpected failures print only an error
+ *   name/code, never driver messages that may embed connection details.
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +33,8 @@ import { User } from "../src/models/User.js";
 import { hashPassword, verifyPassword } from "../src/services/auth-tokens.js";
 import { registerSchema } from "../src/validation/auth.validation.js";
 import { TargetValidationError, validateBootstrapTarget } from "./bootstrap-target.js";
+import { safeErrorTag } from "../src/config/safe-error.js";
+import { PromptAborted, promptHidden } from "./secret-prompt.js";
 
 export const REQUIRED_CONFIRMATION = "CONFIRM-PRODUCTION-BOOTSTRAP";
 export const DEFAULT_ADMIN_NAME = "Production Admin";
@@ -77,11 +83,29 @@ export function parseArgs(argv = []) {
  *
  * @param {Record<string, string | undefined>} env
  * @param {string[]} argv
- * @param {{ prompt?: ((query: string) => Promise<string>) | null }} [options]
+ * @param {{
+ *   prompt?: ((query: string) => Promise<string>) | null,
+ *   promptSecret?: ((query: string) => Promise<string>) | null
+ * }} [options] `prompt` is for non-secret values only; the password is only ever
+ *   requested through `promptSecret` (hidden input).
  * @returns {Promise<{ name: string, email: string, password: string, mongoUri: string }>}
  */
-export async function resolveBootstrapConfig(env = process.env, argv = [], { prompt = null } = {}) {
+export async function resolveBootstrapConfig(
+  env = process.env,
+  argv = [],
+  { prompt = null, promptSecret = null } = {},
+) {
   const flags = parseArgs(argv);
+
+  // 0. Plaintext password arguments are not supported (#110). Checked first and
+  // regardless of any other input, so a supplied secret is never processed.
+  if (Object.hasOwn(flags, "password")) {
+    throw new BootstrapRefusal(
+      "Refusing to bootstrap: --password is not supported because command-line arguments are " +
+        "visible in process listings and shell history. Provide ADMIN_PASSWORD through deployment " +
+        "secret injection, or omit it to enter it at the hidden interactive prompt.",
+    );
+  }
 
   // 1. Environment check: require explicit production intent
   const targetEnv = flags["target-env"] || env.TARGET_ENV || env.NODE_ENV;
@@ -129,21 +153,29 @@ export async function resolveBootstrapConfig(env = process.env, argv = [], { pro
 
   // 4. Identity & Credential resolution (env vars, flags, or interactive prompt)
   let email = flags.email || env.ADMIN_EMAIL || env.ADMIN_BOOTSTRAP_EMAIL;
-  let password = flags.password || env.ADMIN_PASSWORD || env.ADMIN_BOOTSTRAP_PASSWORD;
+  let password = env.ADMIN_PASSWORD || env.ADMIN_BOOTSTRAP_PASSWORD;
   const name = (flags.name || env.ADMIN_NAME || env.ADMIN_BOOTSTRAP_NAME || DEFAULT_ADMIN_NAME).toString().trim();
 
   if (!email && prompt) {
     email = (await prompt("Enter ADMIN_EMAIL: "))?.trim();
   }
-  if (!password && prompt) {
-    password = (await prompt("Enter ADMIN_PASSWORD: "))?.trim();
+  if (!password && promptSecret) {
+    // Entered twice: bootstrap is create-once and never rotates, so a typo here
+    // would permanently lock in an unknown password.
+    password = await promptSecret("Enter ADMIN_PASSWORD (input hidden): ");
+    const confirmation = await promptSecret("Confirm ADMIN_PASSWORD (input hidden): ");
+    if (password !== confirmation) {
+      throw new BootstrapRefusal("Refusing to bootstrap: the two ADMIN_PASSWORD entries did not match.");
+    }
   }
 
   if (!email) {
     throw new BootstrapRefusal("Refusing to bootstrap: ADMIN_EMAIL is required.");
   }
   if (!password) {
-    throw new BootstrapRefusal("Refusing to bootstrap: ADMIN_PASSWORD is required.");
+    throw new BootstrapRefusal(
+      "Refusing to bootstrap: ADMIN_PASSWORD is required (set it via secret injection, or run in an interactive terminal).",
+    );
   }
 
   // 5. Schema validation via standard registration rules
@@ -222,21 +254,39 @@ async function describeExisting(user, password) {
  * @param {{
  *   connect?: (uri: string) => Promise<unknown>,
  *   bootstrap?: typeof bootstrapAdmin,
- *   prompt?: ((query: string) => Promise<string>) | null
+ *   prompt?: ((query: string) => Promise<string>) | null,
+ *   promptSecret?: ((query: string) => Promise<string>) | null
  * }} [deps]
  */
 export async function runBootstrap(
   env = process.env,
   argv = process.argv.slice(2),
   {
-    connect = (uri) => connectDB({ uri }),
+    connect = (uri) => connectDB({ uri, redactErrors: true }),
     bootstrap = bootstrapAdmin,
     prompt = null,
+    promptSecret = null,
   } = {},
 ) {
-  const config = await resolveBootstrapConfig(env, argv, { prompt });
+  const config = await resolveBootstrapConfig(env, argv, { prompt, promptSecret });
   await connect(config.mongoUri);
   return bootstrap(config);
+}
+
+/**
+ * Operator-facing failure text. Messages of BootstrapRefusal are written by this
+ * tool; PromptAborted messages are fixed strings. Anything else (driver, DNS,
+ * library errors) may embed hosts, URIs or credentials, so only a strictly
+ * sanitized name/code tag is shown (see safe-error.js).
+ *
+ * @param {unknown} error
+ * @returns {string}
+ */
+export function describeFailure(error) {
+  if (error instanceof BootstrapRefusal || error instanceof PromptAborted) {
+    return error.message;
+  }
+  return `unexpected failure: ${safeErrorTag(error)}. Details are withheld to avoid disclosing credentials or connection details.`;
 }
 
 async function main() {
@@ -251,8 +301,13 @@ async function main() {
       }
     : null;
 
+  const interactiveSecretPrompt = process.stdin.isTTY
+    ? (query) => promptHidden(query, { input: defaultStdin, output: defaultStdout })
+    : null;
+
   const result = await runBootstrap(process.env, process.argv.slice(2), {
     prompt: interactivePrompt,
+    promptSecret: interactiveSecretPrompt,
   });
 
   if (result.outcome === "created") {
@@ -276,7 +331,7 @@ const isMain =
 if (isMain) {
   main()
     .catch((error) => {
-      console.error(`[bootstrap-admin] ${error.message}`);
+      console.error(`[bootstrap-admin] ${describeFailure(error)}`);
       process.exitCode = 1;
     })
     .finally(() => disconnectDB());

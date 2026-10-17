@@ -8,6 +8,12 @@ Role-aware Expert UI (frontend over #91) — **implemented**
 USER apply/status page, ADMIN Expert-application queue (approve/reject), role-aware nav (desktop/mobile/Learn).
 No backend change. See decision-register UI-L1–L5. (#102 production bootstrap remains deferred.)
 
+Issue #110 — secure production bootstrap credential input — **implemented (pending review/CI)**
+Hidden no-echo prompt (`scripts/secret-prompt.js`, raw-mode restore on submit/Ctrl+C/EOF/stream error/SIGINT|TERM|HUP/exit),
+password entered twice; `--password` CLI flag **removed** (refused); password only via `ADMIN_PASSWORD` secret injection or hidden
+prompt; non-tool errors print name/code only (`describeFailure`); `connectDB({ redactErrors })` opt-in. Runbook §4/§6 rewritten.
+Open: `--mongo-uri` flag still exposes URI credentials in argv (kept: #109 contract) — see runbook §4.4.
+
 Issue #89 — local ADMIN provisioning — **implemented**
 `npm run provision:admin` (loopback + `_dev` DB + explicit opt-in, fail-closed); `seed:users` removed; shared
 `local-db-guard.js`. See decision-register ADM-L1–L4 and server/README.md. Dev DB must be named `*_dev`.
