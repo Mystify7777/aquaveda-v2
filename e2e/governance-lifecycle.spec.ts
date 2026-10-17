@@ -108,7 +108,7 @@ test("USER applies -> ADMIN approves -> EXPERT moderates; role boundaries hold",
 
     await test.step("approved article is public", async () => {
       await user.goto("/learn");
-      await expect(user.getByText(fixtures.pendingKnowledgeTitle)).toBeVisible();
+      await expect(user.getByRole("link", { name: fixtures.pendingKnowledgeTitle, exact: true })).toBeVisible();
     });
   } finally {
     await userCtx.close();
