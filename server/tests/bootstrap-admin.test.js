@@ -67,17 +67,16 @@ describe("resolveBootstrapConfig: environment & confirmation safety checks", () 
     assert.equal(config.mongoUri, VALID_ENV.MONGO_URI);
   });
 
-  it("accepts production intent and confirmation via CLI arguments", async () => {
+  it("accepts production intent, confirmation and target via CLI arguments (password via env only, #110)", async () => {
     const args = [
       "--target-env=production",
       `--confirm=${REQUIRED_CONFIRMATION}`,
       `--email=${ADMIN_CFG.email}`,
-      `--password=${PASSWORD}`,
       "--name=CLI Admin",
       `--mongo-uri=${FIXTURE_URI}`,
       `--expect-db=${FIXTURE_DB}`,
     ];
-    const config = await resolveBootstrapConfig({}, args);
+    const config = await resolveBootstrapConfig({ ADMIN_PASSWORD: PASSWORD }, args);
     assert.equal(config.name, "CLI Admin");
     assert.equal(config.email, ADMIN_CFG.email);
     assert.equal(config.password, PASSWORD);
@@ -89,13 +88,17 @@ describe("resolveBootstrapConfig: environment & confirmation safety checks", () 
     assert.equal(config.name, DEFAULT_ADMIN_NAME);
   });
 
-  it("prompts for confirmation and credentials when interactive prompt is provided", async () => {
+  it("prompts for confirmation/email via prompt and the password only via the hidden promptSecret", async () => {
     const promptAnswers = {
       [`Type '${REQUIRED_CONFIRMATION}' to confirm production bootstrap: `]: REQUIRED_CONFIRMATION,
       "Enter ADMIN_EMAIL: ": "prompted@example.test",
-      "Enter ADMIN_PASSWORD: ": "prompted-secure-password",
     };
-    const mockPrompt = async (query) => promptAnswers[query] ?? "";
+    const asked = [];
+    const mockPrompt = async (query) => {
+      asked.push(query);
+      return promptAnswers[query] ?? "";
+    };
+    const mockSecret = async () => "prompted-secure-password";
 
     const envWithoutCredentials = withEnv({
       CONFIRM_PRODUCTION_BOOTSTRAP: undefined,
@@ -103,9 +106,13 @@ describe("resolveBootstrapConfig: environment & confirmation safety checks", () 
       ADMIN_PASSWORD: undefined,
     });
 
-    const config = await resolveBootstrapConfig(envWithoutCredentials, [], { prompt: mockPrompt });
+    const config = await resolveBootstrapConfig(envWithoutCredentials, [], {
+      prompt: mockPrompt,
+      promptSecret: mockSecret,
+    });
     assert.equal(config.email, "prompted@example.test");
     assert.equal(config.password, "prompted-secure-password");
+    assert.ok(!asked.some((q) => /PASSWORD/.test(q)), "password must never go through the echoing prompt");
   });
 
   for (const [scenario, patch, messagePattern] of [
@@ -193,13 +200,12 @@ describe("resolveBootstrapConfig: environment & confirmation safety checks", () 
     const bad = { MONGO_URI: `mongodb://127.0.0.1:27017/${FIXTURE_DB}?tls=true` };
     await assert.rejects(resolveBootstrapConfig(withEnv(bad), []), /loopback or unspecified host/);
     await assert.rejects(
-      resolveBootstrapConfig({}, [
+      resolveBootstrapConfig({ ADMIN_PASSWORD: PASSWORD }, [
         "--target-env=production",
         `--confirm=${REQUIRED_CONFIRMATION}`,
         `--mongo-uri=${bad.MONGO_URI}`,
         `--expect-db=${FIXTURE_DB}`,
         `--email=${ADMIN_CFG.email}`,
-        `--password=${PASSWORD}`,
       ]),
       /loopback or unspecified host/,
     );

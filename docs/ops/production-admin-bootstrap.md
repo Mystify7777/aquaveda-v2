@@ -27,7 +27,7 @@ Issue [#89](file:///d:/CODING/Next%20Js/aquaveda-v2/server/scripts/provision-adm
 5. **No Role Escalation**: Rejects existing accounts with role `USER` or `EXPERT`. Existing user accounts are never elevated.
 6. **Deterministic Idempotency**: If the `ADMIN` account already exists, the script exits cleanly without overwriting the password, altering properties, or issuing tokens.
 7. **Zero Session Emission**: The tool issues no access tokens, refresh tokens, or active `Session` documents. The account must authenticate through standard login.
-8. **Secret Sanitation**: Passwords and password hashes are never logged, echoed to stdout/stderr, or captured in audit logs.
+8. **Secret Sanitation (#110)**: Passwords and password hashes are never logged, echoed to stdout/stderr, or captured in audit logs. The password is never accepted as a command-line argument (`--password` is refused), interactive entry is hidden (no echo, no mask), and any failure that is not one of the tool's own refusals prints only an error name/code, never the driver/library message (which can embed hosts, URIs or credentials).
 9. **Target Consistency Gate (#109)**: Refuses to connect unless an independently supplied expected database name exactly matches the `MONGO_URI` database, is not a development/test/E2E/system name, and the URI is a supported, TLS-capable, non-loopback format. Every check runs before any database connection is attempted. This proves *consistency*, not *identity*; see §3.1.
 
 ---
@@ -38,7 +38,7 @@ Before executing the bootstrap tool, ensure you have:
 
 1. **Target Database URI**: The production MongoDB connection string (`MONGO_URI`).
 2. **Administrator Identity**: The designated admin email address (e.g. `admin@aquaveda.org`).
-3. **High-Entropy Credential**: A strong, randomly generated password meeting the minimum 8-character policy (recommendation: 24+ characters generated using a secure password manager or `openssl rand -base64 24`).
+3. **High-Entropy Credential**: A strong, randomly generated password meeting the minimum 8-character policy (recommendation: 24+ characters generated in a password manager). Generate it where it is stored; do not paste it into a command line.
 4. **Confirmation Token**: `CONFIRM-PRODUCTION-BOOTSTRAP`.
 5. **Expected Database Name**: the production database name, taken from the deployment's own source of truth (the platform/Atlas configuration or your infrastructure record), **not** copied out of the `MONGO_URI` you are about to use. Supplied as `BOOTSTRAP_EXPECTED_DB` or `--expect-db`. There is no default, and the tool never derives it from the URI.
 
@@ -69,54 +69,45 @@ Multi-host replica-set seed lists (`mongodb://<h1>:<p>,<h2>:<p>,<h3>:<p>/<db>?tl
 
 ## 4. Execution Procedures
 
-### Option A: Standard Execution via Environment Variables (Recommended for Ops)
+### 4.1 How the password is supplied (#110)
 
-In your secure shell or one-off task execution environment:
+| Method | Status | Exposure |
+|---|---|---|
+| **Hidden interactive prompt** (TTY) | **Preferred** | Typed with echo off, entered twice. Never in argv, environment, shell history or output. |
+| **Platform secret injection** → `ADMIN_PASSWORD` | **Supported** (use when no TTY is available) | Value lives in the task's environment: readable by the same OS user and root (`/proc/<pid>/environ`), and by anyone who can read the platform's task definition/config. Inject from the platform's secret store; never define it inline in a script, CI log or task definition committed to Git. |
+| `export ADMIN_PASSWORD=...` typed in a shell | **Discouraged** | The literal is recorded by the shell/terminal and is inherited by every child process. Clearing history afterwards is **not** a mitigation (see §6). |
+| `--password=...` / `--password <value>` | **Removed.** The CLI refuses it and exits `1` before processing anything. | Argument vectors are visible to other local users via process listings and are persisted in shell history and platform audit logs. |
+
+`ADMIN_BOOTSTRAP_PASSWORD` remains an alias of `ADMIN_PASSWORD`; `ADMIN_PASSWORD` wins if both are set. If neither is set and stdin is a TTY, the tool prompts. If neither is set and there is no TTY, the tool refuses; it never falls back to an echoing read.
+
+Interactive details: the password is not trimmed (leading/trailing spaces are part of it); the two entries must match, because bootstrap is create-once and will not rotate a mistyped password; Ctrl+C / Ctrl+D abort with exit `1` and restore the terminal. External SIGINT / SIGTERM / SIGHUP restore the terminal and then terminate the process by that signal (shell status 128+N). If a terminal is ever left without echo (for example after `kill -9`, which cannot be intercepted), run `stty sane` or `reset`.
+
+### 4.2 Recommended: hidden interactive prompt
+
+Run from an authenticated one-off task runner or bastion that provides a TTY:
 
 ```bash
-# 1. Set transient environment variables in your terminal session
+cd server
 export NODE_ENV=production
-export CONFIRM_PRODUCTION_BOOTSTRAP=CONFIRM-PRODUCTION-BOOTSTRAP
-export ADMIN_EMAIL="admin@aquaveda.org"
-export ADMIN_PASSWORD="<generated-secure-passphrase>"
-export MONGO_URI="mongodb+srv://<db_user>:<db_pass>@<cluster-host>/<production_db_name>"
+export MONGO_URI="<injected by the platform; see §4.4>"
 export BOOTSTRAP_EXPECTED_DB="<production_db_name>"   # from the deployment source of truth, not copied from MONGO_URI
-
-# 2. Execute bootstrap command from the server directory
-cd server
 npm run bootstrap:admin
-
-# 3. Clean up credentials immediately (see Section 6)
 ```
 
-### Option B: Interactive Execution (Interactive TTY)
-
-If invoking interactively in a container terminal:
-
-```bash
-cd server
-NODE_ENV=production MONGO_URI="mongodb+srv://..." BOOTSTRAP_EXPECTED_DB="<production_db_name>" node scripts/bootstrap-admin.js
-```
-
-The script will prompt the operator for the required inputs:
 ```text
 Type 'CONFIRM-PRODUCTION-BOOTSTRAP' to confirm production bootstrap: CONFIRM-PRODUCTION-BOOTSTRAP
 Enter ADMIN_EMAIL: admin@aquaveda.org
-Enter ADMIN_PASSWORD: [hidden/entered]
+Enter ADMIN_PASSWORD (input hidden):
+Confirm ADMIN_PASSWORD (input hidden):
 ```
 
-### Option C: Explicit CLI Arguments
+### 4.3 Non-interactive: platform secret injection
 
-```bash
-cd server
-node scripts/bootstrap-admin.js \
-  --target-env=production \
-  --confirm=CONFIRM-PRODUCTION-BOOTSTRAP \
-  --email=admin@aquaveda.org \
-  --password="<generated-secure-passphrase>" \
-  --mongo-uri="mongodb+srv://..." \
-  --expect-db="<production_db_name>"
-```
+When no TTY exists, configure `ADMIN_PASSWORD` (and `MONGO_URI`) as secrets in the platform's secret store, scoped to this one-off task, and set the remaining non-secret values (`NODE_ENV`, `CONFIRM_PRODUCTION_BOOTSTRAP`, `ADMIN_EMAIL`, `BOOTSTRAP_EXPECTED_DB`) as ordinary task variables. Remove the secrets from the task configuration after the run.
+
+### 4.4 Known residual: connection string in `--mongo-uri`
+
+`--mongo-uri` still exists (the #109 target-validation contract depends on its flag semantics). If the URI carries credentials, passing it as a flag exposes them in process listings and history exactly like `--password` did. **Do not use `--mongo-uri` in production; supply `MONGO_URI` through secret injection.** Removing or constraining the flag is a separate decision tracked outside #110.
 
 ---
 
@@ -144,6 +135,15 @@ Exit code: `0`
 ```
 Exit code: `1`. No `[db]` lines appear because no connection was attempted. Other refusals read, for example: `the expected database name is required`, `MONGO_URI scheme is not supported`, `MONGO_URI has no database name`, `... contains the development/test marker "dev"`, `MONGO_URI targets a loopback or unspecified host`, `MONGO_URI uses "mongodb://" without "tls=true"`.
 
+### 5.3a Refused or Failed Credential Input (#110)
+```text
+[bootstrap-admin] Refusing to bootstrap: --password is not supported because command-line arguments are visible in process listings and shell history. ...
+[bootstrap-admin] Refusing to bootstrap: the two ADMIN_PASSWORD entries did not match.
+[bootstrap-admin] interrupted
+[bootstrap-admin] unexpected failure: MongoServerSelectionError. Details are withheld to avoid disclosing credentials or connection details.
+```
+Exit code: `1`. The last form replaces raw driver messages, which can contain hostnames or URI fragments. Diagnose from the platform's own task logs and the error name/code, not from the CLI output.
+
 ### 5.4 Attempted Escalation of Existing USER or EXPERT
 ```text
 [bootstrap-admin] Refusing to bootstrap: admin@aquaveda.org already exists with role USER. Existing accounts are never elevated by this tool.
@@ -152,23 +152,14 @@ Exit code: `1`
 
 ---
 
-## 6. Post-Execution Credential Cleanup
+## 6. Post-Execution Credential Handling
 
-Always purge plaintext secrets immediately after execution:
+Prevention is the control; cleanup only limits residue.
 
-```bash
-# Unset sensitive environment variables
-unset ADMIN_PASSWORD
-unset ADMIN_EMAIL
-unset CONFIRM_PRODUCTION_BOOTSTRAP
-unset BOOTSTRAP_EXPECTED_DB
-unset MONGO_URI
-
-# Clear terminal history for the session if sensitive commands were entered
-history -c
-```
-
-Store the generated administrator credentials securely in the team's production password vault (e.g. 1Password, Bitwarden, or AWS Secrets Manager).
+1. **Do not rely on clearing shell history.** `history -c` affects only the current shell's in-memory list. It does not remove what was already written to the history file, terminal scrollback, session recordings, platform audit logs, or process-accounting data. If a secret was typed into a command line, treat it as exposed and rotate it.
+2. If you used injected secrets, **remove them from the task/service configuration** and revoke any scoped credential created for this run.
+3. If you exported variables in an interactive session, end the session (`exit`) rather than just `unset`-ing; unsetting does not remove copies already inherited or logged.
+4. Store the administrator credentials in the team's production password vault. Because bootstrap never rotates an existing password, a lost or exposed password is handled through the normal authorized reset/rotation procedure (§8), not by re-running this tool.
 
 ---
 
