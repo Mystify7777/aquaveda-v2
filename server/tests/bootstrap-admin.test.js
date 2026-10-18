@@ -67,16 +67,15 @@ describe("resolveBootstrapConfig: environment & confirmation safety checks", () 
     assert.equal(config.mongoUri, VALID_ENV.MONGO_URI);
   });
 
-  it("accepts production intent, confirmation and target via CLI arguments (password via env only, #110)", async () => {
+  it("accepts production intent, confirmation and expected DB via CLI arguments (password #110 and MONGO_URI #118 via env only)", async () => {
     const args = [
       "--target-env=production",
       `--confirm=${REQUIRED_CONFIRMATION}`,
       `--email=${ADMIN_CFG.email}`,
       "--name=CLI Admin",
-      `--mongo-uri=${FIXTURE_URI}`,
       `--expect-db=${FIXTURE_DB}`,
     ];
-    const config = await resolveBootstrapConfig({ ADMIN_PASSWORD: PASSWORD }, args);
+    const config = await resolveBootstrapConfig({ ADMIN_PASSWORD: PASSWORD, MONGO_URI: FIXTURE_URI }, args);
     assert.equal(config.name, "CLI Admin");
     assert.equal(config.email, ADMIN_CFG.email);
     assert.equal(config.password, PASSWORD);
@@ -177,19 +176,7 @@ describe("resolveBootstrapConfig: environment & confirmation safety checks", () 
     );
   });
 
-  it("never falls back to MONGO_URI when --mongo-uri is supplied but empty or bare", async () => {
-    // A valid environment target must not rescue an explicitly supplied, empty flag:
-    // the validated value must be the one the operator chose, not an environment fallback.
-    for (const argv of [["--mongo-uri="], ["--mongo-uri"], ["--mongo-uri", "--expect-db=" + FIXTURE_DB]]) {
-      await assert.rejects(resolveBootstrapConfig(withEnv({}), argv), (err) => {
-        assert.ok(err instanceof BootstrapRefusal);
-        assert.match(err.message, /MONGO_URI is missing or empty/);
-        return true;
-      });
-    }
-  });
-
-  it("uses MONGO_URI only when --mongo-uri is genuinely absent", async () => {
+  it("reads the connection string from MONGO_URI (the only source, #118)", async () => {
     const config = await resolveBootstrapConfig(withEnv({}), []);
     assert.equal(config.mongoUri, FIXTURE_URI);
   });
@@ -200,10 +187,9 @@ describe("resolveBootstrapConfig: environment & confirmation safety checks", () 
     const bad = { MONGO_URI: `mongodb://127.0.0.1:27017/${FIXTURE_DB}?tls=true` };
     await assert.rejects(resolveBootstrapConfig(withEnv(bad), []), /loopback or unspecified host/);
     await assert.rejects(
-      resolveBootstrapConfig({ ADMIN_PASSWORD: PASSWORD }, [
+      resolveBootstrapConfig({ ADMIN_PASSWORD: PASSWORD, MONGO_URI: bad.MONGO_URI }, [
         "--target-env=production",
         `--confirm=${REQUIRED_CONFIRMATION}`,
-        `--mongo-uri=${bad.MONGO_URI}`,
         `--expect-db=${FIXTURE_DB}`,
         `--email=${ADMIN_CFG.email}`,
       ]),
@@ -294,29 +280,14 @@ describe("runBootstrap: the connection function is never reached on an invalid t
     assert.equal(calls.bootstrap.length, 1);
   });
 
-  it("connects with the --mongo-uri value actually validated, not an environment fallback", async () => {
+  it("connects with exactly the validated MONGO_URI, including a credential-bearing multi-host seed list", async () => {
     const { calls, deps } = spies();
-    const cliUri = `mongodb+srv://cluster.example.invalid/${FIXTURE_DB}`;
-    await runBootstrap(withEnv({ MONGO_URI: `mongodb+srv://elsewhere.example.invalid/${FIXTURE_DB}` }), [`--mongo-uri=${cliUri}`], deps);
-    assert.deepEqual(calls.connect, [cliUri]);
-  });
-
-  for (const argv of [["--mongo-uri="], ["--mongo-uri"]]) {
-    it(`never calls connect when ${argv[0]} is empty/bare, even with a valid MONGO_URI in the environment`, async () => {
-      const { calls, deps } = spies();
-      await assert.rejects(runBootstrap(withEnv({}), argv, deps), /MONGO_URI is missing or empty/);
-      assert.deepEqual(calls.connect, []);
-      assert.deepEqual(calls.bootstrap, []);
-    });
-  }
-
-  it("does not let a valid environment target rescue an invalid --mongo-uri", async () => {
-    const { calls, deps } = spies();
-    await assert.rejects(
-      runBootstrap(withEnv({}), [`--mongo-uri=mongodb://localhost/${FIXTURE_DB}?tls=true`], deps),
-      /loopback or unspecified host/,
-    );
-    assert.deepEqual(calls.connect, []);
+    const uri =
+      "mongodb://fixture_user:fixture_pass@db0.example.invalid:27017,db1.example.invalid:27017/" +
+      `${FIXTURE_DB}?tls=true&replicaSet=rs0&authSource=admin`;
+    await runBootstrap(withEnv({ MONGO_URI: uri }), [], deps);
+    assert.equal(calls.connect.length, 1);
+    assert.strictEqual(calls.connect[0], uri);
   });
 });
 
@@ -394,10 +365,10 @@ describe("bootstrap-admin CLI spawn safety", () => {
     });
   }
 
-  it("exits with status 1 on an empty --mongo-uri even though MONGO_URI is valid, before any database activity", () => {
+  it("exits with status 1 on --mongo-uri (#118) even though MONGO_URI is valid, before any database activity", () => {
     const result = runCli(FULL_ENV, ["--mongo-uri="]);
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /MONGO_URI is missing or empty/);
+    assert.match(result.stderr, /connection strings are not accepted as command-line arguments/);
     assert.doesNotMatch(result.stdout + result.stderr, /\[db\]|created ADMIN|already exists/);
     assert.ok(!(result.stdout + result.stderr).includes(PASSWORD));
   });

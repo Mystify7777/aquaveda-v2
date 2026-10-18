@@ -8,7 +8,12 @@ Role-aware Expert UI (frontend over #91) — **implemented**
 USER apply/status page, ADMIN Expert-application queue (approve/reject), role-aware nav (desktop/mobile/Learn).
 No backend change. See decision-register UI-L1–L5. (#102 production bootstrap remains deferred.)
 
-Issue #111 — bootstrap CLI orchestration and cleanup tests — **implemented**
+Issue #118 — remove credential-bearing `--mongo-uri` from the bootstrap CLI — **implemented**
+Connection string only from `MONGO_URI`; `--mongo-uri` (any spelling) and any URI-shaped argument refused (right after the `--password` refusal, before production/confirmation/target/connection checks), no env fallback,
+fixed non-echoing message (`hasCommandLineConnectionString`, BSC-L4). #109 target validation and exact-URI pass-through unchanged.
+Runbook §3/§4.4/§5.3c. Tests: `bootstrap-mongo-uri-contract.test.js` (DB-free). #111 (PR #119) is merged; this builds on its `runCli()`/`main()`.
+
+Issue #111 — bootstrap CLI orchestration and cleanup tests — **merged (PR #119)**
 `runCli()`/`main()` extracted (all boundaries injectable); cleanup awaited exactly once after any connect attempt, never replaces the
 primary error (BCO-L1–L4). Replaces unhandled `.finally(disconnectDB)`. `tests/bootstrap-cli.test.js` (37) + subprocess harness.
 
@@ -16,7 +21,7 @@ Issue #110 — secure production bootstrap credential input — **merged (PR #11
 Hidden no-echo prompt (`scripts/secret-prompt.js`, raw-mode restore on submit/Ctrl+C/EOF/stream error/SIGINT|TERM|HUP/exit),
 password entered twice; `--password` CLI flag **removed** (refused); password only via `ADMIN_PASSWORD` secret injection or hidden
 prompt; non-tool errors print name/code only (`describeFailure`); `connectDB({ redactErrors })` opt-in. Runbook §4/§6 rewritten.
-Open: `--mongo-uri` flag still exposes URI credentials in argv (kept: #109 contract) — tracked in #118; see runbook §4.4.
+Residual `--mongo-uri` argv exposure: resolved by #118 (below).
 
 Issue #89 — local ADMIN provisioning — **implemented**
 `npm run provision:admin` (loopback + `_dev` DB + explicit opt-in, fail-closed); `seed:users` removed; shared
