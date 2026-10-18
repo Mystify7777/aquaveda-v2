@@ -8,11 +8,15 @@ Role-aware Expert UI (frontend over #91) — **implemented**
 USER apply/status page, ADMIN Expert-application queue (approve/reject), role-aware nav (desktop/mobile/Learn).
 No backend change. See decision-register UI-L1–L5. (#102 production bootstrap remains deferred.)
 
-Issue #110 — secure production bootstrap credential input — **implemented (pending review/CI)**
+Issue #111 — bootstrap CLI orchestration and cleanup tests — **implemented**
+`runCli()`/`main()` extracted (all boundaries injectable); cleanup awaited exactly once after any connect attempt, never replaces the
+primary error (BCO-L1–L4). Replaces unhandled `.finally(disconnectDB)`. `tests/bootstrap-cli.test.js` (37) + subprocess harness.
+
+Issue #110 — secure production bootstrap credential input — **merged (PR #117)**
 Hidden no-echo prompt (`scripts/secret-prompt.js`, raw-mode restore on submit/Ctrl+C/EOF/stream error/SIGINT|TERM|HUP/exit),
 password entered twice; `--password` CLI flag **removed** (refused); password only via `ADMIN_PASSWORD` secret injection or hidden
 prompt; non-tool errors print name/code only (`describeFailure`); `connectDB({ redactErrors })` opt-in. Runbook §4/§6 rewritten.
-Open: `--mongo-uri` flag still exposes URI credentials in argv (kept: #109 contract) — see runbook §4.4.
+Open: `--mongo-uri` flag still exposes URI credentials in argv (kept: #109 contract) — tracked in #118; see runbook §4.4.
 
 Issue #89 — local ADMIN provisioning — **implemented**
 `npm run provision:admin` (loopback + `_dev` DB + explicit opt-in, fail-closed); `seed:users` removed; shared
