@@ -970,14 +970,27 @@ Deferred: production/staging ADMIN bootstrap (out of scope; needs its own decisi
 
 ## 🔒 Locked — Production Bootstrap Credential Input (#110)
 
-Status: implemented; pending review follow-ups and MongoDB-enabled CI. Builds on #102 (bootstrap CLI) and #109 (target validation, unchanged).
+Status: merged (PR #117). Builds on #102 (bootstrap CLI) and #109 (target validation, unchanged).
 
 | ID | Decision |
 |---|---|
 | BSC-L1 | The ADMIN password is accepted only from (a) `ADMIN_PASSWORD`/`ADMIN_BOOTSTRAP_PASSWORD` via platform secret injection or (b) a hidden TTY prompt entered twice, unmodified (no trim). `--password` is **removed** and refused before any other processing, even with an env password present. No echoing fallback exists: no TTY and no env password → refusal. Rejected alternative: keep `--password` with a documentation warning (a documented footgun is still a footgun; argv is exposed via process listings and history). |
 | BSC-L2 | Hidden input is `scripts/secret-prompt.js` (raw mode, no echo, no mask). Terminal state is restored on submit, Ctrl+C/Ctrl+D, stream error/end, external SIGINT/SIGTERM/SIGHUP, and synchronously on process `exit`. Signal contract: restore, reject, then **re-raise the same signal** so default termination semantics hold (the prompt runs before any DB connection, so nothing needs graceful teardown). Keyboard Ctrl+C is a raw byte and only rejects. `PromptAborted` carries fixed message strings only; stream error details are discarded. |
 | BSC-L3 | Operator-facing failures: `BootstrapRefusal` text is authored by the tool; any other error prints only `safeErrorTag()` (allowlisted `name`/safe-integer-or-token `code`, else fixed `Error`), never `.message`. One shared formatter (`src/config/safe-error.js`) serves the CLI and the `connectDB({ redactErrors: true })` listener (`logConnectionError`). Application runtime logging is unchanged (`redactErrors` defaults off). Triggering finding: an unreachable target previously printed the cluster hostname in two places. |
-| BSC-L4 | Residual, tracked separately: `--mongo-uri` remains (the #109 flag semantics depend on it) and exposes credential-bearing URIs in argv. Runbook forbids it in production; removal/constraint is a follow-up decision. |
+| BSC-L4 | Residual, tracked in #118: `--mongo-uri` remains (the #109 flag semantics depend on it) and exposes credential-bearing URIs in argv. Runbook forbids it in production; removal/constraint is a follow-up decision. |
+
+---
+
+## 🔒 Locked — Bootstrap CLI Orchestration and Cleanup (#111)
+
+Status: implemented; pending review and MongoDB-enabled CI. Builds on #102/#109/#110 (all behavior unchanged).
+
+| ID | Decision |
+|---|---|
+| BCO-L1 | Orchestration is `runCli()` in `scripts/bootstrap-admin.js`: config → connect → bootstrap/report → cleanup, with every boundary injectable (`connect`, `bootstrap`, `prompt`, `promptSecret`, `disconnect`, log sinks). It returns the exit code and never touches `process`; `main()` wires TTY prompts and sets `process.exitCode`. Rejected alternative: module mocking (brittle against ESM; the injection seams already existed in `runBootstrap`). |
+| BCO-L2 | Cleanup is attempted and awaited exactly once whenever a connection attempt began (including a rejecting or synchronously throwing `connect`); not called when the run was refused before any attempt. Replaces `main().catch(...).finally(() => disconnectDB())`, whose rejection was unhandled (raw, unsanitized output; could mask the primary error). |
+| BCO-L3 | Cleanup failure never replaces the primary error (primary printed first, cleanup as an additional line). A cleanup failure after a successful operation exits `1` with an explicit "completed, not rolled back, safe to re-run" message: failing visibly beats a silent resource-release failure in ops tooling, and re-running is idempotent. All failure lines use `describeFailure` (BSC-L3). |
+| BCO-L4 | Tests: `tests/bootstrap-cli.test.js` (in-process via DI plus a subprocess harness running the real `main()` with fake dependencies; no database reachable by construction). |
 
 ---
 

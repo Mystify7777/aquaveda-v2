@@ -144,6 +144,19 @@ Exit code: `1`. No `[db]` lines appear because no connection was attempted. Othe
 ```
 Exit code: `1`. The last form replaces raw driver messages, which can contain hostnames or URI fragments. Diagnose from the platform's own task logs and the error name/code, not from the CLI output.
 
+### 5.3b Cleanup Behavior and Exit Codes (#111)
+
+Closing the database connection is always attempted and awaited after a run that attempted to connect, whether it succeeded or failed. Cleanup itself can fail; a cleanup failure is reported and produces a non-zero exit code (table below). A run refused before any connection attempt (§5.3, credential and confirmation refusals) has nothing to close.
+
+| Situation | Output | Exit |
+|---|---|---|
+| Success, cleanup ok | outcome line | `0` |
+| Operation fails, cleanup ok | sanitized failure | `1` |
+| Operation fails **and** cleanup fails | sanitized primary failure first, then `cleanup also failed: ...` | `1` |
+| Operation succeeds, cleanup fails | outcome line, then `bootstrap completed, but cleanup failed: ...` | `1` |
+
+A cleanup failure never replaces the primary error. In the last row the account operation is committed and is not rolled back; re-running is idempotent. All failure text is sanitized (error name/code only).
+
 ### 5.4 Attempted Escalation of Existing USER or EXPERT
 ```text
 [bootstrap-admin] Refusing to bootstrap: admin@aquaveda.org already exists with role USER. Existing accounts are never elevated by this tool.

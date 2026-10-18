@@ -289,8 +289,117 @@ export function describeFailure(error) {
   return `unexpected failure: ${safeErrorTag(error)}. Details are withheld to avoid disclosing credentials or connection details.`;
 }
 
-async function main() {
-  const interactivePrompt = process.stdin.isTTY
+/**
+ * Prints the operator-facing outcome of a successful bootstrap.
+ */
+function reportOutcome(result, { log, warn }) {
+  if (result.outcome === "created") {
+    log(`[bootstrap-admin] created ADMIN ${result.email}`);
+  } else {
+    log(`[bootstrap-admin] ADMIN ${result.email} already exists; nothing changed`);
+    if (result.passwordMatchesConfig === false) {
+      warn(
+        "[bootstrap-admin] note: the existing password differs from supplied password " +
+          "(not modified; use authorized recovery procedures if credential rotation is needed).",
+      );
+    }
+  }
+}
+
+/**
+ * Full CLI orchestration (#111): resolve config -> connect -> bootstrap/report
+ * -> cleanup, returning the process exit code instead of touching `process`.
+ *
+ * Contract:
+ * - Cleanup (`disconnect`) is attempted and AWAITED exactly once whenever a
+ *   connection attempt was started, on success and on every failure path
+ *   (including a rejected or throwing `connect`). It is not called when the
+ *   run was refused before any connection attempt (nothing to clean up).
+ * - Cleanup never throws out of here and never replaces the primary error:
+ *   the primary failure is reported first, a cleanup failure is reported as an
+ *   additional line.
+ * - A cleanup failure after a successful operation exits non-zero (the account
+ *   operation itself is committed and idempotent; the message says so).
+ * - Every failure line goes through `describeFailure` (no raw driver text).
+ *
+ * @param {{
+ *   env?: Record<string, string | undefined>,
+ *   argv?: string[],
+ *   deps?: {
+ *     connect?: (uri: string) => Promise<unknown>,
+ *     bootstrap?: typeof bootstrapAdmin,
+ *     prompt?: ((query: string) => Promise<string>) | null,
+ *     promptSecret?: ((query: string) => Promise<string>) | null,
+ *     disconnect?: () => Promise<unknown>,
+ *   },
+ *   log?: (line: string) => void,
+ *   warn?: (line: string) => void,
+ *   error?: (line: string) => void,
+ * }} [options]
+ * @returns {Promise<0 | 1>}
+ */
+export async function runCli({
+  env = process.env,
+  argv = process.argv.slice(2),
+  deps = {},
+  log = console.log,
+  warn = console.warn,
+  error = console.error,
+} = {}) {
+  const {
+    connect = (uri) => connectDB({ uri, redactErrors: true }),
+    bootstrap = bootstrapAdmin,
+    prompt = null,
+    promptSecret = null,
+    disconnect = disconnectDB,
+  } = deps;
+
+  let connectAttempted = false;
+  let primaryFailed = false;
+
+  try {
+    const result = await runBootstrap(env, argv, {
+      connect: (uri) => {
+        connectAttempted = true;
+        return connect(uri);
+      },
+      bootstrap,
+      prompt,
+      promptSecret,
+    });
+    reportOutcome(result, { log, warn });
+  } catch (primary) {
+    primaryFailed = true;
+    error(`[bootstrap-admin] ${describeFailure(primary)}`);
+  }
+
+  let cleanupFailed = false;
+  if (connectAttempted) {
+    try {
+      await disconnect();
+    } catch (cleanup) {
+      cleanupFailed = true;
+      error(
+        primaryFailed
+          ? `[bootstrap-admin] cleanup also failed: ${describeFailure(cleanup)}`
+          : `[bootstrap-admin] bootstrap completed, but cleanup failed: ${describeFailure(cleanup)} ` +
+              "The account operation was not rolled back and is safe to re-run.",
+      );
+    }
+  }
+
+  return primaryFailed || cleanupFailed ? 1 : 0;
+}
+
+/**
+ * Process entry point: wires real TTY prompts (unless overridden) and maps the
+ * orchestration result to `process.exitCode`.
+ *
+ * @param {Parameters<typeof runCli>[0]} [options]
+ */
+export async function main(options = {}) {
+  const tty = Boolean(process.stdin.isTTY);
+  const interactivePrompt = tty
     ? async (query) => {
         const rl = readline.createInterface({ input: defaultStdin, output: defaultStdout });
         try {
@@ -300,27 +409,14 @@ async function main() {
         }
       }
     : null;
-
-  const interactiveSecretPrompt = process.stdin.isTTY
+  const interactiveSecretPrompt = tty
     ? (query) => promptHidden(query, { input: defaultStdin, output: defaultStdout })
     : null;
 
-  const result = await runBootstrap(process.env, process.argv.slice(2), {
-    prompt: interactivePrompt,
-    promptSecret: interactiveSecretPrompt,
+  process.exitCode = await runCli({
+    ...options,
+    deps: { prompt: interactivePrompt, promptSecret: interactiveSecretPrompt, ...options.deps },
   });
-
-  if (result.outcome === "created") {
-    console.log(`[bootstrap-admin] created ADMIN ${result.email}`);
-  } else {
-    console.log(`[bootstrap-admin] ADMIN ${result.email} already exists; nothing changed`);
-    if (result.passwordMatchesConfig === false) {
-      console.warn(
-        "[bootstrap-admin] note: the existing password differs from supplied password " +
-          "(not modified; use authorized recovery procedures if credential rotation is needed).",
-      );
-    }
-  }
 }
 
 // Execute when invoked directly from CLI
@@ -329,10 +425,9 @@ const isMain =
   path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
-  main()
-    .catch((error) => {
-      console.error(`[bootstrap-admin] ${describeFailure(error)}`);
-      process.exitCode = 1;
-    })
-    .finally(() => disconnectDB());
+  // Backstop for wiring failures outside runCli; cleanup lives inside runCli.
+  main().catch((error) => {
+    console.error(`[bootstrap-admin] ${describeFailure(error)}`);
+    process.exitCode = 1;
+  });
 }
