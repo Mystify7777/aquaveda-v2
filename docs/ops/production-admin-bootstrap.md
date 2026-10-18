@@ -28,7 +28,8 @@ Issue [#89](file:///d:/CODING/Next%20Js/aquaveda-v2/server/scripts/provision-adm
 6. **Deterministic Idempotency**: If the `ADMIN` account already exists, the script exits cleanly without overwriting the password, altering properties, or issuing tokens.
 7. **Zero Session Emission**: The tool issues no access tokens, refresh tokens, or active `Session` documents. The account must authenticate through standard login.
 8. **Secret Sanitation (#110)**: Passwords and password hashes are never logged, echoed to stdout/stderr, or captured in audit logs. The password is never accepted as a command-line argument (`--password` is refused), interactive entry is hidden (no echo, no mask), and any failure that is not one of the tool's own refusals prints only an error name/code, never the driver/library message (which can embed hosts, URIs or credentials).
-9. **Target Consistency Gate (#109)**: Refuses to connect unless an independently supplied expected database name exactly matches the `MONGO_URI` database, is not a development/test/E2E/system name, and the URI is a supported, TLS-capable, non-loopback format. Every check runs before any database connection is attempted. This proves *consistency*, not *identity*; see §3.1.
+9. **Connection String Only From `MONGO_URI` (#118)**: The MongoDB connection string, which normally embeds credentials, is accepted only from the `MONGO_URI` environment variable (deployment secret injection). `--mongo-uri` is removed: it and any other command-line argument that supplies or looks like a connection string are refused before anything else is processed, with no environment fallback.
+10. **Target Consistency Gate (#109)**: Refuses to connect unless an independently supplied expected database name exactly matches the `MONGO_URI` database, is not a development/test/E2E/system name, and the URI is a supported, TLS-capable, non-loopback format. Every check runs before any database connection is attempted. This proves *consistency*, not *identity*; see §3.1.
 
 ---
 
@@ -36,7 +37,7 @@ Issue [#89](file:///d:/CODING/Next%20Js/aquaveda-v2/server/scripts/provision-adm
 
 Before executing the bootstrap tool, ensure you have:
 
-1. **Target Database URI**: The production MongoDB connection string (`MONGO_URI`).
+1. **Target Database URI**: The production MongoDB connection string, supplied **only** as the `MONGO_URI` environment variable (platform secret injection, §4.4). It is never passed as a command-line argument.
 2. **Administrator Identity**: The designated admin email address (e.g. `admin@aquaveda.org`).
 3. **High-Entropy Credential**: A strong, randomly generated password meeting the minimum 8-character policy (recommendation: 24+ characters generated in a password manager). Generate it where it is stored; do not paste it into a command line.
 4. **Confirmation Token**: `CONFIRM-PRODUCTION-BOOTSTRAP`.
@@ -48,7 +49,7 @@ All rules are evaluated by `server/scripts/bootstrap-target.js` before the CLI i
 
 | # | Rule | Refused examples (placeholders) |
 |---|---|---|
-| 1 | An expected database name is mandatory (`--expect-db` / `BOOTSTRAP_EXPECTED_DB`). For both `--expect-db` and `--mongo-uri`, a flag that is supplied but empty or bare is refused and never falls back to the environment variable; the environment is used only when the flag is absent. | missing, `""`, `--expect-db` with no value, `--mongo-uri=` while `MONGO_URI` is set |
+| 1 | An expected database name is mandatory (`--expect-db` / `BOOTSTRAP_EXPECTED_DB`). For `--expect-db`, a flag that is supplied but empty or bare is refused and never falls back to the environment variable; the environment is used only when the flag is absent. (The connection string has no flag; see §4.4.) | missing, `""`, `--expect-db` with no value |
 | 2 | `MONGO_URI` must use `mongodb+srv://` or `mongodb://` and be well formed: no whitespace, valid host entries and ports, no unix-socket hosts. `mongodb+srv://` requires exactly one host and no port. | `http://...`, `mongodb+srv://`, `mongodb://<host>:70000/<db>` |
 | 3 | The URI must name a database. | `mongodb+srv://<host>/`, `mongodb+srv://<host>/?retryWrites=true` |
 | 4 | The URI database must equal the expected name **exactly** (case-sensitive, no trimming). | `<db>` vs `<Db>`, `<db>` vs `<db> ` |
@@ -105,9 +106,14 @@ Confirm ADMIN_PASSWORD (input hidden):
 
 When no TTY exists, configure `ADMIN_PASSWORD` (and `MONGO_URI`) as secrets in the platform's secret store, scoped to this one-off task, and set the remaining non-secret values (`NODE_ENV`, `CONFIRM_PRODUCTION_BOOTSTRAP`, `ADMIN_EMAIL`, `BOOTSTRAP_EXPECTED_DB`) as ordinary task variables. Remove the secrets from the task configuration after the run.
 
-### 4.4 Known residual: connection string in `--mongo-uri`
+### 4.4 Connection string: `MONGO_URI` only (#118)
 
-`--mongo-uri` still exists (the #109 target-validation contract depends on its flag semantics). If the URI carries credentials, passing it as a flag exposes them in process listings and history exactly like `--password` did. **Do not use `--mongo-uri` in production; supply `MONGO_URI` through secret injection.** Removing or constraining the flag is a separate decision tracked outside #110.
+The connection string is read **only** from the `MONGO_URI` environment variable. It usually embeds database credentials, so it must never appear in argv, where it would be visible in process listings and persisted in shell history and platform audit logs.
+
+- **Refused:** `--mongo-uri` in every spelling (`--mongo-uri`, `--mongo-uri=`, `--mongo-uri=<uri>`, `--mongo-uri <uri>`, `-mongo-uri`, `--mongo_uri`, `--mongoUri`, `--uri`, `--mongo-url`, ...) and any argument that starts with `mongodb://` or `mongodb+srv://` (positional, or as another flag's value). The refusal happens immediately after the `--password` refusal, before the production-intent, confirmation, target and connection checks, exits `1`, performs no database activity, and its message never contains the offending text. A valid `MONGO_URI` in the environment does **not** rescue a refused invocation; remove the argument and rerun.
+- **Supply `MONGO_URI` through the platform's secret injection** (§4.3), scoped to this one-off task and removed afterwards. For an interactive run, the platform's secret store or your vault tooling should populate the variable without the literal appearing in a typed command; do not `export MONGO_URI=mongodb+srv://user:pass@...` by hand (the literal is recorded by the shell, see §6).
+- **Residual exposure:** environment variables are readable by the same OS user and root (`/proc/<pid>/environ`) and by anyone who can read the platform's task definition. Mitigate with a database user scoped to this database and to the minimum privilege this tool needs, created for the bootstrap and rotated or removed afterwards.
+- A missing, empty or invalid `MONGO_URI` fails closed (`MONGO_URI is missing or empty`, or a §3.1 refusal) before any connection attempt.
 
 ---
 
@@ -134,6 +140,12 @@ Exit code: `0`
 [bootstrap-admin] Refusing to bootstrap: MONGO_URI database "<uri_db>" does not match the expected database "<expected_db>" (exact, case-sensitive match required).
 ```
 Exit code: `1`. No `[db]` lines appear because no connection was attempted. Other refusals read, for example: `the expected database name is required`, `MONGO_URI scheme is not supported`, `MONGO_URI has no database name`, `... contains the development/test marker "dev"`, `MONGO_URI targets a loopback or unspecified host`, `MONGO_URI uses "mongodb://" without "tls=true"`.
+
+### 5.3c Refused Command-Line Connection String (#118)
+```text
+[bootstrap-admin] Refusing to bootstrap: MongoDB connection strings are not accepted as command-line arguments (--mongo-uri or otherwise) because arguments are visible in process listings and shell history and the string may contain credentials. Provide it through the MONGO_URI environment variable (deployment secret injection).
+```
+Exit code: `1`. No `[db]` lines appear. The same message is printed for every spelling; the argument itself is never echoed. If you typed a credential-bearing connection string into a command line, treat those credentials as exposed and rotate them.
 
 ### 5.3a Refused or Failed Credential Input (#110)
 ```text

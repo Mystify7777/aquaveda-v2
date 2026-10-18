@@ -970,20 +970,20 @@ Deferred: production/staging ADMIN bootstrap (out of scope; needs its own decisi
 
 ## 🔒 Locked — Production Bootstrap Credential Input (#110)
 
-Status: merged (PR #117). Builds on #102 (bootstrap CLI) and #109 (target validation, unchanged).
+Status: merged (PR #117); BSC-L4 resolved by #118. Builds on #102 (bootstrap CLI) and #109 (target validation, unchanged).
 
 | ID | Decision |
 |---|---|
 | BSC-L1 | The ADMIN password is accepted only from (a) `ADMIN_PASSWORD`/`ADMIN_BOOTSTRAP_PASSWORD` via platform secret injection or (b) a hidden TTY prompt entered twice, unmodified (no trim). `--password` is **removed** and refused before any other processing, even with an env password present. No echoing fallback exists: no TTY and no env password → refusal. Rejected alternative: keep `--password` with a documentation warning (a documented footgun is still a footgun; argv is exposed via process listings and history). |
 | BSC-L2 | Hidden input is `scripts/secret-prompt.js` (raw mode, no echo, no mask). Terminal state is restored on submit, Ctrl+C/Ctrl+D, stream error/end, external SIGINT/SIGTERM/SIGHUP, and synchronously on process `exit`. Signal contract: restore, reject, then **re-raise the same signal** so default termination semantics hold (the prompt runs before any DB connection, so nothing needs graceful teardown). Keyboard Ctrl+C is a raw byte and only rejects. `PromptAborted` carries fixed message strings only; stream error details are discarded. |
 | BSC-L3 | Operator-facing failures: `BootstrapRefusal` text is authored by the tool; any other error prints only `safeErrorTag()` (allowlisted `name`/safe-integer-or-token `code`, else fixed `Error`), never `.message`. One shared formatter (`src/config/safe-error.js`) serves the CLI and the `connectDB({ redactErrors: true })` listener (`logConnectionError`). Application runtime logging is unchanged (`redactErrors` defaults off). Triggering finding: an unreachable target previously printed the cluster hostname in two places. |
-| BSC-L4 | Residual, tracked in #118: `--mongo-uri` remains (the #109 flag semantics depend on it) and exposes credential-bearing URIs in argv. Runbook forbids it in production; removal/constraint is a follow-up decision. |
+| BSC-L4 | **Resolved in #118:** the connection string is read only from `MONGO_URI`. `--mongo-uri` is removed. Any argv token that names a connection string (`--mongo-uri` in any spelling/case/dash/underscore form, `--uri`, `--mongo-url`, ...), with or without a value, or that looks like one (starts with `mongodb://` / `mongodb+srv://`, positional or as another flag's value) is refused by `hasCommandLineConnectionString()` immediately after the existing `--password` refusal, i.e. before the production-intent, confirmation, target and connection steps and before `MONGO_URI` is read, so there is no environment fallback and no prompt. The refusal text is fixed and never echoes argv. #109 is otherwise unchanged: expected-DB gate, TLS/loopback/dev-name rules, exact validated string passed to `connectDB({ uri })`; `--expect-db` keeps flag-over-env semantics. Rejected alternative: keep the flag but refuse credential-bearing values (still trains operators to put URIs in argv and cannot detect credentials delivered by other means). Residual: `MONGO_URI` in the process environment (documented in runbook §4.4). |
 
 ---
 
 ## 🔒 Locked — Bootstrap CLI Orchestration and Cleanup (#111)
 
-Status: implemented; pending review and MongoDB-enabled CI. Builds on #102/#109/#110 (all behavior unchanged).
+Status: merged (PR #119). Builds on #102/#109/#110 (all behavior unchanged).
 
 | ID | Decision |
 |---|---|

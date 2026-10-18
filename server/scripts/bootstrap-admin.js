@@ -9,6 +9,9 @@
  * Security & Guardrails:
  * - Requires explicit production target (NODE_ENV=production or --target-env=production).
  * - Requires manual string confirmation (CONFIRM-PRODUCTION-BOOTSTRAP).
+ * - The connection string comes ONLY from the MONGO_URI environment variable
+ *   (#118). It may embed database credentials, so it is never accepted on the
+ *   command line (`--mongo-uri` and any URI-shaped argument are refused).
  * - Requires an independently supplied expected database name (--expect-db /
  *   BOOTSTRAP_EXPECTED_DB) that exactly matches the MONGO_URI database, is not a
  *   dev/test/E2E/system name, and a TLS-capable, non-loopback URI (#109). All of
@@ -78,6 +81,34 @@ export function parseArgs(argv = []) {
 }
 
 /**
+ * Key shapes that name a connection string, after lowercasing and removing `-`
+ * and `_`: --mongo-uri, --mongo_uri, --mongoUri, --MONGO-URI, --mongodb-uri,
+ * --uri, --mongo-url, ... A single leading dash is tolerated.
+ */
+const URI_FLAG_KEY = /^(mongo|mongodb)?(uri|url)$/;
+/** A MongoDB connection string anywhere an argument or flag value starts with one. */
+const URI_SHAPED_ARG = /^(?:--?[^=\s]*=)?\s*mongodb(?:\+srv)?:\/\//i;
+
+/**
+ * True when argv attempts to supply a MongoDB connection string: a URI-named
+ * flag in any spelling (with, without, or with an empty value) or any argument
+ * that looks like a connection string, including a positional one. Inspects raw
+ * argv, so it does not depend on how parseArgs would have consumed the tokens.
+ * The offending text is never echoed.
+ *
+ * @param {string[]} argv
+ */
+export function hasCommandLineConnectionString(argv = []) {
+  return argv.some((arg) => {
+    if (typeof arg !== "string") return false;
+    if (URI_SHAPED_ARG.test(arg)) return true;
+    const m = /^--?([^=]*)(?:=|$)/.exec(arg);
+    if (!m) return false;
+    return URI_FLAG_KEY.test(m[1].toLowerCase().replace(/[-_]/g, ""));
+  });
+}
+
+/**
  * Resolves and validates bootstrap configuration. Pure validation: fails closed
  * before any database connection attempt.
  *
@@ -107,6 +138,21 @@ export async function resolveBootstrapConfig(
     );
   }
 
+  // 0b. Connection strings are not accepted on the command line (#118). They
+  // can embed credentials and argv is visible in process listings and shell
+  // history. Checked immediately after the --password refusal and before the
+  // production-intent, confirmation, target and connection steps, and before MONGO_URI is read,
+  // so an unsupported flag can never be "rescued" by an environment fallback,
+  // and the value (if any) is never processed or echoed.
+  if (hasCommandLineConnectionString(argv)) {
+    throw new BootstrapRefusal(
+      "Refusing to bootstrap: MongoDB connection strings are not accepted as command-line arguments " +
+        "(--mongo-uri or otherwise) because arguments are visible in process listings and shell history " +
+        "and the string may contain credentials. Provide it through the MONGO_URI environment variable " +
+        "(deployment secret injection).",
+    );
+  }
+
   // 1. Environment check: require explicit production intent
   const targetEnv = flags["target-env"] || env.TARGET_ENV || env.NODE_ENV;
   if (targetEnv !== "production") {
@@ -129,12 +175,13 @@ export async function resolveBootstrapConfig(
 
   // 3. Database target validation (#109). Independent of NODE_ENV, the
   // production-intent flag and the confirmation above: it only looks at the URI
-  // and the separately supplied expected database name. For BOTH `--mongo-uri`
-  // and `--expect-db`, a flag that was supplied but is empty or bare (boolean)
-  // is passed through and refused; it never silently falls back to the
-  // environment variable. The environment is consulted only when the flag is
-  // genuinely absent, so the value validated is always the one the operator chose.
-  const rawMongoUri = flags["mongo-uri"] !== undefined ? flags["mongo-uri"] : env.MONGO_URI;
+  // and the separately supplied expected database name. The connection string
+  // is read ONLY from MONGO_URI (#118). For `--expect-db`, a flag that was
+  // supplied but is empty or bare (boolean) is passed through and refused; it
+  // never silently falls back to BOOTSTRAP_EXPECTED_DB. The environment is
+  // consulted only when the flag is genuinely absent, so the value validated is
+  // always the one the operator chose.
+  const rawMongoUri = env.MONGO_URI;
   if (!rawMongoUri || typeof rawMongoUri !== "string" || !rawMongoUri.trim()) {
     throw new BootstrapRefusal("Refusing to bootstrap: MONGO_URI is missing or empty.");
   }
