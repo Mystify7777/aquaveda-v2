@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { connectDB, disconnectDB } from "../../src/config/db.js";
+import { assertTestDatabaseSeparation } from "../../src/config/env.js";
 import { Issue } from "../../src/models/Issue.js";
 import { Knowledge } from "../../src/models/Knowledge.js";
 import { Comment } from "../../src/models/Comment.js";
@@ -46,16 +47,7 @@ export async function setupTestDb() {
     process.env.TEST_MONGO_URI = _memoryServer.getUri();
   }
 
-  if (
-    process.env.TEST_MONGO_URI &&
-    process.env.MONGO_URI &&
-    process.env.TEST_MONGO_URI === process.env.MONGO_URI
-  ) {
-    throw new Error(
-      "TEST_MONGO_URI must not be the same as MONGO_URI — refusing to " +
-        "run tests against the development database."
-    );
-  }
+  assertTestDatabaseSeparation(process.env.TEST_MONGO_URI, process.env.MONGO_URI);
 
   await connectDB({ envVar: "TEST_MONGO_URI" });
 }
