@@ -1,7 +1,16 @@
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 
-import { getRequiredEnv } from "../config/env.js";
+import {
+  getRequiredEnv,
+  getAccessSecret,
+  getRefreshSecret,
+  parseDurationToMs,
+  DEFAULT_ACCESS_TOKEN_EXPIRES,
+  DEFAULT_REFRESH_TOKEN_EXPIRES,
+} from "../config/env.js";
+
+export { parseDurationToMs };
 
 /**
  * Authentication token and credential utilities.
@@ -237,8 +246,8 @@ export async function verifyPassword(plaintext, stored) {
 // fail-clearly-at-point-of-use pattern rather than failing at import
 // time.
 
-const ACCESS_TOKEN_EXPIRES_DEFAULT = "15m";
-const REFRESH_TOKEN_EXPIRES_DEFAULT = "7d";
+const ACCESS_TOKEN_EXPIRES_DEFAULT = DEFAULT_ACCESS_TOKEN_EXPIRES;
+const REFRESH_TOKEN_EXPIRES_DEFAULT = DEFAULT_REFRESH_TOKEN_EXPIRES;
 
 function getAccessExpires() {
   return process.env.JWT_ACCESS_EXPIRES || ACCESS_TOKEN_EXPIRES_DEFAULT;
@@ -246,44 +255,6 @@ function getAccessExpires() {
 
 function getRefreshExpires() {
   return process.env.JWT_REFRESH_EXPIRES || REFRESH_TOKEN_EXPIRES_DEFAULT;
-}
-
-/**
- * Parses a duration string in the limited form this project actually
- * uses (`JWT_ACCESS_EXPIRES`/`JWT_REFRESH_EXPIRES`, e.g. "15m", "7d")
- * into a millisecond count.
- *
- * Phase F review correction: this used to be duplicated as a private
- * regex inside `auth.service.js`'s own `refreshExpiryDate()` helper.
- * Having two independent parsers for the same env-var format is exactly
- * the kind of silent-drift risk this project has been careful to avoid
- * elsewhere — access JWT lifetime, refresh JWT lifetime, `Session.
- * expiresAt`, and (as of Phase F) cookie `maxAge` must all derive from
- * ONE parsing implementation, not three independently-written regexes
- * that could quietly diverge if one is ever tweaked and the others
- * aren't. This is now the single shared implementation; `auth.
- * service.js` imports it instead of defining its own copy.
- *
- * Deliberately minimal — not a general-purpose duration library. Only
- * supports exactly the forms this project's env vars actually use
- * (an integer followed by s/m/h/d), and throws clearly on anything
- * else rather than silently guessing.
- *
- * @param {string} duration
- * @returns {number} milliseconds
- */
-export function parseDurationToMs(duration) {
-  const match = /^(\d+)([smhd])$/.exec(duration);
-  if (!match) {
-    throw new Error(
-      `Unrecognized duration format: "${duration}". Expected a number ` +
-        'followed by s/m/h/d, e.g. "7d".'
-    );
-  }
-  const [, amountStr, unit] = match;
-  const amount = Number(amountStr);
-  const unitMs = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[unit];
-  return amount * unitMs;
 }
 
 /**
@@ -307,14 +278,6 @@ export function getAccessTokenLifetimeMs() {
  */
 export function getRefreshTokenLifetimeMs() {
   return parseDurationToMs(getRefreshExpires());
-}
-
-function getAccessSecret() {
-  return getRequiredEnv("JWT_ACCESS_SECRET");
-}
-
-function getRefreshSecret() {
-  return getRequiredEnv("JWT_REFRESH_SECRET");
 }
 
 /**
