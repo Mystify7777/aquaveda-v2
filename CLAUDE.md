@@ -4,6 +4,11 @@
 
 ## Current Milestone
 
+Expert application details — **backend implemented (pending review and real-MongoDB CI); frontend not started**
+Strict submission on the `->pending` history entry, server-hashed acknowledgement, revision-pinned atomic decisions, required reject note,
+shared pure domain module, apply rate limit (EXP-L9–L15; design doc). BREAKING: apply body, approve/reject `{ revision, note }`; the
+current frontend API client/UI does not yet send them (next phase). Taxonomy provisional.
+
 Role-aware Expert UI (frontend over #91) — **implemented**
 USER apply/status page, ADMIN Expert-application queue (approve/reject), role-aware nav (desktop/mobile/Learn).
 No backend change. See decision-register UI-L1–L5. (#102 production bootstrap remains deferred.)

@@ -994,6 +994,22 @@ Status: merged (PR #119). Builds on #102/#109/#110 (all behavior unchanged).
 
 ---
 
+## 🔒 Locked — Expert Application Details (backend; frontend pending)
+
+Design: `docs/architecture/expert-application-details-design.md`. Status: **backend implemented (this change); the frontend form, review UI, status provider and `refreshUser` are the next phase.** Extends EXP-L1–L8. Not yet verified against real MongoDB in the authoring sandbox (no `mongod`): the DB-backed tests are a merge gate.
+
+| ID | Decision |
+|---|---|
+| EXP-L9 | Apply carries a strict submission `{ expertiseAreas (1-3, fixed vocabulary), experience (80-1000 trimmed), affiliation? (<=120), references? (<=3, https, no userinfo, normalized + de-duplicated), acknowledgement: { version } }`. The empty-body contract is gone (breaking). Stored on the `-> pending` history entry as `submission` (additive, not `required` in Mongoose, no migration, legacy entries have none, ADR-0005). Each attempt keeps its own submission. The server never fetches submitted URLs. |
+| EXP-L10 | Acknowledgement (v1 wording settled: accuracy declaration + Expert-conduct commitment, so it now also attests the submission is truthful; unreleased, so re-pinned before release, frozen from first release, changes add a version): client sends only `version`; the service stores `{ version, textSha256, acceptedAt }`, hash computed server-side from the immutable text for that version (`ACKNOWLEDGEMENT_TEXTS`). A shipped text is never edited (add a version); CI pins each digest. The hash proves integrity against the retained canonical text, not what a browser rendered. |
+| EXP-L11 | Revision pinning: approve/reject require `revision` (= `history.length` the reviewer saw, integer 1..10 000). The decision is ONE atomic conditional write whose predicate (`decisionFilter`) holds role `USER`, status `pending` and `history: { $size: revision }`; a stale or lost write is a 409, never success, never retried: `STATE_RACE` when the application is still pending but its revision differs (or the atomic write matched nothing), `INVALID_STATE` when it is no longer pending (status is checked first). `revision` is 1..10 000; the 16 MiB document limit is reached long before, and an application beyond the bound is undecidable via the API (operator repair). Reviewer DTO `revision` and `submission` come from the same history array of one read. Rejected alternative: status-only guard (lets an admin approve a re-application they never saw). |
+| EXP-L12 | Decision notes (trim, then validate): reject note REQUIRED 10-500; approve note optional, when present 1-500. Enforced in request/service validation, not as a Mongoose constraint, so historical entries stay readable. |
+| EXP-L13 | One pure, import-free domain module `server/src/domain/expert-application-submission.js` holds vocabulary, limits, wording and validation; Zod only adapts it (so they cannot drift). The frontend may import it through a single re-export file (same precedent as `issue-search.js`; ADR-0002 constrains what `server/` imports, not who consumes its pure modules; the build context must include `server/src/domain/`). A test enforces zero imports. |
+| EXP-L14 | `POST /expert-application` reuses the existing IP-keyed in-memory `createRateLimiter` (10/hour/IP; per-instance). Re-apply cooldown deferred. Worst-case history growth (~13 KB per full cycle, estimate) is not domain-bounded; revisit at >50 attempts per user. |
+| EXP-L15 | Taxonomy values are **provisional** pending domain review; they are stable keys, changing them before release needs no migration (no stored data) and after release needs a migration decision. Deploy assumption: pre-release, no compatibility shim (backend first; old clients fail closed with 400). To confirm. |
+
+---
+
 ## 🔒 Locked — Role-Aware Expert UI (frontend over #91)
 
 Status: implemented; frontend suite 569/569, typecheck/lint clean, build verified with mocked Google Fonts (real build blocked only by sandbox network). No backend change. Browser smoke (Playwright) not run.

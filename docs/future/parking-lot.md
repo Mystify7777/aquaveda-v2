@@ -18,3 +18,8 @@ release that's actively looking for new scope.
 - A second domain beyond water
 - Hybrid Gemini/LLM recommendation layer (rule engine ships first,
   LLM is additive when explicitly decided)
+- Expert application: email notification of decisions (needs provider, secrets, delivery/privacy ownership; the in-app timeline ships first)
+- Expert application: withdraw or edit a pending application
+- Expert application: re-apply cooldown / abuse limits
+- Expert application: supporting document uploads
+- Expert application: queue position and applicant activity signals (approved articles, reports filed)

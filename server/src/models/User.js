@@ -1,4 +1,10 @@
 import mongoose from "mongoose";
+import {
+  AFFILIATION_MAX_LENGTH,
+  EXPERIENCE_MAX_LENGTH,
+  EXPERTISE_VALUES,
+  REFERENCE_MAX_LENGTH,
+} from "../domain/expert-application-submission.js";
 
 const { Schema } = mongoose;
 
@@ -51,6 +57,34 @@ const BIO_MAX_LENGTH = 500; // No approved document specifies this number.
 const EXPERT_APPLICATION_STATUSES = ["pending", "approved", "rejected"];
 const EXPERT_NOTE_MAX_LENGTH = 500;
 
+/**
+ * Application submission (EXP-L9+, design doc). Embedded on the `-> pending`
+ * history entry only, so each attempt keeps what was actually submitted.
+ * Deliberately NOT `required` anywhere: legacy entries have none, and the
+ * apply service (via validateSubmission) guarantees it for every new write.
+ * `acknowledgement.textSha256` is computed server-side from the retained
+ * immutable text for `version`; the client only ever supplies `version`.
+ */
+const expertSubmissionSchema = new Schema(
+  {
+    expertiseAreas: { type: [{ type: String, enum: EXPERTISE_VALUES }], default: [] },
+    experience: { type: String, maxlength: EXPERIENCE_MAX_LENGTH },
+    affiliation: { type: String, maxlength: AFFILIATION_MAX_LENGTH },
+    references: { type: [{ type: String, maxlength: REFERENCE_MAX_LENGTH }], default: [] },
+    acknowledgement: {
+      type: new Schema(
+        {
+          version: { type: Number, required: true },
+          textSha256: { type: String, required: true },
+          acceptedAt: { type: Date, required: true },
+        },
+        { _id: false },
+      ),
+    },
+  },
+  { _id: false },
+);
+
 const expertApplicationHistoryEntrySchema = new Schema(
   {
     fromStatus: {
@@ -65,6 +99,7 @@ const expertApplicationHistoryEntrySchema = new Schema(
     },
     actor: { type: Schema.Types.ObjectId, ref: "User", required: true },
     note: { type: String, trim: true, maxlength: EXPERT_NOTE_MAX_LENGTH },
+    submission: { type: expertSubmissionSchema, default: undefined },
     timestamp: { type: Date, required: true, default: Date.now },
   },
   { _id: false },

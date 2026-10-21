@@ -8,6 +8,8 @@ import { Knowledge } from "../src/models/Knowledge.js";
 import { User } from "../src/models/User.js";
 import { register } from "../src/services/auth.service.js";
 import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.js";
+import { validSubmission } from "./helpers/expert.js";
+import { defaultStore } from "../src/middleware/rate-limiter.js";
 
 /**
  * #90 — the complete authenticated Knowledge moderation journey over the
@@ -41,7 +43,10 @@ after(async () => {
   await teardownTestDb();
 });
 
-beforeEach(clearCollections);
+beforeEach(async () => {
+  defaultStore.reset(); // apply is IP rate-limited via the shared in-memory store
+  await clearCollections();
+});
 
 function request(method, path, { body, token } = {}) {
   return new Promise((resolve, reject) => {
@@ -91,8 +96,14 @@ async function makeAdmin() {
 /** A genuine EXPERT: applies over HTTP, approved by an ADMIN over HTTP. */
 async function makeExpertViaHttp(admin, name = "Expert") {
   const u = await makeUser(name);
-  assert.equal((await request("POST", "/api/v1/expert-application", { token: u.token })).status, 201);
-  const res = await request("POST", `/api/v1/expert-application/${u.id}/approve`, { token: admin.token });
+  assert.equal(
+    (await request("POST", "/api/v1/expert-application", { token: u.token, body: validSubmission() })).status,
+    201,
+  );
+  const res = await request("POST", `/api/v1/expert-application/${u.id}/approve`, {
+    token: admin.token,
+    body: { revision: 1 },
+  });
   assert.equal(res.status, 200);
   return u;
 }
@@ -219,12 +230,12 @@ describe("authority", () => {
 
     const stranger = await makeUser();
     const pendingApplicant = await makeUser();
-    await request("POST", "/api/v1/expert-application", { token: pendingApplicant.token });
+    await request("POST", "/api/v1/expert-application", { token: pendingApplicant.token, body: validSubmission() });
     const rejectedApplicant = await makeUser();
-    await request("POST", "/api/v1/expert-application", { token: rejectedApplicant.token });
+    await request("POST", "/api/v1/expert-application", { token: rejectedApplicant.token, body: validSubmission() });
     await request("POST", `/api/v1/expert-application/${rejectedApplicant.id}/reject`, {
       token: admin.token,
-      body: { note: "not yet" },
+      body: { revision: 1, note: "not yet, add more detail" },
     });
 
     for (const actor of [stranger, admin, pendingApplicant, rejectedApplicant]) {

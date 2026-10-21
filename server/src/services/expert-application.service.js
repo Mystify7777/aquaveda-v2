@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { User } from "../models/User.js";
 import {
   notFound,
@@ -8,6 +10,12 @@ import {
   DomainErrorCode,
 } from "./errors.js";
 import { requireActor, requireRole } from "./authorization.js";
+import {
+  ACKNOWLEDGEMENT_TEXTS,
+  isValidRevision,
+  validateDecisionNote,
+  validateSubmission,
+} from "../domain/expert-application-submission.js";
 
 /**
  * Expert-application domain service (#91).
@@ -28,9 +36,23 @@ import { requireActor, requireRole } from "./authorization.js";
  * write (ADR-0006), so they cannot diverge. No transaction.
  *
  * Callers never supply role, applicant, reviewer, or status: applicant
- * and reviewer identity come from `actorContext`; the only client input
- * is the target user id (approve/reject) and an optional rejection note.
+ * and reviewer identity come from `actorContext`. Client input is the
+ * application submission (apply), and the target user id + the `revision`
+ * the reviewer saw + a note (approve/reject).
+ *
+ * Submission (EXP-L9+): stored on the `-> pending` history entry, so every
+ * attempt keeps what was submitted. The acknowledgement hash is computed
+ * HERE from the retained immutable text for the submitted version; the client
+ * only supplies the version.
+ *
+ * Revision pinning (EXP-L10+): `revision` = history.length the reviewer saw.
+ * The decision write filters on it atomically (`$size`), so a decision can
+ * never land on a newer submission than the one reviewed.
  */
+
+const sha256 = (text) => createHash("sha256").update(text, "utf8").digest("hex");
+const validationFailed = (message, details) =>
+  new DomainError(DomainErrorCode.VALIDATION_FAILED, message, details);
 
 function wrapCastError(err) {
   if (err.name === "ValidationError" || err.name === "CastError") {
@@ -43,6 +65,34 @@ function wrapCastError(err) {
 
 const lastEntry = (app) => app?.history?.[app.history.length - 1];
 
+/** Latest `-> pending` entry (the submission a reviewer decides on). */
+const latestPendingEntry = (app) =>
+  [...(app?.history ?? [])].reverse().find((h) => h.toStatus === "pending");
+
+/** Client-facing submission: no hash (an internal audit fact). `null` = legacy. */
+function toSubmissionDTO(sub) {
+  if (!sub) return null;
+  return {
+    expertiseAreas: [...(sub.expertiseAreas ?? [])],
+    experience: sub.experience,
+    ...(sub.affiliation ? { affiliation: sub.affiliation } : {}),
+    references: [...(sub.references ?? [])],
+    ...(sub.acknowledgement
+      ? {
+          acknowledgement: {
+            version: sub.acknowledgement.version,
+            acceptedAt: sub.acknowledgement.acceptedAt,
+          },
+        }
+      : {}),
+  };
+}
+
+/** `submission` key only on `-> pending` entries (object, or null for legacy). */
+function entrySubmission(h) {
+  return h.toStatus === "pending" ? { submission: toSubmissionDTO(h.submission) } : {};
+}
+
 /** Applicant-facing: no reviewer identity. */
 function toApplicantDTO(user) {
   const app = user.expertApplication;
@@ -53,12 +103,20 @@ function toApplicantDTO(user) {
       fromStatus: h.fromStatus ?? null,
       toStatus: h.toStatus,
       note: h.note,
+      ...entrySubmission(h),
       timestamp: h.timestamp,
     })),
   };
 }
 
-/** Reviewer-facing: includes the actor of each transition. */
+/**
+ * Reviewer-facing: includes the actor of each transition.
+ * `revision` and `submission` are derived from the SAME history array of the
+ * SAME read, so they describe one snapshot by construction: for a pending
+ * application the last entry is always its `-> pending` entry (status changes
+ * only by appending an entry, EXP-L3), hence `revision` identifies exactly the
+ * entry whose submission is returned.
+ */
 function toReviewerDTO(user) {
   const app = user.expertApplication;
   return {
@@ -67,24 +125,35 @@ function toReviewerDTO(user) {
     bio: user.bio,
     status: app.status,
     requestedAt: lastEntry(app)?.timestamp,
+    revision: app.history.length,
+    submission: toSubmissionDTO(latestPendingEntry(app)?.submission),
     history: app.history.map((h) => ({
       fromStatus: h.fromStatus ?? null,
       toStatus: h.toStatus,
       actor: String(h.actor),
       note: h.note,
+      ...entrySubmission(h),
       timestamp: h.timestamp,
     })),
   };
 }
 
 /**
- * applyForExpert(actorContext)
+ * applyForExpert(actorContext, submissionInput)
  *
- * none | rejected -> pending. USER only.
+ * none | rejected -> pending, carrying the validated submission on the new
+ * history entry. USER only. Validation runs HERE as well as at the route so
+ * direct service callers (tests, future jobs) cannot persist an invalid one.
  */
-export async function applyForExpert(actorContext) {
+export async function applyForExpert(actorContext, submissionInput) {
   requireActor(actorContext);
   requireRole(actorContext, "USER");
+
+  const checked = validateSubmission(submissionInput);
+  if (!checked.ok) throw validationFailed("invalid expert application", { fields: checked.errors });
+  const { acknowledgement, ...submission } = checked.value;
+  const acknowledgementVersion = acknowledgement.version;
+  const now = new Date();
 
   let user;
   try {
@@ -119,7 +188,15 @@ export async function applyForExpert(actorContext) {
     fromStatus: status ?? null,
     toStatus: "pending",
     actor: actorContext.id,
-    timestamp: new Date(),
+    timestamp: now,
+    submission: {
+      ...submission,
+      acknowledgement: {
+        version: acknowledgementVersion,
+        textSha256: sha256(ACKNOWLEDGEMENT_TEXTS[acknowledgementVersion]),
+        acceptedAt: now,
+      },
+    },
   };
   const update =
     status === "rejected"
@@ -183,9 +260,29 @@ export async function listPendingExpertApplications(actorContext, { page = 1, li
   };
 }
 
-async function decide(actorContext, applicantId, decision, note) {
+/**
+ * The production decision predicate (EXP-L10+): expected status AND the exact
+ * revision (history length) in ONE query, so MongoDB evaluates both atomically
+ * with the update. Exported so tests exercise this exact shape, not a copy.
+ */
+export function decisionFilter(applicantId, revision) {
+  return {
+    _id: applicantId,
+    role: "USER",
+    "expertApplication.status": "pending",
+    "expertApplication.history": { $size: revision },
+  };
+}
+
+async function decide(actorContext, applicantId, decision, { revision, note } = {}) {
   requireActor(actorContext);
   requireRole(actorContext, "ADMIN");
+
+  if (!isValidRevision(revision)) {
+    throw validationFailed("revision must be the integer revision of the application you reviewed");
+  }
+  const checkedNote = validateDecisionNote(note, { required: decision === "reject" });
+  if (!checkedNote.ok) throw validationFailed(checkedNote.reason, { field: "note" });
 
   let target;
   try {
@@ -205,6 +302,13 @@ async function decide(actorContext, applicantId, decision, note) {
       { expected: "pending", actual: target.expertApplication.status },
     );
   }
+  // Early, readable error only. The authoritative guard is the atomic filter below.
+  if (target.expertApplication.history.length !== revision) {
+    throw stateRace("expert application changed since you reviewed it; review the latest version", {
+      expectedRevision: revision,
+      currentRevision: target.expertApplication.history.length,
+    });
+  }
 
   const approved = decision === "approve";
   const toStatus = approved ? "approved" : "rejected";
@@ -213,13 +317,16 @@ async function decide(actorContext, applicantId, decision, note) {
     toStatus,
     actor: actorContext.id,
     timestamp: new Date(),
-    ...(note ? { note } : {}),
+    ...(checkedNote.value ? { note: checkedNote.value } : {}),
   };
 
   let updated;
   try {
+    // ONE atomic conditional write: expected status AND the exact revision
+    // (history length) the reviewer saw. Zero match => STATE_RACE; never
+    // retried against a newer revision, never reported as success.
     updated = await User.findOneAndUpdate(
-      { _id: applicantId, role: "USER", "expertApplication.status": "pending" },
+      decisionFilter(applicantId, revision),
       {
         $set: {
           "expertApplication.status": toStatus,
@@ -236,13 +343,14 @@ async function decide(actorContext, applicantId, decision, note) {
 
   throw stateRace("expert application state changed concurrently; retry", {
     expected: "pending",
+    expectedRevision: revision,
   });
 }
 
-/** approveExpertApplication(actorContext, applicantId) — pending -> approved, grants EXPERT. ADMIN only. */
-export const approveExpertApplication = (actorContext, applicantId) =>
-  decide(actorContext, applicantId, "approve");
+/** approveExpertApplication(actorContext, applicantId, { revision, note? }) — pending -> approved, grants EXPERT. ADMIN only. */
+export const approveExpertApplication = (actorContext, applicantId, input) =>
+  decide(actorContext, applicantId, "approve", input);
 
-/** rejectExpertApplication(actorContext, applicantId, note?) — pending -> rejected. ADMIN only. */
-export const rejectExpertApplication = (actorContext, applicantId, note) =>
-  decide(actorContext, applicantId, "reject", note);
+/** rejectExpertApplication(actorContext, applicantId, { revision, note }) — pending -> rejected. ADMIN only. */
+export const rejectExpertApplication = (actorContext, applicantId, input) =>
+  decide(actorContext, applicantId, "reject", input);
