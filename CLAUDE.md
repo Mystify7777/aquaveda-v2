@@ -4,10 +4,10 @@
 
 ## Current Milestone
 
-Expert application details — **backend implemented (pending review and real-MongoDB CI); frontend not started**
+Expert application details — **backend and frontend implemented (pending CI and the governance E2E)**
 Strict submission on the `->pending` history entry, server-hashed acknowledgement, revision-pinned atomic decisions, required reject note,
 shared pure domain module, apply rate limit (EXP-L9–L15; design doc). BREAKING: apply body, approve/reject `{ revision, note }`; the
-current frontend API client/UI does not yet send them (next phase). Taxonomy provisional.
+frontend sends them (contract boundary `src/lib/expert/submission-contract.ts`, `ExpertStatusProvider`, `AuthProvider.refreshUser`, applicant form + timeline, admin master-detail with revision-pinned decisions, nav chips; EXP-L16–L20, UI-L4 superseded). Taxonomy provisional; E2E needs Playwright + MongoDB.
 
 Role-aware Expert UI (frontend over #91) — **implemented**
 USER apply/status page, ADMIN Expert-application queue (approve/reject), role-aware nav (desktop/mobile/Learn).
