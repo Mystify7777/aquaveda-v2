@@ -21,6 +21,20 @@ import {
 
 let seq = 0;
 
+/**
+ * A valid application submission (EXP-L9+). Override any field per test.
+ * Satisfies every domain rule: 1 area, experience >= 80 chars, ack v1.
+ */
+export function validSubmission(overrides = {}) {
+  return {
+    expertiseAreas: ["groundwater_wells"],
+    experience:
+      "Ten years of borewell recharge monitoring across three districts, including community training and quarterly reporting.",
+    acknowledgement: { version: 1 },
+    ...overrides,
+  };
+}
+
 export async function createFixtureUser(role = "USER", overrides = {}) {
   seq += 1;
   const user = await User.create({
@@ -37,8 +51,8 @@ export async function createFixtureUser(role = "USER", overrides = {}) {
 export async function provisionVerifiedExpert({ admin } = {}) {
   const reviewer = admin ?? (await createFixtureUser("ADMIN"));
   const applicant = await createFixtureUser("USER");
-  await applyForExpert(applicant.ctx);
-  await approveExpertApplication(reviewer.ctx, applicant.id);
+  const applied = await applyForExpert(applicant.ctx, validSubmission());
+  await approveExpertApplication(reviewer.ctx, applicant.id, { revision: applied.history.length });
   return {
     admin: reviewer,
     expert: { id: applicant.id, role: "EXPERT", ctx: { id: applicant.id, role: "EXPERT" } },
@@ -55,6 +69,6 @@ export async function provisionVerifiedExpert({ admin } = {}) {
 export async function promoteToExpertViaLifecycle(userId) {
   const id = String(userId);
   const admin = await createFixtureUser("ADMIN");
-  await applyForExpert({ id, role: "USER" });
-  await approveExpertApplication(admin.ctx, id);
+  const applied = await applyForExpert({ id, role: "USER" }, validSubmission());
+  await approveExpertApplication(admin.ctx, id, { revision: applied.history.length });
 }

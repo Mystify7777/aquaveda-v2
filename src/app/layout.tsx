@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
 
 import { Footer } from "@/components/layout/footer";
 import { Navbar } from "@/components/layout/navbar";
+import { ExpertStatusProvider } from "@/components/expert/expert-status-provider";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { cn } from "@/lib/utils";
@@ -60,9 +61,11 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <Navbar />
-            <main className="flex-1">{children}</main>
-            <Footer />
+            <ExpertStatusProvider>
+              <Navbar />
+              <main className="flex-1">{children}</main>
+              <Footer />
+            </ExpertStatusProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

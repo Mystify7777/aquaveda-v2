@@ -34,6 +34,16 @@ export function toExpertActionFailure(error: unknown, action: "apply" | "decide"
             : "We could not find your account. Sign in again.",
       };
     }
+    if (error.status === 429) {
+      return { kind: "other", message: "Too many attempts. Wait a while, then try again." };
+    }
+    if (error.code === "STATE_RACE" && action === "decide") {
+      // Revision pinning (EXP-L11): the application is still pending but is no longer the version the reviewer saw.
+      return {
+        kind: "stale",
+        message: "This application changed while you were reviewing it. The latest version is now shown; review it again.",
+      };
+    }
     if (error.code === "INVALID_STATE" || error.code === "STATE_RACE") {
       return {
         kind: "stale",
