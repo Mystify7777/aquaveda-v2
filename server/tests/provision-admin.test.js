@@ -11,6 +11,8 @@ import { register } from "../src/services/auth.service.js";
 import { createKnowledge, submitForReview } from "../src/services/knowledge.service.js";
 import { provisionAdmin, ProvisioningRefusal } from "../scripts/provision-admin-lib.js";
 import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.js";
+import { validSubmission } from "./helpers/expert.js";
+import { defaultStore } from "../src/middleware/rate-limiter.js";
 
 /**
  * #89 — observable behavior of ADMIN provisioning against a real database,
@@ -48,7 +50,10 @@ after(async () => {
   }
 });
 
-beforeEach(clearCollections);
+beforeEach(async () => {
+  defaultStore.reset(); // apply is IP rate-limited via the shared in-memory store
+  await clearCollections();
+});
 
 function request(method, path, { body, token } = {}) {
   return new Promise((resolve, reject) => {
@@ -184,8 +189,14 @@ describe("provisioned ADMIN works through the real auth + authorization path", (
       password: "applicant-passphrase-1",
     });
     const applicantId = String(user.id);
-    assert.equal((await request("POST", "/api/v1/expert-application", { token: accessToken })).status, 201);
-    const res = await request("POST", `/api/v1/expert-application/${applicantId}/approve`, { token: adminToken });
+    assert.equal(
+      (await request("POST", "/api/v1/expert-application", { token: accessToken, body: validSubmission() })).status,
+      201,
+    );
+    const res = await request("POST", `/api/v1/expert-application/${applicantId}/approve`, {
+      token: adminToken,
+      body: { revision: 1 },
+    });
     assert.equal(res.status, 200);
     assert.equal((await User.findById(applicantId).lean()).role, "EXPERT");
   });

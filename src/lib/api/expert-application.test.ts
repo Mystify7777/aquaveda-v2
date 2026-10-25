@@ -28,13 +28,19 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("expert-application API wrappers", () => {
-  it("applyForExpert: POST with NO body — no role, applicant, or status can be sent", async () => {
+  it("applyForExpert: POST of the strict submission as JSON; credentials included; nothing but the submission is sent", async () => {
     mockFetchOnce({ status: "pending", history: [] });
-    await applyForExpert();
+    const submission = {
+      expertiseAreas: ["groundwater_wells"],
+      experience: "x".repeat(80),
+      acknowledgement: { version: 1 },
+    };
+    await applyForExpert(submission);
     const { url, init } = lastCall();
     expect(url).toBe("https://api.aquaveda.com/api/v1/expert-application");
     expect(init.method).toBe("POST");
-    expect(init.body).toBeUndefined();
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
+    expect(JSON.parse(String(init.body))).toEqual(submission);
     expect(init.credentials).toBe("include");
   });
 
@@ -52,30 +58,30 @@ describe("expert-application API wrappers", () => {
     expect(lastCall().url).toBe("https://api.aquaveda.com/api/v1/expert-application?page=2");
   });
 
-  it("approve: POST to the named applicant's approve route, no body", async () => {
+  it("approve: POST to the named applicant's route with the revision; note only when given", async () => {
     mockFetchOnce({ userId: "u1", status: "approved" });
-    await approveExpertApplication("507f1f77bcf86cd799439011");
+    await approveExpertApplication("507f1f77bcf86cd799439011", { revision: 3 });
     const { url, init } = lastCall();
     expect(url).toBe("https://api.aquaveda.com/api/v1/expert-application/507f1f77bcf86cd799439011/approve");
     expect(init.method).toBe("POST");
-    expect(init.body).toBeUndefined();
+    expect(JSON.parse(String(init.body))).toEqual({ revision: 3 });
+
+    mockFetchOnce({ userId: "u1", status: "approved" });
+    await approveExpertApplication("u1", { revision: 3, note: "Welcome aboard" });
+    expect(JSON.parse(String(lastCall().init.body))).toEqual({ revision: 3, note: "Welcome aboard" });
   });
 
-  it("reject: sends only { note } when given, else an empty object — never a role/status", async () => {
+  it("reject: sends exactly { revision, note } — never a role/status", async () => {
     mockFetchOnce({ userId: "u1", status: "rejected" });
-    await rejectExpertApplication("u1", "needs detail");
+    await rejectExpertApplication("u1", { revision: 2, note: "needs more detail" });
     expect(lastCall().url).toBe("https://api.aquaveda.com/api/v1/expert-application/u1/reject");
-    expect(JSON.parse(String(lastCall().init.body))).toEqual({ note: "needs detail" });
+    expect(JSON.parse(String(lastCall().init.body))).toEqual({ revision: 2, note: "needs more detail" });
     expect(new Headers(lastCall().init.headers).get("Content-Type")).toBe("application/json");
-
-    mockFetchOnce({ userId: "u1", status: "rejected" });
-    await rejectExpertApplication("u1");
-    expect(JSON.parse(String((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body))).toEqual({});
   });
 
   it("encodes the applicant id path segment", async () => {
     mockFetchOnce({ userId: "x", status: "approved" });
-    await approveExpertApplication("a/b?c");
+    await approveExpertApplication("a/b?c", { revision: 1 });
     expect(lastCall().url).toContain("/a%2Fb%3Fc/approve");
   });
 });

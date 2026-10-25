@@ -25,6 +25,15 @@ type AuthContextValue = {
     login: typeof loginRequest;
     register: typeof registerRequest;
     logout: () => Promise<void>;
+    /**
+     * Re-read the signed-in user from the authoritative `/auth/me` (fresh role
+     * per EXP-L7) into provider state, e.g. after an Expert approval changed the
+     * role. No token rotation and no reload. Resolves the new user, or `null`
+     * when the read failed or was superseded by a login/logout/account switch
+     * (state is then left exactly as it was; session failures are handled by
+     * the normal initialization path, not here).
+     */
+    refreshUser: () => Promise<AuthUser | null>;
 };
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
@@ -69,6 +78,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     }, []);
 
+    const refreshUser = React.useCallback(async () => {
+        const generation = requestGeneration.current;
+        try {
+            const nextUser = await getCurrentUser();
+            if (!nextUser || generation !== requestGeneration.current) return null;
+            return setAuthenticated(nextUser);
+        } catch {
+            return null;
+        }
+    }, [setAuthenticated]);
+
     React.useEffect(() => {
         let active = true;
         const initializationGeneration = requestGeneration.current;
@@ -98,8 +118,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [setAuthenticated]);
 
     const value = React.useMemo(
-        () => ({ status, user, login, register, logout }),
-        [status, user, login, register, logout],
+        () => ({ status, user, login, register, logout, refreshUser }),
+        [status, user, login, register, logout, refreshUser],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

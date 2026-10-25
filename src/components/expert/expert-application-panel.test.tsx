@@ -3,198 +3,288 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ExpertApplicationPanel } from "@/components/expert/expert-application-panel";
+import { ExpertStatusProvider } from "@/components/expert/expert-status-provider";
 import { ApiError } from "@/lib/api/client";
-import type { MyExpertApplication } from "@/lib/api/types/expert-application";
+import type { ExpertSubmission, MyExpertApplication } from "@/lib/api/types/expert-application";
 
 const mockApply = vi.fn();
 const mockMine = vi.fn();
+const mockList = vi.fn();
 vi.mock("@/lib/api/expert-application", () => ({
-  applyForExpert: () => mockApply(),
+  applyForExpert: (r: unknown) => mockApply(r),
   getMyExpertApplication: () => mockMine(),
+  getPendingExpertApplications: (q: unknown) => mockList(q),
 }));
 const mockUseAuth = vi.fn();
 vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => mockUseAuth() }));
+const mockRefreshUser = vi.fn();
 
-const as = (role: string) => mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role } });
+const as = (role: string) =>
+  mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role }, refreshUser: mockRefreshUser });
+
+const EXPERIENCE = "Ten years of borewell recharge monitoring across three districts, with community training.";
+const sub = (over: Partial<ExpertSubmission> = {}): ExpertSubmission => ({
+  expertiseAreas: ["groundwater_wells"],
+  experience: EXPERIENCE,
+  references: ["https://example.org/a"],
+  acknowledgement: { version: 1, acceptedAt: "2026-03-05T10:00:00.000Z" },
+  ...over,
+});
 const none: MyExpertApplication = { status: "none", history: [] };
-const pending: MyExpertApplication = {
+const pendingApp = (submission: ExpertSubmission | null = sub()): MyExpertApplication => ({
   status: "pending",
-  history: [{ fromStatus: null, toStatus: "pending", timestamp: "2026-03-05T10:00:00.000Z" }],
-};
-const rejected: MyExpertApplication = {
+  history: [{ fromStatus: null, toStatus: "pending", submission, timestamp: "2026-03-05T10:00:00.000Z" }],
+});
+const rejectedApp: MyExpertApplication = {
   status: "rejected",
   history: [
-    { fromStatus: null, toStatus: "pending", timestamp: "2026-03-05T10:00:00.000Z" },
+    { fromStatus: null, toStatus: "pending", submission: sub(), timestamp: "2026-03-05T10:00:00.000Z" },
     { fromStatus: "pending", toStatus: "rejected", note: "Add more detail", timestamp: "2026-03-06T10:00:00.000Z" },
   ],
 };
-const approved: MyExpertApplication = {
+const approvedApp: MyExpertApplication = {
   status: "approved",
   history: [
-    { fromStatus: null, toStatus: "pending", timestamp: "2026-03-05T10:00:00.000Z" },
+    { fromStatus: null, toStatus: "pending", submission: sub(), timestamp: "2026-03-05T10:00:00.000Z" },
     { fromStatus: "pending", toStatus: "approved", timestamp: "2026-03-06T10:00:00.000Z" },
   ],
 };
-const apiError = (status: number, code: string, message = "x") => new ApiError(message, "http", status, code);
+
+const ui = () => (
+  <ExpertStatusProvider>
+    <ExpertApplicationPanel />
+  </ExpertStatusProvider>
+);
+
+async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>, label = /^submit application/i) {
+  await user.click(screen.getByRole("checkbox", { name: /groundwater and wells/i }));
+  await user.type(screen.getByLabelText(/what have you worked on/i), EXPERIENCE);
+  await user.click(screen.getByRole("checkbox", { name: /i confirm that the information/i }));
+  await user.click(screen.getByRole("button", { name: label }));
+}
 
 beforeEach(() => {
   mockApply.mockReset();
   mockMine.mockReset();
+  mockList.mockReset();
   mockUseAuth.mockReset();
+  mockRefreshUser.mockReset();
+  mockRefreshUser.mockResolvedValue({ id: "u1", role: "EXPERT" });
 });
 
-describe("ExpertApplicationPanel — USER applies", () => {
-  it("shows a loading status, then the Apply action for a USER who has not applied", async () => {
+describe("loading and load failure", () => {
+  it("shows a loading status first", () => {
     as("USER");
-    mockMine.mockResolvedValue(none);
-    render(<ExpertApplicationPanel />);
-    expect(screen.getByRole("status")).toHaveTextContent("Loading your application...");
-    expect(await screen.findByRole("button", { name: "Apply to become an Expert" })).toBeEnabled();
-    expect(screen.getByText("Not applied")).toBeInTheDocument();
+    mockMine.mockReturnValue(new Promise(() => {}));
+    render(ui());
+    expect(screen.getByRole("status")).toHaveTextContent(/loading your application/i);
   });
 
-  it("submits once and switches to the pending state with history", async () => {
+  it("a load failure is a retryable alert; retry re-reads; 401 offers sign-in", async () => {
     as("USER");
-    mockMine.mockResolvedValue(none);
-    mockApply.mockResolvedValue(pending);
-    render(<ExpertApplicationPanel />);
-    await userEvent.click(await screen.findByRole("button", { name: "Apply to become an Expert" }));
-    expect(await screen.findByText("Pending review")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/awaiting review/i);
-    expect(screen.queryByRole("button", { name: /apply/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Application history" })).toHaveTextContent("Pending review");
-    expect(mockApply).toHaveBeenCalledTimes(1);
+    mockMine.mockRejectedValueOnce(new ApiError("down", "network"));
+    const user = userEvent.setup();
+    render(ui());
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    mockMine.mockResolvedValueOnce(none);
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+    expect(await screen.findByRole("button", { name: /submit application/i })).toBeInTheDocument();
   });
 
-  it("a double click sends exactly one request and disables the button while in flight", async () => {
+  it("an expired session offers sign-in", async () => {
     as("USER");
-    mockMine.mockResolvedValue(none);
-    let resolve!: (v: MyExpertApplication) => void;
-    mockApply.mockReturnValue(new Promise<MyExpertApplication>((r) => (resolve = r)));
-    render(<ExpertApplicationPanel />);
-    const button = await screen.findByRole("button", { name: "Apply to become an Expert" });
-    await userEvent.dblClick(button);
-    expect(mockApply).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole("button", { name: "Submitting..." })).toBeDisabled();
-    resolve(pending);
-    expect(await screen.findByText("Pending review")).toBeInTheDocument();
-    expect(mockApply).toHaveBeenCalledTimes(1);
-  });
-
-  it("an existing pending application shows status, no Apply button", async () => {
-    as("USER");
-    mockMine.mockResolvedValue(pending);
-    render(<ExpertApplicationPanel />);
-    expect(await screen.findByText("Pending review")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /apply/i })).not.toBeInTheDocument();
-  });
-
-  it("rejected: shows the reviewer note and allows applying again", async () => {
-    as("USER");
-    mockMine.mockResolvedValue(rejected);
-    mockApply.mockResolvedValue({ ...pending, history: [...rejected.history, { fromStatus: "rejected", toStatus: "pending", timestamp: "2026-03-07T10:00:00.000Z" }] });
-    render(<ExpertApplicationPanel />);
-    expect(await screen.findByText(/Your application was not approved/)).toBeInTheDocument();
-    expect(screen.getByText(/Reviewer note:/)).toHaveTextContent("Add more detail");
-    expect(screen.getByRole("region", { name: "Application history" })).toHaveTextContent("Rejected");
-    await userEvent.click(screen.getByRole("button", { name: "Apply again" }));
-    expect(await screen.findByText("Pending review")).toBeInTheDocument();
-    expect(mockApply).toHaveBeenCalledTimes(1);
+    mockMine.mockRejectedValue(new ApiError("x", "http", 401));
+    render(ui());
+    expect(await screen.findByRole("link", { name: /sign in/i })).toHaveAttribute("href", "/auth/login");
   });
 });
 
-describe("ExpertApplicationPanel — status for other situations", () => {
-  it("approved EXPERT: confirmation and a link to the Knowledge review queue", async () => {
+describe("never applied", () => {
+  it("explains what Experts do and what approval grants, then shows the form", async () => {
+    as("USER");
+    mockMine.mockResolvedValue(none);
+    render(ui());
+    expect(await screen.findByText(/Experts review the Knowledge articles/i)).toBeInTheDocument();
+    expect(screen.getByText(/not administrator powers/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/not shown publicly/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /submit application/i })).toBeInTheDocument();
+  });
+
+  it("an invalid form sends nothing; a valid one sends the contract request and then shows pending with the submission and timeline", async () => {
+    as("USER");
+    mockMine.mockResolvedValue(none);
+    const user = userEvent.setup();
+    render(ui());
+    await user.click(await screen.findByRole("button", { name: /submit application/i }));
+    expect(mockApply).not.toHaveBeenCalled();
+
+    mockApply.mockResolvedValue(pendingApp());
+    await fillAndSubmit(user);
+    expect(mockApply).toHaveBeenCalledTimes(1);
+    expect(mockApply).toHaveBeenCalledWith({
+      expertiseAreas: ["groundwater_wells"],
+      experience: EXPERIENCE,
+      references: [],
+      acknowledgement: { version: 1 },
+    });
+    expect(await screen.findByText(/awaiting review by an administrator/i)).toBeInTheDocument();
+    expect(screen.getByText("What you submitted")).toBeInTheDocument();
+    expect(screen.getByText("Groundwater and wells")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /example\.org/ })).toBeInTheDocument();
+    expect(screen.getByText("Submitted")).toBeInTheDocument();
+    expect(screen.getByText("Awaiting review")).toBeInTheDocument();
+    expect(screen.getByText(/no fixed review time/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /submit application/i })).not.toBeInTheDocument();
+    expect(mockMine).toHaveBeenCalledTimes(1); // the apply response is authoritative; no extra read
+  });
+
+  it("double-submitting sends ONE request while it is in flight", async () => {
+    as("USER");
+    mockMine.mockResolvedValue(none);
+    let finish!: (v: unknown) => void;
+    mockApply.mockReturnValue(new Promise((r) => (finish = r)));
+    const user = userEvent.setup();
+    render(ui());
+    await user.click(await screen.findByRole("checkbox", { name: /groundwater and wells/i }));
+    await user.type(screen.getByLabelText(/what have you worked on/i), EXPERIENCE);
+    await user.click(screen.getByRole("checkbox", { name: /i confirm that the information/i }));
+    await user.dblClick(screen.getByRole("button", { name: /^submit application/i }));
+    expect(mockApply).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /^submitting/i })).toBeDisabled();
+    finish(pendingApp());
+    expect(await screen.findByText(/awaiting review/i, { selector: "p" })).toBeInTheDocument();
+  });
+
+  it("a 409 'already in progress' tells the user and re-reads the REAL state", async () => {
+    as("USER");
+    mockMine.mockResolvedValueOnce(none);
+    const user = userEvent.setup();
+    render(ui());
+    await screen.findByRole("button", { name: /submit application/i });
+    mockApply.mockRejectedValue(new ApiError("x", "http", 409, "INVALID_STATE"));
+    mockMine.mockResolvedValueOnce(pendingApp());
+    await fillAndSubmit(user);
+    await waitFor(() => expect(mockMine).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/awaiting review by an administrator/i)).toBeInTheDocument();
+  });
+
+  it("429 shows a calm retry-later message and keeps the form (and answers) intact", async () => {
+    as("USER");
+    mockMine.mockResolvedValue(none);
+    mockApply.mockRejectedValue(new ApiError("x", "http", 429));
+    const user = userEvent.setup();
+    render(ui());
+    await screen.findByRole("button", { name: /submit application/i });
+    await fillAndSubmit(user);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/too many attempts/i);
+    expect(screen.getByLabelText(/what have you worked on/i)).toHaveValue(EXPERIENCE);
+    expect(screen.getByRole("button", { name: /^submit application/i })).toBeEnabled();
+  });
+});
+
+describe("pending", () => {
+  it("a legacy application (no details) says so instead of showing an empty submission", async () => {
+    as("USER");
+    mockMine.mockResolvedValue(pendingApp(null));
+    render(ui());
+    expect(await screen.findByTestId("legacy-submission")).toHaveTextContent(/before application details were collected/i);
+    expect(screen.queryByText("Areas of expertise")).not.toBeInTheDocument();
+  });
+});
+
+describe("rejected", () => {
+  it("shows the reviewer note, the timeline, and re-opens the form PREFILLED but with the acknowledgement unaccepted", async () => {
+    as("USER");
+    mockMine.mockResolvedValue(rejectedApp);
+    const user = userEvent.setup();
+    render(ui());
+    expect(await screen.findByText(/was not approved/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Add more detail/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Not approved", { selector: "span.font-medium" })).toBeInTheDocument();
+    expect(screen.getByLabelText(/what have you worked on/i)).toHaveValue(EXPERIENCE);
+    expect(screen.getByRole("checkbox", { name: /groundwater and wells/i })).toBeChecked();
+    expect(screen.getByLabelText("Reference 1")).toHaveValue("https://example.org/a");
+    expect(screen.getByRole("checkbox", { name: /i confirm that the information/i })).not.toBeChecked();
+
+    mockApply.mockResolvedValue({ ...pendingApp(), history: [...rejectedApp.history, { fromStatus: "rejected", toStatus: "pending", submission: sub(), timestamp: "2026-03-07T10:00:00.000Z" }] });
+    await user.click(screen.getByRole("checkbox", { name: /i confirm that the information/i }));
+    await user.click(screen.getByRole("button", { name: /^apply again/i }));
+    expect(mockApply).toHaveBeenCalledWith(expect.objectContaining({ experience: EXPERIENCE, references: ["https://example.org/a"] }));
+    expect(await screen.findByText(/awaiting review by an administrator/i)).toBeInTheDocument();
+  });
+
+  it("a legacy rejected application re-opens an EMPTY form", async () => {
+    as("USER");
+    mockMine.mockResolvedValue({
+      status: "rejected",
+      history: [
+        { fromStatus: null, toStatus: "pending", submission: null, timestamp: "2026-03-05T10:00:00.000Z" },
+        { fromStatus: "pending", toStatus: "rejected", note: "No details", timestamp: "2026-03-06T10:00:00.000Z" },
+      ],
+    });
+    render(ui());
+    expect(await screen.findByLabelText(/what have you worked on/i)).toHaveValue("");
+  });
+});
+
+describe("approved: no reload instruction, the session user is refreshed", () => {
+  it("while the role is still USER it refreshes the user ONCE and shows 'activating'", async () => {
+    as("USER");
+    mockMine.mockResolvedValue(approvedApp);
+    render(ui());
+    expect(await screen.findByText(/Activating your Expert tools/i)).toBeInTheDocument();
+    await waitFor(() => expect(mockRefreshUser).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/reload/i)).not.toBeInTheDocument();
+  });
+
+  it("if the refresh fails it offers a retry, which tries again", async () => {
+    as("USER");
+    mockMine.mockResolvedValue(approvedApp);
+    mockRefreshUser.mockResolvedValueOnce(null);
+    const user = userEvent.setup();
+    render(ui());
+    expect(await screen.findByText(/could not activate your Expert tools/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+    await waitFor(() => expect(mockRefreshUser).toHaveBeenCalledTimes(2));
+  });
+
+  it("once the role is EXPERT it shows the review-queue entry point and fetches nothing", () => {
     as("EXPERT");
-    mockMine.mockResolvedValue(approved);
-    render(<ExpertApplicationPanel />);
-    expect(await screen.findByText(/You are a verified Expert/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open the review queue" })).toHaveAttribute("href", "/learn/review");
-    expect(screen.queryByRole("button", { name: /apply/i })).not.toBeInTheDocument();
-  });
-
-  it("approved but the session still says USER: offers a reload to activate Expert tools", async () => {
-    as("USER");
-    mockMine.mockResolvedValue(approved);
-    render(<ExpertApplicationPanel />);
-    expect(await screen.findByText(/You are a verified Expert/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /apply/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Open the review queue" })).not.toBeInTheDocument();
-  });
-
-  it("EXPERT/ADMIN with no application are not offered Apply (applications are for members)", async () => {
-    for (const role of ["EXPERT", "ADMIN"]) {
-      as(role);
-      mockMine.mockResolvedValue(none);
-      const { unmount } = render(<ExpertApplicationPanel />);
-      expect(await screen.findByText(/already has elevated access/i)).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /apply/i })).not.toBeInTheDocument();
-      unmount();
-    }
+    render(ui());
+    expect(screen.getByText(/verified Expert/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /review queue/i })).toHaveAttribute("href", "/learn/review");
+    expect(mockMine).not.toHaveBeenCalled();
   });
 });
 
-describe("ExpertApplicationPanel — failures", () => {
-  it("load failure is an alert with Try again, which refetches", async () => {
-    as("USER");
-    mockMine.mockRejectedValueOnce(apiError(500, "INTERNAL")).mockResolvedValueOnce(none);
-    render(<ExpertApplicationPanel />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("We could not load your Expert application. Try again.");
-    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByRole("button", { name: "Apply to become an Expert" })).toBeInTheDocument();
-    expect(mockMine).toHaveBeenCalledTimes(2);
+describe("other roles and staleness", () => {
+  it("ADMIN sees a plain message and nothing is fetched for the application", () => {
+    as("ADMIN");
+    mockList.mockResolvedValue({ items: [], page: 1, limit: 1, total: 0, totalPages: 0 });
+    render(ui());
+    expect(screen.getByText(/elevated access/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /submit application/i })).not.toBeInTheDocument();
+    expect(mockMine).not.toHaveBeenCalled();
   });
 
-  it("401 on load offers sign-in", async () => {
+  it("a failed re-read after a good load keeps the data but says it may be out of date; Try again recovers", async () => {
     as("USER");
-    mockMine.mockRejectedValue(apiError(401, "UNAUTHORIZED"));
-    render(<ExpertApplicationPanel />);
-    expect(await screen.findByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
-  });
+    mockMine.mockResolvedValueOnce(none);
+    const user = userEvent.setup();
+    render(ui());
+    await screen.findByRole("button", { name: /submit application/i });
 
-  it("submit failures: network, 403, validation, server — each message shown; the form stays usable", async () => {
-    as("USER");
-    mockMine.mockResolvedValue(none);
-    render(<ExpertApplicationPanel />);
-    const apply = async () => userEvent.click(await screen.findByRole("button", { name: "Apply to become an Expert" }));
+    // the apply is refused as stale, and the follow-up re-read fails
+    mockApply.mockRejectedValue(new ApiError("x", "http", 409, "INVALID_STATE"));
+    mockMine.mockRejectedValueOnce(new ApiError("down", "network"));
+    await fillAndSubmit(user);
+    const notice = await screen.findByText(/this may be out of date/i);
+    expect(notice).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^submit application/i })).toBeInTheDocument(); // data kept
 
-    mockApply.mockRejectedValueOnce(new ApiError("down", "network"));
-    await apply();
-    expect(await screen.findByRole("alert")).toHaveTextContent(/unreachable/i);
-
-    mockApply.mockRejectedValueOnce(apiError(403, "FORBIDDEN"));
-    await apply();
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/Only member accounts/i));
-
-    mockApply.mockRejectedValueOnce(apiError(400, "VALIDATION_FAILED", "Invalid request"));
-    await apply();
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Invalid request"));
-
-    mockApply.mockRejectedValueOnce(apiError(500, "INTERNAL"));
-    await apply();
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("We could not submit your application. Try again."));
-    expect(screen.getByRole("button", { name: "Apply to become an Expert" })).toBeEnabled();
-  });
-
-  it("a 401 on submit prompts sign-in", async () => {
-    as("USER");
-    mockMine.mockResolvedValue(none);
-    mockApply.mockRejectedValue(apiError(401, "UNAUTHORIZED"));
-    render(<ExpertApplicationPanel />);
-    await userEvent.click(await screen.findByRole("button", { name: "Apply to become an Expert" }));
-    expect(await screen.findByRole("link", { name: "Sign in" })).toBeInTheDocument();
-  });
-
-  it("duplicate/already-pending (INVALID_STATE) explains and refreshes to the real state", async () => {
-    as("USER");
-    mockMine.mockResolvedValueOnce(none).mockResolvedValueOnce(pending);
-    mockApply.mockRejectedValue(apiError(409, "INVALID_STATE"));
-    render(<ExpertApplicationPanel />);
-    await userEvent.click(await screen.findByRole("button", { name: "Apply to become an Expert" }));
-    expect(await screen.findByText("Pending review")).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent(/already have an application in progress/i);
-    expect(screen.queryByRole("button", { name: /apply/i })).not.toBeInTheDocument();
-    expect(mockMine).toHaveBeenCalledTimes(2);
+    mockMine.mockResolvedValueOnce(pendingApp());
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+    expect(await screen.findByText(/awaiting review by an administrator/i)).toBeInTheDocument();
+    expect(screen.queryByText(/this may be out of date/i)).not.toBeInTheDocument();
   });
 });

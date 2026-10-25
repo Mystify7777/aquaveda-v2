@@ -145,8 +145,9 @@ npm run provision:admin
 - **Use:** sign in through the normal `/auth/login` with those credentials.
   ADMIN governs (e.g. approves/rejects Expert applications); it does **not**
   review Knowledge — that stays EXPERT-only. To get an EXPERT locally,
-  register a user, `POST /api/v1/expert-application`, then approve it as the
-  ADMIN.
+  register a user, `POST /api/v1/expert-application` with a valid submission
+  (see `tests/helpers/expert.js` `validSubmission()` for the shape), then approve
+  it as the ADMIN with the application's `revision`.
 
 Run backend tests from this directory with `npm test`. The suite uses the
 real MongoDB instance named by `TEST_MONGO_URI`; the database must be

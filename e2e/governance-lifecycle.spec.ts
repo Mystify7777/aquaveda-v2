@@ -26,6 +26,7 @@ test("USER applies -> ADMIN approves -> EXPERT moderates; role boundaries hold",
   const name = `E2E Applicant ${randomUUID().slice(0, 8)}`;
   const email = `e2e-${randomUUID()}@example.test`;
   const password = "e2e-Passw0rd!-long-enough";
+  const experience = `Ten years of borewell recharge monitoring across three districts (${name}).`;
 
   const userCtx = await browser.newContext();
   const adminCtx = await browser.newContext();
@@ -43,10 +44,19 @@ test("USER applies -> ADMIN approves -> EXPERT moderates; role boundaries hold",
       await expect(role(user)).toHaveText("USER");
 
       await user.goto("/learn/expert-application");
-      await user.getByRole("button", { name: "Apply to become an Expert" }).click();
-      await expect(user.getByText("Your application is awaiting review by an administrator.")).toBeVisible();
+      // Details are collected, not a bare click: the form needs an area, experience and the acknowledgement.
+      await user.getByRole("button", { name: "Submit application" }).click();
+      await expect(user.getByText("Please fix the 3 highlighted fields and submit again.")).toBeVisible();
+      await user.getByRole("checkbox", { name: /Groundwater and wells/ }).check();
+      await user.getByLabel("What have you worked on, where, and for how long?").fill(experience);
+      await user.getByRole("checkbox", { name: /I confirm that the information in this application is accurate/ }).check();
+      await user.getByRole("button", { name: "Submit application" }).click();
+      await expect(user.getByText(/Your application is awaiting review by an administrator/)).toBeVisible();
+      await expect(user.getByText("What you submitted")).toBeVisible();
+      await expect(user.getByRole("link", { name: /Become an Expert, application pending review/ }).first()).toBeVisible();
       await user.reload();
-      await expect(user.getByText("Your application is awaiting review by an administrator.")).toBeVisible();
+      await expect(user.getByText(/Your application is awaiting review by an administrator/)).toBeVisible();
+      await expect(user.getByText(experience)).toBeVisible();
     });
 
     await test.step("USER cannot read the ADMIN queue but can read own status", async () => {
@@ -63,9 +73,15 @@ test("USER applies -> ADMIN approves -> EXPERT moderates; role boundaries hold",
       await admin.goto("/admin/expert-applications");
       await expect(admin.getByRole("heading", { level: 1, name: "Expert applications" })).toBeVisible();
 
-      const card = admin.getByRole("listitem").filter({ hasText: name });
-      await expect(card).toHaveCount(1);
-      await card.getByRole("button", { name: "Approve", exact: true }).click();
+      // Master-detail: pick the applicant, the reviewer sees what was submitted (not just a name and a date).
+      await expect(admin.getByRole("link", { name: /Expert applications, \d+ pending application/ }).first()).toBeVisible();
+      const queue = admin.getByRole("navigation", { name: "Pending applications" });
+      await queue.getByRole("button", { name: new RegExp(name) }).click();
+      await expect(admin.getByRole("heading", { level: 2, name })).toBeVisible();
+      await expect(admin.getByText("Groundwater and wells")).toBeVisible();
+      await expect(admin.getByText(experience)).toBeVisible();
+
+      await admin.getByRole("button", { name: "Approve", exact: true }).click();
       await admin
         .getByRole("group", { name: `Confirm approval for ${name}` })
         .getByRole("button", { name: "Confirm approval" })
@@ -95,7 +111,8 @@ test("USER applies -> ADMIN approves -> EXPERT moderates; role boundaries hold",
       // Role is read fresh from the DB per request (L11; JWT carries `sub` only).
       // goto() is a full navigation: AuthProvider re-hydrates via getCurrentUser.
       await user.goto("/learn/expert-application");
-      await expect(user.getByText("Your application was approved. You are a verified Expert.")).toBeVisible();
+      await expect(user.getByText("You are a verified Expert.")).toBeVisible();
+      await expect(user.getByRole("link", { name: "Open the review queue" })).toBeVisible();
       await expect(role(user)).toHaveText("EXPERT");
     });
 

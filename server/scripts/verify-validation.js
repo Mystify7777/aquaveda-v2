@@ -42,6 +42,7 @@ import { objectIdString } from "../src/validation/shared/objectId.js";
 import {
   applicantIdParamSchema,
   applyExpertApplicationSchema,
+  approveExpertApplicationSchema,
   rejectExpertApplicationSchema,
 } from "../src/validation/expert-application.validation.js";
 import { registerSchema, loginSchema } from "../src/validation/auth.validation.js";
@@ -620,20 +621,43 @@ check("EA-1. applicant id param must be an ObjectId", () => {
   assert.equal(applicantIdParamSchema.safeParse({ userId: "nope" }).success, false);
 });
 
-check("EA-2. apply body is empty and strict: smuggled role/status/applicant rejected", () => {
-  assert.equal(applyExpertApplicationSchema.safeParse({}).success, true);
+const EA_SUBMISSION = {
+  expertiseAreas: ["groundwater_wells"],
+  experience: "x".repeat(80),
+  acknowledgement: { version: 1 },
+};
+
+check("EA-2. apply body is a strict submission: empty body, smuggled role/status/applicant and client-set ack facts rejected", () => {
+  assert.equal(applyExpertApplicationSchema.safeParse(EA_SUBMISSION).success, true);
+  assert.equal(applyExpertApplicationSchema.safeParse({}).success, false, "empty body no longer valid (EXP-L9+)");
   for (const k of ["role", "status", "applicant", "reviewer", "expertApplication"]) {
-    assert.equal(applyExpertApplicationSchema.safeParse({ [k]: "EXPERT" }).success, false, k);
-    assert.equal(rejectExpertApplicationSchema.safeParse({ [k]: "EXPERT" }).success, false, k);
+    assert.equal(applyExpertApplicationSchema.safeParse({ ...EA_SUBMISSION, [k]: "EXPERT" }).success, false, k);
+    assert.equal(rejectExpertApplicationSchema.safeParse({ revision: 1, note: "long enough note", [k]: "EXPERT" }).success, false, k);
+    assert.equal(approveExpertApplicationSchema.safeParse({ revision: 1, [k]: "EXPERT" }).success, false, k);
+  }
+  for (const k of ["acceptedAt", "textSha256", "text"]) {
+    assert.equal(
+      applyExpertApplicationSchema.safeParse({ ...EA_SUBMISSION, acknowledgement: { version: 1, [k]: "x" } }).success,
+      false,
+      k,
+    );
   }
 });
 
-check("EA-3. reject note optional, trimmed, non-blank, max 500", () => {
-  assert.equal(rejectExpertApplicationSchema.safeParse({}).success, true);
-  assert.equal(rejectExpertApplicationSchema.safeParse({ note: "needs detail" }).success, true);
-  assert.equal(rejectExpertApplicationSchema.safeParse({ note: "   " }).success, false);
-  assert.equal(rejectExpertApplicationSchema.safeParse({ note: "x".repeat(501) }).success, false);
-  assert.equal(rejectExpertApplicationSchema.parse({ note: "  hi  " }).note, "hi");
+check("EA-3. reject: revision required, note REQUIRED, trimmed, 10..500; approve: note optional, trimmed, 1..500", () => {
+  assert.equal(rejectExpertApplicationSchema.safeParse({ revision: 1 }).success, false);
+  assert.equal(rejectExpertApplicationSchema.safeParse({ note: "needs detail" }).success, false, "revision required");
+  assert.equal(rejectExpertApplicationSchema.safeParse({ revision: 1, note: "needs detail" }).success, true);
+  assert.equal(rejectExpertApplicationSchema.safeParse({ revision: 1, note: "   " }).success, false);
+  assert.equal(rejectExpertApplicationSchema.safeParse({ revision: 1, note: "123456789" }).success, false);
+  assert.equal(rejectExpertApplicationSchema.safeParse({ revision: 1, note: "x".repeat(501) }).success, false);
+  assert.equal(rejectExpertApplicationSchema.parse({ revision: 1, note: "  0123456789  " }).note, "0123456789");
+  assert.equal(approveExpertApplicationSchema.safeParse({ revision: 1 }).success, true);
+  assert.equal(approveExpertApplicationSchema.safeParse({}).success, false);
+  assert.equal(approveExpertApplicationSchema.safeParse({ revision: 1, note: "   " }).success, false);
+  for (const revision of [0, -1, 1.5, "1", 10_001, null]) {
+    assert.equal(approveExpertApplicationSchema.safeParse({ revision }).success, false, String(revision));
+  }
 });
 
 // ---------------------------------------------------------------------
