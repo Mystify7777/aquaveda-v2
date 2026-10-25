@@ -968,6 +968,7 @@ Deferred: production/staging ADMIN bootstrap (out of scope; needs its own decisi
 
 ---
 
+<<<<<<< HEAD
 ## 🔒 Locked — Production Bootstrap Credential Input (#110)
 
 Status: merged (PR #117); BSC-L4 resolved by #118. Builds on #102 (bootstrap CLI) and #109 (target validation, unchanged).
@@ -1026,3 +1027,19 @@ Status: implemented; frontend suite 569/569, typecheck/lint clean, build verifie
 | UI-L3 | Backend refusals are rendered, not pre-empted: non-ADMIN visiting `/admin/expert-applications` sees the backend 403; non-USER apply → 403 message; duplicate/pending/stale decisions (`INVALID_STATE`, `STATE_RACE`, `NOT_FOUND`) explain and refresh the view. In-flight guards prevent duplicate submissions. Approval requires an explicit confirm step. |
 | UI-L4 | **Superseded by EXP-L18.** The session role is read at sign-in/`/auth/me`; after an applicant is approved their open session shows the old role until reload. The status page says so and offers Reload (no auth-provider change). |
 | UI-L5 | No `/dashboard` exists (it and `/community` remain deferred routes); the Expert entries live in navigation and the Learn area rather than a new dashboard. |
+
+---
+
+## 🔒 Locked — Configuration Hygiene & Secret Boundaries (#30)
+
+Status: implemented, reviewed, and verified.
+
+| ID | Decision |
+|---|---|
+| SEC-L1 | **Canonical startup configuration validation:** `server/src/config/env.js` is the single source of truth for environment validation. `server.js` calls `validateStartupConfig()` at boot time before connecting to MongoDB or starting HTTP listeners, failing fast with clear messages if required variables (`MONGO_URI`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`) are missing or invalid. |
+| SEC-L2 | **Cryptographic key separation:** `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` must be distinct cryptographic keys. Access vs. refresh secret equality (`JWT_ACCESS_SECRET === JWT_REFRESH_SECRET`) is blocked at startup and point-of-use (`getAccessSecret()`, `getRefreshSecret()`), preserving token confusion defense-in-depth. |
+| SEC-L3 | **Production security hygiene:** When `NODE_ENV === "production"`, JWT secrets must be at least 32 characters in length (256-bit entropy), must not contain predictable placeholder patterns (`test-`, `secret`, `changeme`, etc.), and `ALLOWED_ORIGINS` must be explicitly configured without wildcards (`*`). |
+| SEC-L4 | **Token lifetime validation & ordering:** `JWT_ACCESS_EXPIRES` and `JWT_REFRESH_EXPIRES` are strictly validated at startup. Durations must be positive integer + unit (`s/m/h/d`), and access token lifetime must be strictly less than refresh token lifetime (`JWT_ACCESS_EXPIRES < JWT_REFRESH_EXPIRES`). |
+| SEC-L5 | **Database separation protection:** `testDb.js`'s test database protection is strengthened via `assertTestDatabaseSeparation()`. In addition to verbatim string equality, canonical URI comparison (`isSameMongoDatabase`) normalizes loopback aliases (`localhost`, `127.0.0.1`, `::1`), default ports, and query parameters to prevent tests from wiping development databases. Tests targeting any database ending in `_dev` are strictly refused. |
+| SEC-L6 | **Repository and logging hygiene:** Version control explicitly ignores private keys and certificates (`*.key`, `*.cert`, `*.crt`, `*.pfx`, `*.p12`) while unblocking `.env.example`. HTTP request logging (`requestLogger`) restricts logs to `{method, path, status, durationMs}`, logging no bodies, query strings, headers, or cookies. |
+

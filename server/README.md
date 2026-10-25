@@ -67,21 +67,18 @@ exploration data therefore remains a future read-surface milestone.
 
 ## Environment variables
 
+The server runtime environment configuration is defined in `server/.env` (git-ignored; see `server/.env.example` for the full reference template).
+
 ```env
 PORT=5000
-MONGO_URI=mongodb://localhost:27017/aquaveda_v2
-TEST_MONGO_URI=mongodb://127.0.0.1:27017/aquaveda_v2_test   # required for `npm test`; must differ from MONGO_URI
-# Local ADMIN provisioning variables: see "Local ADMIN provisioning" below.
-CLIENT_URL=http://localhost:3000
-ALLOWED_ORIGINS=http://localhost:3000  # exact origins trusted for CORS and state-changing requests
-JWT_ACCESS_SECRET=    # generate: openssl rand -base64 32
-JWT_REFRESH_SECRET=   # generate: openssl rand -base64 32
+NODE_ENV=development
+MONGO_URI=mongodb://127.0.0.1:27017/aquaveda_v2_dev
+TEST_MONGO_URI=mongodb://127.0.0.1:27017/aquaveda_v2_test   # optional: real MongoDB for `npm test`; if unset, in-memory MongoDB auto-starts
+ALLOWED_ORIGINS=http://localhost:3000                        # exact origins trusted for CORS and state-changing requests
+JWT_ACCESS_SECRET=    # required; generate: openssl rand -base64 32
+JWT_REFRESH_SECRET=   # required; distinct from JWT_ACCESS_SECRET; generate: openssl rand -base64 32
 JWT_ACCESS_EXPIRES=15m
 JWT_REFRESH_EXPIRES=7d
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX=200
-AUTH_RATE_LIMIT_WINDOW_MS=900000
-AUTH_RATE_LIMIT_MAX=20
 COOKIE_SAME_SITE=none  # locked: frontend/backend are different registrable
                         # domains (genuine cross-site). "none" is mandatory —
                         # "lax"/"strict" would silently drop auth cookies on
@@ -100,16 +97,31 @@ no browser provenance is trusted and every state-changing request is rejected
 until an explicit allowlist is configured. This fail-closed behavior does
 not disable CSRF protection.
 
-Env vars are loaded by `src/config/db.js` itself (via `dotenv/config`),
-not by `server.js`. Both the app entry point and the test suite import
-`db.js` (directly or via `tests/helpers/testDb.js`), so `.env` is loaded
-consistently regardless of entry point — no per-file `dotenv.config()`
-calls needed elsewhere.
+### Configuration hygiene & startup validation
 
-`connectDB()` defaults to `MONGO_URI`. The test helper explicitly passes
-`{ envVar: "TEST_MONGO_URI" }` and refuses to run if `TEST_MONGO_URI`
-equals `MONGO_URI`, so `npm test` can never silently operate against the
-development database.
+Environment variables are loaded and validated by `src/config/env.js`.
+`server.js` calls `validateStartupConfig()` at boot time, failing fast with
+descriptive errors before opening database connections or listening on ports:
+
+- **Missing configuration fails clearly:** `MONGO_URI`, `JWT_ACCESS_SECRET`,
+  and `JWT_REFRESH_SECRET` are required. Missing variables throw a startup
+  error naming the exact missing variable.
+- **Cryptographic key separation:** `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET`
+  must never be identical strings. Reusing the same secret for both tokens is
+  blocked at startup and point-of-use to prevent token confusion attacks.
+- **Production security constraints (`NODE_ENV=production`):**
+  - Secrets must be at least 32 characters in length (256-bit entropy).
+  - Secrets must not contain predictable placeholder patterns (e.g. `test-`, `secret`, `changeme`).
+  - `ALLOWED_ORIGINS` must be explicitly configured and must never contain the wildcard `*`.
+- **Token lifetimes:** `JWT_ACCESS_EXPIRES` and `JWT_REFRESH_EXPIRES` must be
+  valid durations (e.g. `15m`, `7d`), and the access token lifetime must be
+  strictly shorter than the refresh token lifetime (`JWT_ACCESS_EXPIRES < JWT_REFRESH_EXPIRES`).
+- **Database separation guards:** `connectDB()` defaults to `MONGO_URI`. The test
+  helper explicitly passes `{ envVar: "TEST_MONGO_URI" }` and validates separation
+  via `assertTestDatabaseSeparation()` — refusing to run tests if `TEST_MONGO_URI`
+  matches `MONGO_URI` (including normalized loopback host/port/query variants) or
+  targets a database ending in `_dev`. If `TEST_MONGO_URI` is omitted, tests
+  transparently start an isolated in-process `mongodb-memory-server`.
 
 ### Local ADMIN provisioning (development only)
 

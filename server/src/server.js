@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import { createApp } from "./app.js";
 import { connectDB, disconnectDB } from "./config/db.js";
+import { validateStartupConfig } from "./config/env.js";
 
 /**
  * Process entry point.
@@ -21,6 +22,7 @@ let httpServer;
 
 async function start() {
   try {
+    validateStartupConfig();
     await connectDB();
 
     const app = createApp();
