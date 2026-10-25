@@ -968,7 +968,6 @@ Deferred: production/staging ADMIN bootstrap (out of scope; needs its own decisi
 
 ---
 
-<<<<<<< HEAD
 ## 🔒 Locked — Production Bootstrap Credential Input (#110)
 
 Status: merged (PR #117); BSC-L4 resolved by #118. Builds on #102 (bootstrap CLI) and #109 (target validation, unchanged).
