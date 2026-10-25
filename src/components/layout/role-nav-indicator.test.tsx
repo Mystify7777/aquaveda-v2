@@ -48,6 +48,22 @@ describe("USER indicator", () => {
     expect(link).toHaveTextContent(chip);
   });
 
+  it("the accessible name is explicit (aria-label), NOT derived from an sr-only child: browsers space block-level children, which broke the name in a real browser (jsdom cannot see that)", () => {
+    as("USER");
+    status({ application: app("pending") });
+    render(<RoleNavLinks className="x" />);
+    const link = screen.getByRole("link", { name: "Become an Expert, application pending review" });
+    expect(link).toHaveAttribute("aria-label", "Become an Expert, application pending review");
+    expect(link.querySelector(".sr-only")).toBeNull();
+  });
+
+  it("without an indicator there is no aria-label: the name is just the visible text", () => {
+    as("USER");
+    status({ application: app("none") });
+    render(<RoleNavLinks className="x" />);
+    expect(screen.getByRole("link", { name: "Become an Expert" })).not.toHaveAttribute("aria-label");
+  });
+
   it("no chip before applying", () => {
     as("USER");
     status({ application: app("none") });
