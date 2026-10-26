@@ -28,11 +28,9 @@ The project now has a working Express authentication foundation with:
 - Contribution entry points use `RequireAuth` to guide anonymous users to sign in or register
 - Session bootstrap distinguishes initializing, authenticated, confirmed anonymous, session failure, and backend unavailability
 
-The backend test suite currently passes **233/233** locally against the dedicated `aquaveda_v2_test` MongoDB database. The focused frontend session-state suite passes **4/4**. Validation verification passes **63/63**, and model verification passes **44/44**.
+Verification is defined by scripts rather than recorded counts, which go stale: `npm run verify` (root) runs the backend and frontend suites, and CI (`.github/workflows/ci.yml`) runs them on every PR and push to `main`, with the backend suite against a pinned `mongo:7` service. Offline backend checks: `npm --prefix server run verify:models`, `verify:validation`, `verify:cookie-config`.
 
-The broader domain/application surface is intentionally still under construction. Issue, Knowledge, Comment, Project, and recommendation behavior will be implemented milestone by milestone rather than being pulled into the authentication work prematurely.
-
-The current backend exposes five authentication routes and nine state-changing domain routes. Domain read/list routes are not implemented yet, so public domain exploration/search/filter/map data remains a future backend capability rather than an auth-gated frontend surface.
+The backend exposes the five authentication routes plus Issue, Knowledge, Comment, Project, and Expert-application routes under `/api/v1`, including public read/list routes (see `server/src/routes/`). Issue guidance is available as a service (`server/src/services/recommendation.service.js`); it has no HTTP route yet. The frontend implements public Explore/Learn/Act surfaces and authenticated workflows; `/community` and `/dashboard` remain deferred.
 
 ---
 
@@ -118,7 +116,7 @@ For the full backend verification workflow, see [`server/README.md`](server/READ
 
 The backend expects MongoDB and the environment variables documented in that file. Tests require a dedicated `TEST_MONGO_URI` that is different from `MONGO_URI`.
 
-The supported backend test command is `cd server && npm test`; it uses the real MongoDB instance named by `TEST_MONGO_URI`. The root `npm test` command runs the dependency-free frontend session-state tests.
+The supported backend test command is `cd server && npm test`; it uses the MongoDB named by `TEST_MONGO_URI` (which must differ from `MONGO_URI`) and starts an in-memory MongoDB when that variable is unset. The root `npm test` command runs the frontend Vitest suite and the root Node tests.
 
 ---
 

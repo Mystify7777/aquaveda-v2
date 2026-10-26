@@ -924,7 +924,7 @@ route, D-3a resolution in any form (ROUTE-L4 changes only its HTTP
 
 ## 🔒 Locked — Expert Authority (#91)
 
-Status: implemented; offline checks pass (verify:models 45/45, verify:validation 85/85). DB-backed tests written but **not yet run against real MongoDB** — pending developer run.
+Status: implemented and merged (#98); later extended by EXP-L9–L20 (#124). The offline counts recorded at the time (verify:models 45/45, verify:validation 85/85) are point-in-time, not current. DB-backed tests run against `mongo:7` in CI (#84); no pass count is recorded here.
 
 | ID | Decision |
 |---|---|
@@ -1022,7 +1022,7 @@ Status: implemented; frontend suite 569/569, typecheck/lint clean, build verifie
 | ID | Decision |
 |---|---|
 | UI-L1 | Entry points are discoverable per role but never authoritative: USER → "Become an Expert" (`/learn/expert-application`: apply + status); EXPERT → "Review queue" (`/learn/review`, existing Knowledge moderation, unchanged); ADMIN → "Expert applications" (`/admin/expert-applications`, governance). Shown in the desktop navbar, mobile drawer and (USER/EXPERT) the Learn workflow links via one pure helper (`lib/expert/role-links.ts`); unknown/missing roles get nothing (no default-allow). ADMIN is never shown the Knowledge review entry. |
-| UI-L2 | The UI sends only what the #91 contract defines: apply = empty POST (applicant is the session); approve = POST by the named pending applicant; reject = optional `note` (≤500). No role, status, applicant or reviewer field exists in any request. Role grant is the backend's atomic write; the UI changes no role. |
+| UI-L2 | **Superseded by EXP-L9/L11/L12** (apply now carries a strict submission; approve/reject carry `{ revision, note }`, reject note required). Original decision: the UI sends only what the #91 contract defined: apply = empty POST (applicant is the session); approve = POST by the named pending applicant; reject = optional `note` (≤500). No role, status, applicant or reviewer field exists in any request. Role grant is the backend's atomic write; the UI changes no role. |
 | UI-L3 | Backend refusals are rendered, not pre-empted: non-ADMIN visiting `/admin/expert-applications` sees the backend 403; non-USER apply → 403 message; duplicate/pending/stale decisions (`INVALID_STATE`, `STATE_RACE`, `NOT_FOUND`) explain and refresh the view. In-flight guards prevent duplicate submissions. Approval requires an explicit confirm step. |
 | UI-L4 | **Superseded by EXP-L18.** The session role is read at sign-in/`/auth/me`; after an applicant is approved their open session shows the old role until reload. The status page says so and offers Reload (no auth-provider change). |
 | UI-L5 | No `/dashboard` exists (it and `/community` remain deferred routes); the Expert entries live in navigation and the Learn area rather than a new dashboard. |

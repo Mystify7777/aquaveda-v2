@@ -30,9 +30,12 @@ This document provides the exhaustive, production-grade **Failure-Mode Matrix** 
 6. Rate limiting & denial-of-service mitigations.
 7. Configured cross-origin cookie transport and information disclosure protections.
 
-Rate limiting is not implemented in the current `server/src/app.js` and is
-therefore not part of the active Issue #36 contract. The rate-limit
-environment variables remain reserved for a future implementation.
+Rate limiting is not applied globally in `server/src/app.js`. It is applied
+per route (Issue #42, `server/src/middleware/rate-limiter.js`): IP-keyed
+sliding-window limiters on `POST /register`, `/login` and `/refresh`, and on
+`POST /api/v1/expert-application`. Throttled requests return `429` with the
+canonical envelope and code `TOO_MANY_REQUESTS`
+(`server/tests/rate-limiter.integration.test.js`).
 
 ---
 
@@ -58,7 +61,7 @@ All authentication error responses across the AquaVeda API conform to a uniform 
 | **`404 Not Found`** | Resource or route missing | Request to non-existent endpoint or missing entity target. |
 | **`409 Conflict`** | Request conflicts with current server state | Email address already taken on registration (`EMAIL_ALREADY_REGISTERED`). |
 | **`422 Unprocessable`** | Semantic validation errors | Reserved for multi-field semantic errors if differentiated from 400. In AquaVeda v2, request-shape errors map to 400 per Zod convention. |
-| **`429 Too Many Requests`** | Rate limit quota exceeded | Excessive requests within sliding window (`RATE_LIMIT_EXCEEDED`). |
+| **`429 Too Many Requests`** | Rate limit quota exceeded | Excessive requests within sliding window (`TOO_MANY_REQUESTS`). |
 | **`500 Internal Error`** | Unhandled server exception | Database down, uncaught exception (`INTERNAL_ERROR`). Always sanitized. |
 
 ---
