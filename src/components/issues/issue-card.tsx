@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CopyIssueId } from "@/components/issues/copy-issue-id";
 import { IssueStatusBadge } from "@/components/issues/issue-status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { userTextPreview } from "@/lib/content/user-text";
 import { formatDate } from "@/lib/format-date";
 import type { Issue } from "@/lib/api/types/issue";
 import { categoryLabel, severityLabel } from "@/lib/issues/labels";
@@ -24,7 +25,7 @@ export function IssueCard({ issue }: { issue: Issue }) {
         <IssueStatusBadge status={issue.status} />
       </CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-muted-foreground line-clamp-2 text-sm">{issue.description}</p>
+        <p className="text-muted-foreground line-clamp-2 text-sm">{userTextPreview(issue.description)}</p>
         <p className="text-muted-foreground text-xs">
           {meta.length > 0 && `${meta.join(" · ")} · `}
           Reported by {issue.reportedBy.name} ·{" "}

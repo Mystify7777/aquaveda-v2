@@ -1,3 +1,4 @@
+import { UserText } from "@/components/content/user-text";
 import { formatDate } from "@/lib/format-date";
 import type { KnowledgeArticle as Article } from "@/lib/api/types/knowledge";
 
@@ -24,7 +25,7 @@ export function KnowledgeArticleView({ article }: { article: Article }) {
           )}
         </p>
       </header>
-      <div className="text-sm leading-relaxed whitespace-pre-wrap">{article.body}</div>
+      <UserText text={article.body} />
     </article>
   );
 }

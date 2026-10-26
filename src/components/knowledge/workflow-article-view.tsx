@@ -1,3 +1,4 @@
+import { UserText } from "@/components/content/user-text";
 import { WorkflowStatusBadge } from "@/components/knowledge/workflow-status-badge";
 import { formatDate } from "@/lib/format-date";
 import type { WorkflowKnowledge } from "@/lib/api/types/knowledge";
@@ -18,7 +19,7 @@ export function WorkflowArticleView({ article }: { article: WorkflowKnowledge })
         </p>
       </header>
 
-      <div className="text-sm leading-relaxed whitespace-pre-wrap">{article.body}</div>
+      <UserText text={article.body} />
 
       <section aria-labelledby="review-history-heading" className="space-y-3 border-t pt-4">
         <h2 id="review-history-heading" className="font-display text-lg font-semibold">

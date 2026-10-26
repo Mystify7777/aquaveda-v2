@@ -1,3 +1,4 @@
+import { UserText } from "@/components/content/user-text";
 import { CopyIssueId } from "@/components/issues/copy-issue-id";
 import { IssueMapLoader } from "@/components/issues/issue-map-loader";
 import { IssueStatusBadge } from "@/components/issues/issue-status-badge";
@@ -31,7 +32,7 @@ export function IssueDetail({ issue }: { issue: Issue }) {
         </p>
       </header>
 
-      <p className="text-sm leading-relaxed whitespace-pre-wrap">{issue.description}</p>
+      <UserText text={issue.description} />
 
       <dl className="grid gap-4 border-t pt-4 text-sm sm:grid-cols-2">
         {category && (
