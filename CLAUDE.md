@@ -4,10 +4,11 @@
 
 ## Current Milestone
 
-Expert application details — **backend and frontend implemented (pending CI and the governance E2E)**
+Expert application details — **backend and frontend implemented; merged (PR #124)**
 Strict submission on the `->pending` history entry, server-hashed acknowledgement, revision-pinned atomic decisions, required reject note,
 shared pure domain module, apply rate limit (EXP-L9–L15; design doc). BREAKING: apply body, approve/reject `{ revision, note }`; the
-frontend sends them (contract boundary `src/lib/expert/submission-contract.ts`, `ExpertStatusProvider`, `AuthProvider.refreshUser`, applicant form + timeline, admin master-detail with revision-pinned decisions, nav chips; EXP-L16–L20, UI-L4 superseded). Taxonomy provisional; E2E needs Playwright + MongoDB.
+frontend sends them (contract boundary `src/lib/expert/submission-contract.ts`, `ExpertStatusProvider`, `AuthProvider.refreshUser`, applicant form + timeline, admin master-detail with revision-pinned decisions, nav chips; EXP-L16–L20, UI-L4 and UI-L2 superseded). Taxonomy provisional (EXP-L15). The governance E2E spec (`e2e/governance-lifecycle.spec.ts`) was
+updated in #124 and runs in the CI `e2e` job (Playwright + `mongo:7`); no pass/fail result is recorded in this repository, so see the CI run for that PR.
 
 Role-aware Expert UI (frontend over #91) — **implemented**
 USER apply/status page, ADMIN Expert-application queue (approve/reject), role-aware nav (desktop/mobile/Learn).
@@ -107,18 +108,17 @@ borderline cases are recorded in `docs/architecture/nextjs-patterns.md`
 ("Client boundary audit"); the same change corrects a statement there that
 the `FoundationStatusCard` shell was not a Client Component.
 
-Issue #41 — public Issue discovery (backend) — **implemented; ready for
-review.** `GET /api/v1/issues` now also accepts `category`, `severity`,
+Issue #41 — public Issue discovery (backend) — **implemented (on
+`main`).** `GET /api/v1/issues` now also accepts `category`, `severity`,
 `q` (text) and `bbox` (`west,south,east,north`), all optional and
 combinable; ordering is `createdAt` desc then `_id` desc. Contract:
 `docs/architecture/issue-discovery-contract.md`; decisions: register
 ROUTE-L2e. One new index (`issue_text_search`); persistence-design
-amended. No lifecycle, auth, or D-3a change. Verified against a real
-`mongod` (3.6.8 — see the PR report for the version caveat); the
-production-version run is the developer's.
+amended. No lifecycle, auth, or D-3a change. Verified at the time against a real
+`mongod` 3.6.8; the backend suite now runs against `mongo:7` in CI (#84).
 
-Issue #50 — frontend Explore surface — **implemented; ready for
-review.** Public `/explore` (server-rendered from `GET /issues`: `status`
+Issue #50 — frontend Explore surface — **implemented; merged
+(PR #77).** Public `/explore` (server-rendered from `GET /issues`: `status`
 filter as links + URL pagination, list + Leaflet map of the issues on the
 *current page*, skip-link past the map, loading/empty/filtered-empty/
 past-the-end/error states) and `/explore/[issueId]` (public detail:
@@ -129,15 +129,15 @@ the #44 dialog behind `RequireAuth`; it now refreshes the list after a
 successful report and links to the new issue. Leaflet/react-leaflet added
 (first consumer; map is client-only via `next/dynamic` ssr:false, uses a
 `divIcon` to avoid bundler-hostile default marker assets, markers are
-keyboard-focusable and titled). Only the contract the backend has is
-used: no geo, search, category/severity filter or sort parameters are
-sent. No backend, lifecycle, or D-3a change; the detail page exposes no
+keyboard-focusable and titled). Only the contract the backend had at the time was
+used: no geo, search, category/severity filter or sort parameters were
+sent (superseded by #82, which adopts them). No backend, lifecycle, or D-3a change; the detail page exposes no
 transition controls and omits the unpopulated status-history `actor` id.
 
 Issue #74 — authenticated Knowledge workflow reads — **implemented;
-real-MongoDB verification pending** (the implementation environment has
-no `mongod`; a wire-compatible stand-in was used for iteration only, so
-no pass count is recorded here until the developer's real run).
+merged (PR #75)**. (The implementation environment had no `mongod`, so no pass
+count was recorded at the time; the backend suite now runs against a pinned
+`mongo:7` service in CI, #84.)
 3 read-only routes: `GET /api/v1/knowledge/mine`,
 `GET /api/v1/knowledge/review-queue`,
 `GET /api/v1/knowledge/:knowledgeId/workflow`. Unblocks the review
@@ -148,18 +148,19 @@ change; D-3a untouched; public Knowledge routes/DTO unchanged
 submissions; list items are summaries (no `body`/`reviewHistory`), the
 detail read carries them; separate workflow DTO. Full detail:
 `docs/architecture/decision-register.md` ROUTE-L2 amendment (#74) and
-ROUTE-L2a–L2d. Remaining #51 frontend (mine/review pages, submit/
-approve/reject/revise UI) follows this milestone.
+ROUTE-L2a–L2d. The #51 frontend (mine/review pages, submit/
+approve/reject/revise UI) has since merged (PR #76).
 
 Routes — **implemented, reviewed, and verified for real against real
 MongoDB: 232/232 tests, 54 suites, 0 failures.** Executed as 6 reviewed
 checkpoints (A: shared HTTP error infra; B: 4 validation modules; C:
 Issue routes; D: Knowledge/Comment/Project routes; E: `app.js`
 integration + global 404/error normalization + `auth.routes.js`
-migration; F: full verification + docs, this update). Exactly 9 domain
+migration; F: full verification + docs, this update). At that milestone's close (historical; not the current route surface): exactly 9 domain
 routes, 1:1 with the 9 existing service operations (2 Issue, 5
-Knowledge, 1 Comment, 1 Project) — no GET/listing/edit/delete route
-anywhere, confirmed by direct enumeration. `AUTHORIZATION_POLICY_UNRESOLVED`
+Knowledge, 1 Comment, 1 Project), with no GET/listing/edit/delete route
+at that time, confirmed by direct enumeration. Public/workflow read routes (#40/#48/#41, #74) and
+Expert application routes (#91) were added later; see `server/src/routes/`. `AUTHORIZATION_POLICY_UNRESOLVED`
 maps to 409 with a distinguishing `code` field, never silently folded
 into `FORBIDDEN`'s 403 — D-3a's two blocked transitions remain exactly
 as unresolved through the HTTP layer as they were at the service layer.
@@ -518,7 +519,7 @@ logout-vs-access-token-expiry trade-off.
   script `scripts/verify-cookie-config.js` (`npm run
   verify:cookie-config`, 10/10) plus a new `auth.routes.test.js` block
   asserting `SameSite=None` + `Secure` even with `NODE_ENV=development`
-  (requires real MongoDB, not yet run for real). D-3a untouched.
+  (requires real MongoDB; covered by the real-MongoDB 127/127 run recorded under Authentication above). D-3a untouched.
 - Full detail: `docs/architecture/decision-register.md` §"Locked —
   Authentication"; implementation narrative in
   `docs/architecture/authentication-implementation-plan.md`
@@ -618,15 +619,6 @@ logout-vs-access-token-expiry trade-off.
 
 ## Technical Debt
 
-- **Explore has not yet adopted the #41 discovery parameters.** The
-  backend contract (`category`, `severity`, `q`, `bbox` on
-  `GET /api/v1/issues`) is implemented and documented in
-  `docs/architecture/issue-discovery-contract.md`; `/explore` still sends
-  only `status`/`page`, so its map still shows the current page of
-  results rather than the viewport. Adoption (filters UI, search box,
-  viewport-driven `bbox` fetching with the 10° cap) is a frontend
-  follow-up. Radius/proximity search is intentionally not part of the
-  contract.
 - Public Knowledge detail still returns `reviewHistory` (incl. rejection
   `feedback`, unpopulated reviewer ids) for articles rejected then
   approved. Left unchanged by #74 (public contract locked); a narrower
@@ -639,10 +631,8 @@ logout-vs-access-token-expiry trade-off.
   Do not resolve it by inventing a role, assignment model, or
   membership-based authority without a dedicated Project/Act
   authorization design session.
-- No API routes/controllers exist yet for the five domain services
-  (Issue/Knowledge/Comment/Project) — only reachable from tests.
-  Intentional; a future Routes milestone, deliberately separate from
-  Authentication's own five-endpoint auth API (Phase F).
+- The recommendation service (#123) has no HTTP route yet; it is
+  reachable only from tests (`docs/architecture/recommendation-service.md`).
 - Auth middleware and routes now exist (`server/src/middleware/auth.js`,
   `server/src/routes/auth.routes.js`) and are wired into the real
   Express pipeline (`app.js`: `cookie-parser → cors → authMiddleware →
@@ -651,19 +641,19 @@ logout-vs-access-token-expiry trade-off.
 
 ## Next Milestone
 
-After #74's real-MongoDB verification and merge: resume frontend #51
-(review lifecycle UI against the new reads). The paragraph below is the
-prior milestone's status and is otherwise unchanged.
+Sequencing is tracked in GitHub issues and PRs, not in this file. The
+paragraph below is the status recorded when the Routes milestone closed; it
+is retained as history. The frontend integrations it lists as next have since
+shipped (see Current Milestone), and the recommendation service (#123) has no
+HTTP route yet.
 
 Authentication (Phases A–H), Authorization & Ownership Policy, and
 Routes are all fully complete, reviewed, and verified: **232/232
 tests, 54 suites, real MongoDB**. The backend now has a genuinely
 consumable HTTP API — 9 domain routes + 5 auth routes, all conforming
-to the frontend's `ApiResponse<T>` envelope. Next: frontend
-Authentication integration (connecting `src/lib/api/` to the 5 auth
-endpoints — register, login, session restoration, `/me`, logout), or
-frontend domain-feature integration against the 9 new routes. Neither
-is currently blocked.
+to the frontend's `ApiResponse<T>` envelope. (At that point the
+next steps were frontend Authentication integration and frontend
+domain-feature integration against the 9 new routes.)
 
 D-3a remains unresolved and untouched across all three milestones — it
 produces/consumes identity, not remediation authority. Still depends on
@@ -741,10 +731,9 @@ authorization design this project doesn't have yet, and inventing an
 answer now would be exactly the premature-abstraction failure mode this
 project has been deliberately avoiding.
 
-Persistence Design (ADR-0005, ADR-0006) and Phase D (service
-implementation) both closed since the last review pass and are not yet
-reviewed by ChatGPT — flagged for review before Authentication work
-begins, per this project's standard cycle.
+Persistence Design (ADR-0005, ADR-0006) is recorded as Approved
+(`persistence-design.md`) and Phase D (service implementation) as
+complete and verified (below); Authentication work proceeded after both.
 
 Phase D closure is backed by real test execution (`npm test` against
 live MongoDB via `TEST_MONGO_URI`), not just code existing — including

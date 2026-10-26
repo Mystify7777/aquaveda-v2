@@ -1,6 +1,6 @@
 # Expert application details: contract and UI design
 
-Status: **Revision 2, backend and frontend implemented (EXP-L9–L20 in the decision register). Taxonomy values provisional; governance E2E pending.** Cross-layer change (backend contract, persistence, frontend), tracked in its own issue, not in #104.
+Status: **Revision 2, backend and frontend implemented (EXP-L9–L20 in the decision register). Taxonomy values provisional. Merged in PR #124** Cross-layer change (backend contract, persistence, frontend), tracked in its own issue, not in #104.
 Builds on: EXP-L1–L8 (#91), ADR-0002 (independent backend package), ADR-0005 (embedded history), ADR-0006 (conditional atomic transitions), UI-L1–L5.
 
 ## 0. Review resolution

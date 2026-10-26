@@ -27,8 +27,9 @@ specification, not as code to port.
   - Corrects v1 bugs: `password select:false` always present, consistent
     Zod validation on all routes (not just Issues/Comments), auth middleware
     does a DB lookup instead of trusting the JWT payload directly
-- `src/app.js` — Express app with Helmet, rate limiting, CORS for the
-  Next.js dev and production origins
+- `src/app.js` — Express app with a credentialed CORS allowlist and an
+  Origin/Referer guard for state-changing requests (per-route IP rate
+  limiting lives in the routers; Helmet is not used)
 
 ### Authentication and boundary implementation
 
@@ -40,30 +41,22 @@ specification, not as code to port.
 - Zod validation on register/login request bodies
 - `requireActor()` and existing operation-specific service authorization remain the backend contribution boundary
 
-The current domain HTTP surface contains nine state-changing routes and no
-Issue, Knowledge, Comment, or Project GET/list routes yet. Public domain
-exploration data therefore remains a future read-surface milestone.
+The domain HTTP surface (`src/routes/`) covers Issue, Knowledge, Comment,
+Project and Expert-application operations, including public read/list routes
+and the authenticated Knowledge workflow reads. The recommendation service
+(`src/services/recommendation.service.js`) has no HTTP route yet.
 
-### Explore milestone
+### Explore / Learn / Act / Community milestones
 
-- `src/modules/issues/` — full CRUD, geo queries, status lifecycle
-- `src/modules/ai/` — rule-based recommendation engine
-
-### Learn milestone
-
-- `src/modules/wiki/` — moderation lifecycle
-
-### Act milestone
-
-- `src/modules/projects/`
-
-### Community milestone
-
-- `src/modules/comments/` — Issue + Knowledge ref types
+Implemented in the existing layered layout (not a `src/modules/` tree):
+`src/services/{issue,knowledge,project,comment}.service.js`,
+`src/routes/*.routes.js`, `src/validation/*.validation.js`. The rule-based
+recommendation engine is `src/services/recommendation.service.js` (service
+only).
 
 ### Dashboard milestone
 
-- `src/modules/dashboard/`
+Not implemented.
 
 ## Environment variables
 
@@ -162,9 +155,11 @@ npm run provision:admin
   it as the ADMIN with the application's `revision`.
 
 Run backend tests from this directory with `npm test`. The suite uses the
-real MongoDB instance named by `TEST_MONGO_URI`; the database must be
-available before the command starts. The frontend has a separate root
-`npm test` command for its dependency-free session-state tests.
+MongoDB named by `TEST_MONGO_URI` when set (a dedicated database that must
+never be the same as `MONGO_URI`); when it is unset, locally, an in-memory
+MongoDB is started instead (see the environment block above). CI sets
+`TEST_MONGO_URI` to its `mongo:7` service and does not use the fallback. The frontend has a separate root `npm test`
+command (Vitest plus root Node tests).
 
 ## Known v1 bugs that do NOT carry forward
 
