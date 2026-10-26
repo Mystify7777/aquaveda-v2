@@ -32,7 +32,8 @@ This document provides the exhaustive, production-grade **Failure-Mode Matrix** 
 
 Rate limiting is not applied globally in `server/src/app.js`. It is applied
 per route (Issue #42, `server/src/middleware/rate-limiter.js`): IP-keyed
-sliding-window limiters on `POST /register`, `/login` and `/refresh`, and on
+sliding-window limiters on `POST /api/v1/auth/register`,
+`POST /api/v1/auth/login` and `POST /api/v1/auth/refresh`, and on
 `POST /api/v1/expert-application`. Throttled requests return `429` with the
 canonical envelope and code `TOO_MANY_REQUESTS`
 (`server/tests/rate-limiter.integration.test.js`).

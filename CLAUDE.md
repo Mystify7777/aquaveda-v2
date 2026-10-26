@@ -8,7 +8,7 @@ Expert application details — **backend and frontend implemented; merged (PR #1
 Strict submission on the `->pending` history entry, server-hashed acknowledgement, revision-pinned atomic decisions, required reject note,
 shared pure domain module, apply rate limit (EXP-L9–L15; design doc). BREAKING: apply body, approve/reject `{ revision, note }`; the
 frontend sends them (contract boundary `src/lib/expert/submission-contract.ts`, `ExpertStatusProvider`, `AuthProvider.refreshUser`, applicant form + timeline, admin master-detail with revision-pinned decisions, nav chips; EXP-L16–L20, UI-L4 and UI-L2 superseded). Taxonomy provisional (EXP-L15). The governance E2E spec (`e2e/governance-lifecycle.spec.ts`) was
-updated in #124; its execution needs Playwright + MongoDB and its result is not recorded in this repository.
+updated in #124 and runs in the CI `e2e` job (Playwright + `mongo:7`); no pass/fail result is recorded in this repository, so see the CI run for that PR.
 
 Role-aware Expert UI (frontend over #91) — **implemented**
 USER apply/status page, ADMIN Expert-application queue (approve/reject), role-aware nav (desktop/mobile/Learn).
@@ -156,10 +156,10 @@ MongoDB: 232/232 tests, 54 suites, 0 failures.** Executed as 6 reviewed
 checkpoints (A: shared HTTP error infra; B: 4 validation modules; C:
 Issue routes; D: Knowledge/Comment/Project routes; E: `app.js`
 integration + global 404/error normalization + `auth.routes.js`
-migration; F: full verification + docs, this update). At that milestone's close: exactly 9 domain
+migration; F: full verification + docs, this update). At that milestone's close (historical; not the current route surface): exactly 9 domain
 routes, 1:1 with the 9 existing service operations (2 Issue, 5
-Knowledge, 1 Comment, 1 Project) — no GET/listing/edit/delete route,
-confirmed by direct enumeration. Public/workflow read routes (#40/#48/#41, #74) and
+Knowledge, 1 Comment, 1 Project), with no GET/listing/edit/delete route
+at that time, confirmed by direct enumeration. Public/workflow read routes (#40/#48/#41, #74) and
 Expert application routes (#91) were added later; see `server/src/routes/`. `AUTHORIZATION_POLICY_UNRESOLVED`
 maps to 409 with a distinguishing `code` field, never silently folded
 into `FORBIDDEN`'s 403 — D-3a's two blocked transitions remain exactly

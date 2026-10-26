@@ -155,9 +155,10 @@ npm run provision:admin
   it as the ADMIN with the application's `revision`.
 
 Run backend tests from this directory with `npm test`. The suite uses the
-MongoDB named by `TEST_MONGO_URI` (a dedicated database, different from
-`MONGO_URI`); when it is unset an in-memory MongoDB is started instead (see
-the environment block above). The frontend has a separate root `npm test`
+MongoDB named by `TEST_MONGO_URI` when set (a dedicated database that must
+never be the same as `MONGO_URI`); when it is unset, locally, an in-memory
+MongoDB is started instead (see the environment block above). CI sets
+`TEST_MONGO_URI` to its `mongo:7` service and does not use the fallback. The frontend has a separate root `npm test`
 command (Vitest plus root Node tests).
 
 ## Known v1 bugs that do NOT carry forward

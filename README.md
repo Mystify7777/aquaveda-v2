@@ -28,7 +28,7 @@ The project now has a working Express authentication foundation with:
 - Contribution entry points use `RequireAuth` to guide anonymous users to sign in or register
 - Session bootstrap distinguishes initializing, authenticated, confirmed anonymous, session failure, and backend unavailability
 
-Verification is defined by scripts rather than recorded counts, which go stale: `npm run verify` (root) runs the backend and frontend suites, and CI (`.github/workflows/ci.yml`) runs them on every PR and push to `main`, with the backend suite against a pinned `mongo:7` service. Offline backend checks: `npm --prefix server run verify:models`, `verify:validation`, `verify:cookie-config`.
+Verification is defined by scripts rather than recorded counts, which go stale: `npm run verify` (root) runs the backend and frontend pipelines concurrently; it does not include the Playwright browser smoke suite (`npm run test:e2e`). CI (`.github/workflows/ci.yml`) runs on every PR and push to `main` with three jobs: `frontend`, `backend` (against a pinned `mongo:7` service) and `e2e` (Playwright smoke suite, also against `mongo:7`). Offline backend checks: `npm --prefix server run verify:models`, `verify:validation`, `verify:cookie-config`.
 
 The backend exposes the five authentication routes plus Issue, Knowledge, Comment, Project, and Expert-application routes under `/api/v1`, including public read/list routes (see `server/src/routes/`). Issue guidance is available as a service (`server/src/services/recommendation.service.js`); it has no HTTP route yet. The frontend implements public Explore/Learn/Act surfaces and authenticated workflows; `/community` and `/dashboard` remain deferred.
 
@@ -116,7 +116,7 @@ For the full backend verification workflow, see [`server/README.md`](server/READ
 
 The backend expects MongoDB and the environment variables documented in that file. Tests require a dedicated `TEST_MONGO_URI` that is different from `MONGO_URI`.
 
-The supported backend test command is `cd server && npm test`; it uses the MongoDB named by `TEST_MONGO_URI` (which must differ from `MONGO_URI`) and starts an in-memory MongoDB when that variable is unset. The root `npm test` command runs the frontend Vitest suite and the root Node tests.
+The supported backend test command is `cd server && npm test`; locally it uses the MongoDB named by `TEST_MONGO_URI` when set, and may start an in-memory MongoDB when it is unset. CI sets `TEST_MONGO_URI` to its `mongo:7` service and does not use the in-memory fallback. `TEST_MONGO_URI` must never point at the same database as `MONGO_URI`. The root `npm test` command runs the frontend Vitest suite and the root Node tests.
 
 ---
 
