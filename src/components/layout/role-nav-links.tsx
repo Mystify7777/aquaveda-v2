@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { useExpertStatus } from "@/components/expert/expert-status-provider";
 import { useAuth } from "@/components/providers/auth-provider";
 import { navIndicator } from "@/lib/expert/nav-indicator";
 import { getRoleLinks } from "@/lib/expert/role-links";
+import { matchNavPath } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,11 +19,12 @@ import { cn } from "@/lib/utils";
  */
 export function RoleNavLinks({
   className,
-  currentPath,
+  activeClassName,
 }: {
   className: string;
-  currentPath?: string;
+  activeClassName?: string;
 }) {
+  const pathname = usePathname();
   const { status, user } = useAuth();
   const expert = useExpertStatus();
   if (status !== "authenticated") return null;
@@ -29,12 +32,14 @@ export function RoleNavLinks({
 
   return (
     <>
-      {getRoleLinks(user?.role).map((link) => (
+      {getRoleLinks(user?.role).map((link) => {
+        const match = matchNavPath(pathname, link.href);
+        return (
         <Link
           key={link.href}
           href={link.href}
-          className={cn(className, currentPath === link.href && "text-foreground bg-muted")}
-          aria-current={currentPath === link.href ? "page" : undefined}
+          className={cn(className, match && activeClassName)}
+          aria-current={match === "page" ? "page" : match === "section" ? "true" : undefined}
           // The status is part of the link's NAME via aria-label, not via an
           // `sr-only` child: browsers treat an absolutely-positioned child as
           // block-level and insert spaces around its text ("Become an Expert ,
@@ -53,7 +58,8 @@ export function RoleNavLinks({
             </span>
           )}
         </Link>
-      ))}
+        );
+      })}
     </>
   );
 }
