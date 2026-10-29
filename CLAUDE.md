@@ -4,6 +4,11 @@
 
 ## Current Milestone
 
+Issue #2 — navigation accessibility/responsive hardening — **implemented.** Active-route state on desktop and mobile via a small
+client `NavLink` (any match highlights; only an exact match exposes `aria-current="page"`, so one current link per landmark; matcher in `src/lib/navigation.ts`) so the Navbar stays a Server
+Component; drawer closes on any link activation, Escape/overlay/close, route change and growth to desktop width; 44px touch targets
+on mobile controls; forced-colors focus outline fallback. No new dependencies or routes.
+
 Expert application details — **backend and frontend implemented; merged (PR #124)**
 Strict submission on the `->pending` history entry, server-hashed acknowledgement, revision-pinned atomic decisions, required reject note,
 shared pure domain module, apply rate limit (EXP-L9–L15; design doc). BREAKING: apply body, approve/reject `{ revision, note }`; the

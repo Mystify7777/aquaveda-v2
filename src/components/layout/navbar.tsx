@@ -1,9 +1,16 @@
 import Link from "next/link";
 
+import { NavLink } from "@/components/layout/nav-link";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { AuthControls } from "@/components/layout/auth-controls";
 import { RoleNavLinks } from "@/components/layout/role-nav-links";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+
+const LINK_CLASS =
+  "text-muted-foreground hover:text-foreground hover:bg-muted relative rounded-md px-3 py-2 text-sm font-medium transition-colors";
+// Non-colour cue (underline bar) in addition to the colour change.
+const ACTIVE_LINK_CLASS =
+  "text-foreground after:bg-primary after:absolute after:inset-x-3 after:-bottom-0.5 after:h-0.5 after:rounded-full";
 
 const NAV_ITEMS = [
   { href: "/explore", label: "Explore" },
@@ -14,9 +21,10 @@ const NAV_ITEMS = [
 ] as const;
 
 /**
- * Server Component. Only the interactive parts (ThemeToggle, MobileNav)
- * are Client Components — they're isolated as deeply as possible in the
- * tree so the Navbar itself ships zero client JS.
+ * Server Component. Only the interactive parts (ThemeToggle, MobileNav,
+ * and the per-link NavLink that reads the pathname for active state) are
+ * Client Components — they're isolated as deeply as possible in the tree
+ * so the Navbar itself ships zero client JS.
  *
  * The same NAV_ITEMS array is defined in both Navbar and MobileNav
  * rather than sharing a module-level const. Sharing it would couple
@@ -43,15 +51,16 @@ export function Navbar() {
         {/* Desktop nav — hidden on mobile */}
         <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
           {NAV_ITEMS.map((item) => (
-            <Link
+            <NavLink
               key={item.href}
               href={item.href}
-              className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md px-3 py-2 text-sm font-medium transition-colors"
+              className={LINK_CLASS}
+              activeClassName={ACTIVE_LINK_CLASS}
             >
               {item.label}
-            </Link>
+            </NavLink>
           ))}
-          <RoleNavLinks className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md px-3 py-2 text-sm font-medium transition-colors" />
+          <RoleNavLinks className={LINK_CLASS} activeClassName={ACTIVE_LINK_CLASS} />
         </nav>
 
         {/* Right slot — session actions are UX only; public navigation stays available. */}
@@ -59,7 +68,7 @@ export function Navbar() {
           <div className="hidden md:block">
             <AuthControls />
           </div>
-          <ThemeToggle />
+          <ThemeToggle className="max-md:size-11" />
           <MobileNav />
         </div>
       </div>

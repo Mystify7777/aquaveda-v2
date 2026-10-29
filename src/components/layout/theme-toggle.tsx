@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { Moon, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /**
  * Client-only mount flag via useSyncExternalStore rather than the classic
@@ -42,7 +43,7 @@ function useMounted() {
  * resolved the stored preference. This avoids both the hydration
  * error and a visible layout shift when the icon appears.
  */
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string }) {
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useMounted();
 
@@ -55,7 +56,7 @@ export function ThemeToggle() {
         size="icon"
         aria-hidden="true"
         tabIndex={-1}
-        className="opacity-0"
+        className={cn("opacity-0", className)}
       />
     );
   }
@@ -66,6 +67,7 @@ export function ThemeToggle() {
     <Button
       variant="ghost"
       size="icon"
+      className={className}
       aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
       onClick={() => setTheme(isDark ? "light" : "dark")}
     >
