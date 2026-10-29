@@ -27,6 +27,12 @@ export interface Issue {
   description: string;
   location: IssueLocation;
   /**
+   * Optional reporter-supplied place name (#134). UNTRUSTED display text:
+   * plain text only, not a verified address, never geometry. Absent on
+   * legacy and GPS/manual-coordinate reports.
+   */
+  locationLabel?: string;
+  /**
    * Canonical value, or "" when unclassified (server domain/issue-classification.js).
    * Assumes no pre-#67 free-text rows exist; see domain-model.md "Read-type assumption".
    */
@@ -62,6 +68,8 @@ export interface CreateIssuePayload {
   title: string;
   description: string;
   location: IssueLocation;
+  /** Normalized by the contract in `lib/issues/location-contract`; omit when unset. */
+  locationLabel?: string;
   category?: IssueCategory;
   severity?: IssueSeverity;
 }

@@ -525,3 +525,53 @@ describe("GET /api/v1/issues/:issueId (Issue #48 — public read, no auth requir
     assert.equal(res.json.code, "VALIDATION_FAILED");
   });
 });
+
+describe("POST /api/v1/issues — locationLabel (#134, backward compatible)", () => {
+  const POINT = { type: "Point", coordinates: [85.1376, 25.5941] };
+  const base = { title: "Leak", description: "Pipe burst", location: POINT };
+
+  it("creates an issue without a label exactly as before (field absent)", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const res = await request("POST", "/api/v1/issues", { body: base, cookies: authCookie(accessToken) });
+    assert.equal(res.status, 201);
+    assert.equal(res.json.data.locationLabel, undefined);
+    assert.equal((await Issue.findById(res.json.data._id).lean()).locationLabel, undefined);
+  });
+
+  it("persists a normalized label and returns it in the DTO; coordinates untouched", async () => {
+    const { accessToken } = await makeAuthedUser();
+    const res = await request("POST", "/api/v1/issues", {
+      body: { ...base, locationLabel: "  Kankarbagh,\n Patna " },
+      cookies: authCookie(accessToken),
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.json.data.locationLabel, "Kankarbagh, Patna");
+    assert.deepEqual(res.json.data.location.coordinates, POINT.coordinates);
+    const listed = await request("GET", "/api/v1/issues");
+    assert.equal(listed.json.data.items[0].locationLabel, "Kankarbagh, Patna");
+  });
+
+  it("rejects markup and over-length labels with 400 and creates nothing", async () => {
+    const { accessToken } = await makeAuthedUser();
+    for (const bad of ["<script>x</script>", "x".repeat(201), 42]) {
+      const res = await request("POST", "/api/v1/issues", {
+        body: { ...base, locationLabel: bad },
+        cookies: authCookie(accessToken),
+      });
+      assert.equal(res.status, 400);
+    }
+    assert.equal(await Issue.countDocuments(), 0);
+  });
+
+  it("an unlabeled legacy issue stays listable and filterable by bbox", async () => {
+    const { user } = await makeAuthedUser();
+    await Issue.create({
+      title: "Legacy", description: "no label", location: POINT, reportedBy: user.id,
+      status: "open", statusHistory: [{ fromStatus: null, toStatus: "open", actor: user.id, timestamp: new Date() }],
+    });
+    const res = await request("GET", "/api/v1/issues?bbox=85,25,86,26");
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.items.length, 1);
+    assert.equal(res.json.data.items[0].locationLabel, undefined);
+  });
+});

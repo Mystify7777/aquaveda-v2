@@ -269,6 +269,115 @@ export function validateAuthConfig(env = process.env) {
   return true;
 }
 
+export const PUBLIC_OSMF_NOMINATIM_HOST = "nominatim.openstreetmap.org";
+const DEV_GEOCODER_BASE_URL = `https://${PUBLIC_OSMF_NOMINATIM_HOST}`;
+const DEV_GEOCODER_USER_AGENT =
+  "AquaVeda-v2-dev/0.1 (development; https://github.com/Mystify7777/aquaveda-v2)";
+
+
+/**
+ * Geocoding provider configuration (Issue #134).
+ *
+ * The public OSMF Nominatim instance is a compliant DEVELOPMENT default only
+ * (1 req/s for the whole app, no autocomplete, identifying User-Agent,
+ * caching required). In production the feature is DISABLED (the endpoint
+ * answers GEOCODER_UNAVAILABLE and the UI degrades to coordinate entry)
+ * until an explicit provider is configured; production configuration that
+ * points at the public OSMF host is refused at startup.
+ *
+ * Variables (all optional outside production):
+ *   GEOCODER_BASE_URL          Nominatim-compatible base URL (https; http only for localhost)
+ *   GEOCODER_USER_AGENT        required in production when enabled
+ *   GEOCODER_API_KEY           sent as `key=` query parameter when set; server-side only
+ *   GEOCODER_TIMEOUT_MS        500..15000, default 4000
+ *   GEOCODER_MIN_INTERVAL_MS   >=0, default 1100 (>=1000 enforced for the public OSMF host)
+ *   GEOCODER_CACHE_TTL_MS      >=60000, default 86400000
+ *   GEOCODER_ATTRIBUTION_TEXT  default "© OpenStreetMap contributors"
+ *   GEOCODER_ATTRIBUTION_URL   https URL, default https://www.openstreetmap.org/copyright
+ *
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @returns {{ enabled: false, reason: string } | {
+ *   enabled: true, baseUrl: string, userAgent: string, apiKey?: string,
+ *   timeoutMs: number, minIntervalMs: number, cacheTtlMs: number,
+ *   attribution: { text: string, url: string } }}
+ */
+function geocoderInt(env, name, fallback, min, max = Number.MAX_SAFE_INTEGER) {
+  const raw = (env[name] ?? "").trim();
+  if (raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min || n > max) {
+    throw new Error(`Invalid ${name} value: "${env[name]}". Expected an integer between ${min} and ${max}.`);
+  }
+  return n;
+}
+
+export function resolveGeocoderConfig(env = process.env) {
+  const isProduction = env.NODE_ENV === "production";
+  const rawUrl = (env.GEOCODER_BASE_URL ?? "").trim();
+
+  if (!rawUrl && isProduction) {
+    return { enabled: false, reason: "GEOCODER_BASE_URL is not set in production" };
+  }
+
+  const baseUrl = rawUrl || DEV_GEOCODER_BASE_URL;
+  let parsed;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error(`Invalid GEOCODER_BASE_URL value: "${env.GEOCODER_BASE_URL}". Expected an absolute URL.`);
+  }
+  const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+  if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && isLocal && !isProduction)) {
+    throw new Error("Invalid GEOCODER_BASE_URL: must be https (http is allowed only for localhost outside production).");
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error("Invalid GEOCODER_BASE_URL: must not contain credentials, a query string or a fragment (use GEOCODER_API_KEY).");
+  }
+  const isPublicOsmf = parsed.hostname.toLowerCase() === PUBLIC_OSMF_NOMINATIM_HOST;
+  if (isProduction && isPublicOsmf) {
+    throw new Error(
+      "Production configuration error: GEOCODER_BASE_URL must not be the public OSMF Nominatim instance " +
+        "(development-only usage policy). Use a self-hosted or commercial provider."
+    );
+  }
+
+  const userAgent = (env.GEOCODER_USER_AGENT ?? "").trim();
+  if (isProduction && !userAgent) {
+    throw new Error("Production configuration error: GEOCODER_USER_AGENT must identify the application when the geocoder is enabled.");
+  }
+
+  const minIntervalMs = geocoderInt(env, "GEOCODER_MIN_INTERVAL_MS", 1100, isPublicOsmf ? 1000 : 0);
+  const timeoutMs = geocoderInt(env, "GEOCODER_TIMEOUT_MS", 4000, 500, 15000);
+  const cacheTtlMs = geocoderInt(env, "GEOCODER_CACHE_TTL_MS", 24 * 60 * 60 * 1000, 60_000);
+
+  const attributionUrl = (env.GEOCODER_ATTRIBUTION_URL ?? "").trim() || "https://www.openstreetmap.org/copyright";
+  let attrParsed;
+  try {
+    attrParsed = new URL(attributionUrl);
+  } catch {
+    attrParsed = null;
+  }
+  if (!attrParsed || attrParsed.protocol !== "https:") {
+    throw new Error(`Invalid GEOCODER_ATTRIBUTION_URL value: "${env.GEOCODER_ATTRIBUTION_URL}". Expected an https URL.`);
+  }
+  const attributionText = (env.GEOCODER_ATTRIBUTION_TEXT ?? "").trim() || "© OpenStreetMap contributors";
+  if (attributionText.length > 120 || /[<>]/.test(attributionText)) {
+    throw new Error("Invalid GEOCODER_ATTRIBUTION_TEXT: at most 120 characters, no '<' or '>'.");
+  }
+
+  const apiKey = (env.GEOCODER_API_KEY ?? "").trim() || undefined;
+  return {
+    enabled: true,
+    baseUrl: parsed.toString().replace(/\/+$/, ""),
+    userAgent: userAgent || DEV_GEOCODER_USER_AGENT,
+    apiKey,
+    timeoutMs,
+    minIntervalMs,
+    cacheTtlMs,
+    attribution: { text: attributionText, url: attrParsed.toString() },
+  };
+}
+
 /**
  * Validates the startup configuration for the process (server.js).
  * Fails fast before opening database connections or starting HTTP listeners.
@@ -288,6 +397,10 @@ export function validateStartupConfig(env = process.env) {
 
   // Validate authentication and session configuration
   validateAuthConfig(env);
+
+  // Geocoder (#134): fail fast on malformed/forbidden values. Absent config in
+  // production is NOT an error — the feature is simply disabled.
+  resolveGeocoderConfig(env);
 
   return true;
 }

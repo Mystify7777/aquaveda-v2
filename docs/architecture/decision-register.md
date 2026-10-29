@@ -1042,3 +1042,21 @@ Status: implemented, reviewed, and verified.
 | SEC-L5 | **Database separation protection:** `testDb.js`'s test database protection is strengthened via `assertTestDatabaseSeparation()`. In addition to verbatim string equality, canonical URI comparison (`isSameMongoDatabase`) normalizes loopback aliases (`localhost`, `127.0.0.1`, `::1`), default ports, and query parameters to prevent tests from wiping development databases. Tests targeting any database ending in `_dev` are strictly refused. |
 | SEC-L6 | **Repository and logging hygiene:** Version control explicitly ignores private keys and certificates (`*.key`, `*.cert`, `*.crt`, `*.pfx`, `*.p12`) while unblocking `.env.example`. HTTP request logging (`requestLogger`) restricts logs to `{method, path, status, durationMs}`, logging no bodies, query strings, headers, or cookies. |
 
+---
+
+## 🔒 Locked — Human-readable locations (#134)
+
+Status: implemented; backend `npm test` 1227/1227 against real MongoDB, `verify:models` 47/47, `verify:validation` 86/86, frontend 810/810, typecheck clean. Provider choice for production is **open** (see `geocoding-provider-comparison.md`).
+
+| ID | Decision |
+|---|---|
+| LOC-L1 | Issue ID is displayed and copyable on every card/detail for every status, independent of `isProjectEligible` (which still gates only project-creation wording/behavior). |
+| LOC-L2 | `Issue.locationLabel` is optional, trimmed, <= 200 chars, no index, no migration. Pure contract in `server/src/domain/location-label.js` (re-exported to the frontend via `src/lib/issues/location-contract.ts`). Normalization (NFC, whitespace collapse, control/bidi/zero-width removal); `<`/`>` rejected; blank = absent. `POST /api/v1/issues` accepts it additively. |
+| LOC-L3 | The label is **untrusted display text**: never geometry, never used for authorization, eligibility, search or geo filters; rendered only as a React text node; never presented as a verified address. Canonical coordinates remain the only authoritative location. |
+| LOC-L4 | Labels are persisted at report time; nothing is resolved at read time (zero provider calls on Explore). Missing label => "Location not named". Legacy issues unaffected. |
+| LOC-L5 | **No reverse geocoding.** GPS and manual-coordinate reports are unlabeled. Exact or rounded device coordinates are never sent to a provider; only user-typed query text leaves the server. |
+| LOC-L6 | `GET /api/v1/geocode/search?q=` (authenticated, per-IP limited 20/min, `q` 3..200, submit-driven). Adapter: identifying User-Agent, app-wide spacing (default 1.1 s), bounded wait queue (429 when full), TTL+LRU cache with in-flight de-duplication, 4 s timeout, all upstream failures => 503 `GEOCODER_UNAVAILABLE` with no provider detail, query text never logged. Per-process cache/throttle (same limitation as the rate limiter). |
+| LOC-L7 | Provider config lives in `config/env.js` (`resolveGeocoderConfig`, validated at startup). Public OSMF Nominatim is development-only; production without `GEOCODER_BASE_URL` disables the feature; production + public OSMF host fails startup; production requires `GEOCODER_USER_AGENT`. Attribution text/URL configurable and returned with results. |
+| LOC-L8 | Report form: place search primary; "Use my current location" kept; manual lat/lng collapsed under "Enter coordinates" (auto-expanded on invalid typed coordinates). A chosen place sets coordinates + label together; any other change to coordinates (manual edit, GPS) clears the label so it can never describe different coordinates. Provider failure never blocks reporting. |
+| LOC-L9 | New `DomainErrorCode.GEOCODER_UNAVAILABLE` (503). One new route (`/api/v1/geocode/search`); route-count lock amended for it. |
+| LOC-L10 | (Review pass) The label contract is enforced identically at the schema **and** `createIssue()` (same `domain/location-label.js` rules; non-string, markup and over-length labels are `VALIDATION_FAILED` for direct service callers too). Place-search submit respects the loading state (Enter == Search button). The report form discloses that search text is sent to a third-party service and device location is not. |

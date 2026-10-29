@@ -113,6 +113,30 @@ describe("issue.service — createIssue", () => {
     }
   });
 
+  it("normalizes a locationLabel and leaves it absent when omitted or blank (#134)", async () => {
+    const reporter = fakeActor("USER");
+    const base = { title: "t", description: "d", location: validPoint() };
+    const labelled = await createIssue(reporter, { ...base, locationLabel: "  Kankarbagh,\n Patna " });
+    assert.equal(labelled.locationLabel, "Kankarbagh, Patna");
+    for (const extra of [{}, { locationLabel: "   " }]) {
+      const issue = await createIssue(reporter, { ...base, ...extra });
+      assert.equal(issue.locationLabel, undefined);
+    }
+  });
+
+  it("enforces the same locationLabel contract as the schema even when bypassing Zod (#134)", async () => {
+    const reporter = fakeActor("USER");
+    const base = { title: "t", description: "d", location: validPoint() };
+    for (const bad of ["<b>x</b>", "x".repeat(201), 42, null, ["a"]]) {
+      await assert.rejects(
+        () => createIssue(reporter, { ...base, locationLabel: bad }),
+        (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+        `should reject ${JSON.stringify(bad)}`,
+      );
+    }
+    assert.equal(await Issue.countDocuments(), 0);
+  });
+
   it("leaves category/severity empty when omitted", async () => {
     const issue = await makeOpenIssue();
     assert.equal(issue.category, "");

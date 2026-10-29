@@ -4,6 +4,13 @@
 
 ## Current Milestone
 
+Issue #134 — copyable Issue IDs for every status + human-readable locations — **implemented (pending review; PR not opened from the sandbox).**
+IDs: card/detail show the canonical ID for all statuses, decoupled from project eligibility. Locations: optional untrusted `Issue.locationLabel`
+persisted at report time (LOC-L1–L9); authenticated, rate-limited, cached `GET /api/v1/geocode/search` over a Nominatim-compatible adapter;
+place search is the primary report-form input, manual lat/lng collapsed; no reverse geocoding, device coordinates never leave the browser/server.
+**Open:** production geocoding provider not chosen (`docs/architecture/geocoding-provider-comparison.md`); until configured, production has place search disabled.
+Existing issues have no label (backfill not decided).
+
 Issue #2 — navigation accessibility/responsive hardening — **implemented.** Active-route state on desktop and mobile via a small
 client `NavLink` (any match highlights; only an exact match exposes `aria-current="page"`, so one current link per landmark; matcher in `src/lib/navigation.ts`) so the Navbar stays a Server
 Component; drawer closes on any link activation, Escape/overlay/close, route change and growth to desktop width; 44px touch targets

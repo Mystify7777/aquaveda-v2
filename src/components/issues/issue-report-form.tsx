@@ -2,13 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { flushSync } from "react-dom";
 
+import { LocationSearch } from "@/components/issues/location-search";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/client";
 import { createIssue } from "@/lib/api/issues";
+import type { GeocodeResult } from "@/lib/api/geocode";
 import type { Issue } from "@/lib/api/types/issue";
 import { ISSUE_CATEGORIES, ISSUE_SEVERITIES } from "@/lib/issues/classification";
 import {
@@ -101,20 +104,44 @@ export function IssueReportForm({
   const [geoError, setGeoError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
   const [created, setCreated] = React.useState<Issue | null>(null);
+  const [coordsOpen, setCoordsOpen] = React.useState(false);
+  const [locationError, setLocationError] = React.useState<string | null>(null);
 
   // Ref guard: `pending` state updates asynchronously, so two rapid
   // submit events could both pass a state check.
   const inFlight = React.useRef(false);
   const fieldRefs = React.useRef<Partial<Record<IssueReportField, HTMLElement | null>>>({});
   const successRef = React.useRef<HTMLHeadingElement>(null);
+  const placeRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     if (created) successRef.current?.focus();
   }, [created]);
 
   function setField(field: IssueReportField, value: string) {
-    setValues((v) => ({ ...v, [field]: value }));
+    // A place name describes the coordinates it was resolved to. Changing the
+    // coordinates by hand makes it stale, so it is dropped (never sent).
+    const coordinateEdit = field === "latitude" || field === "longitude";
+    setValues((v) => ({ ...v, [field]: value, ...(coordinateEdit ? { locationLabel: "" } : {}) }));
     if (fieldErrors[field]) setFieldErrors((e) => ({ ...e, [field]: undefined }));
+    if (coordinateEdit) setLocationError(null);
+  }
+
+  function selectPlace(result: GeocodeResult) {
+    setGeoError(null);
+    setLocationError(null);
+    setValues((v) => ({
+      ...v,
+      latitude: result.latitude.toFixed(6),
+      longitude: result.longitude.toFixed(6),
+      locationLabel: result.label,
+    }));
+    setFieldErrors((e) => ({ ...e, latitude: undefined, longitude: undefined }));
+  }
+
+  function clearPlace() {
+    setValues((v) => ({ ...v, latitude: "", longitude: "", locationLabel: "" }));
+    placeRef.current?.focus();
   }
 
   function describedBy(field: IssueReportField, hint?: boolean) {
@@ -130,12 +157,15 @@ export function IssueReportForm({
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        // Device position is never sent to a geocoder and gets no place name.
         setValues((v) => ({
           ...v,
           latitude: pos.coords.latitude.toFixed(6),
           longitude: pos.coords.longitude.toFixed(6),
+          locationLabel: "",
         }));
         setFieldErrors((e) => ({ ...e, latitude: undefined, longitude: undefined }));
+        setLocationError(null);
       },
       () => setGeoError("Could not read your location. Enter coordinates manually."),
       { timeout: 10_000 },
@@ -151,6 +181,18 @@ export function IssueReportForm({
     if (!result.ok) {
       setFieldErrors(result.errors);
       const first = FIELD_ORDER.find((f) => result.errors[f]);
+      if (first === "latitude" || first === "longitude") {
+        if (!values.latitude.trim() && !values.longitude.trim()) {
+          // Nothing chosen yet: guide to the primary input, not to hidden fields.
+          setLocationError("Choose a place, use your current location, or enter coordinates.");
+          placeRef.current?.focus();
+        } else {
+          // Partially/invalidly typed coordinates: reveal them, then focus.
+          flushSync(() => setCoordsOpen(true));
+          fieldRefs.current[first]?.focus();
+        }
+        return;
+      }
       if (first) fieldRefs.current[first]?.focus();
       return;
     }
@@ -175,6 +217,8 @@ export function IssueReportForm({
     setFieldErrors({});
     setFailure(null);
     setCreated(null);
+    setLocationError(null);
+    setCoordsOpen(false);
   }
 
   if (created) {
@@ -241,38 +285,65 @@ export function IssueReportForm({
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field id="report-latitude" label="Latitude" error={fieldErrors.latitude}>
-            <Input
-              id="report-latitude"
-              ref={(el) => { fieldRefs.current.latitude = el; }}
-              inputMode="decimal"
-              value={values.latitude}
-              onChange={(e) => setField("latitude", e.target.value)}
-              aria-invalid={!!fieldErrors.latitude}
-              aria-describedby={describedBy("latitude")}
-              aria-required="true"
-            />
-          </Field>
-          <Field id="report-longitude" label="Longitude" error={fieldErrors.longitude}>
-            <Input
-              id="report-longitude"
-              ref={(el) => { fieldRefs.current.longitude = el; }}
-              inputMode="decimal"
-              value={values.longitude}
-              onChange={(e) => setField("longitude", e.target.value)}
-              aria-invalid={!!fieldErrors.longitude}
-              aria-describedby={describedBy("longitude")}
-              aria-required="true"
-            />
-          </Field>
-        </div>
-        <div className="space-y-1">
-          <Button type="button" variant="outline" size="sm" onClick={useMyLocation}>
-            Use my current location
-          </Button>
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-medium">Location</legend>
+          <LocationSearch
+            ref={placeRef}
+            selected={values.locationLabel ? { label: values.locationLabel } : null}
+            onSelect={selectPlace}
+            onClear={clearPlace}
+            error={locationError ?? undefined}
+          />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={useMyLocation}>
+              Use my current location
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-expanded={coordsOpen}
+              aria-controls="report-coordinates"
+              onClick={() => setCoordsOpen((o) => !o)}
+            >
+              Enter coordinates
+            </Button>
+          </div>
           {geoError && <p role="status" className="text-muted-foreground text-xs">{geoError}</p>}
-        </div>
+          {!values.locationLabel && values.latitude.trim() && values.longitude.trim() && (
+            <p role="status" className="text-muted-foreground text-xs">
+              Using coordinates {values.latitude.trim()}, {values.longitude.trim()}. No place name will be saved.
+            </p>
+          )}
+
+          <div id="report-coordinates" hidden={!coordsOpen} className="grid grid-cols-2 gap-3">
+            <Field id="report-latitude" label="Latitude" error={fieldErrors.latitude}>
+              <Input
+                id="report-latitude"
+                ref={(el) => { fieldRefs.current.latitude = el; }}
+                inputMode="decimal"
+                value={values.latitude}
+                onChange={(e) => setField("latitude", e.target.value)}
+                aria-invalid={!!fieldErrors.latitude}
+                aria-describedby={describedBy("latitude")}
+                aria-required="true"
+              />
+            </Field>
+            <Field id="report-longitude" label="Longitude" error={fieldErrors.longitude}>
+              <Input
+                id="report-longitude"
+                ref={(el) => { fieldRefs.current.longitude = el; }}
+                inputMode="decimal"
+                value={values.longitude}
+                onChange={(e) => setField("longitude", e.target.value)}
+                aria-invalid={!!fieldErrors.longitude}
+                aria-describedby={describedBy("longitude")}
+                aria-required="true"
+              />
+            </Field>
+          </div>
+        </fieldset>
 
         <Field
           id="report-category"

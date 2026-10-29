@@ -1,5 +1,6 @@
 import { UserText } from "@/components/content/user-text";
 import { CopyIssueId } from "@/components/issues/copy-issue-id";
+import { LOCATION_FALLBACK_TEXT, readableLocation } from "@/components/issues/issue-location";
 import { IssueMapLoader } from "@/components/issues/issue-map-loader";
 import { IssueStatusBadge } from "@/components/issues/issue-status-badge";
 import { formatDate } from "@/lib/format-date";
@@ -16,6 +17,7 @@ import { ISSUE_STATUS_LABELS, isProjectEligible } from "@/lib/issues/status";
  */
 export function IssueDetail({ issue }: { issue: Issue }) {
   const position = toLatLng(issue.location);
+  const locationName = readableLocation(issue);
   const category = categoryLabel(issue.category);
   const severity = severityLabel(issue.severity);
 
@@ -47,21 +49,34 @@ export function IssueDetail({ issue }: { issue: Issue }) {
             <dd>{severity}</dd>
           </div>
         )}
-        {isProjectEligible(issue.status) && (
+        <div className="space-y-1 sm:col-span-2">
+          <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            Issue ID
+            {isProjectEligible(issue.status) && (
+              <span className="font-normal normal-case"> (for creating a project)</span>
+            )}
+          </dt>
+          <dd>
+            <CopyIssueId issueId={issue._id} showId />
+          </dd>
+        </div>
+        {(position || locationName) && (
           <div className="space-y-1 sm:col-span-2">
-            <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-              Issue ID <span className="font-normal normal-case">(for creating a project)</span>
-            </dt>
-            <dd>
-              <CopyIssueId issueId={issue._id} showId />
-            </dd>
-          </div>
-        )}
-        {position && (
-          <div className="space-y-1">
             <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Location</dt>
-            <dd className="font-mono">
-              {position[0].toFixed(5)}, {position[1].toFixed(5)}
+            <dd className="space-y-0.5">
+              <p dir="auto" className={locationName ? "break-words" : "text-muted-foreground italic"}>
+                {locationName ?? LOCATION_FALLBACK_TEXT}
+              </p>
+              {locationName && (
+                <p className="text-muted-foreground text-xs">
+                  Place name entered by the reporter; not a verified address. The map uses the coordinates below.
+                </p>
+              )}
+              {position && (
+                <p className="text-muted-foreground font-mono text-xs">
+                  {position[0].toFixed(5)}, {position[1].toFixed(5)}
+                </p>
+              )}
             </dd>
           </div>
         )}

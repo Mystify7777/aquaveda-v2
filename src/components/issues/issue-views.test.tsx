@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { toMappableIssues } from "@/lib/issues/geo";
 import { IssueCard } from "@/components/issues/issue-card";
 import { IssueDetail } from "@/components/issues/issue-detail";
 import { IssueStatusFilter } from "@/components/issues/issue-status-filter";
@@ -140,29 +141,81 @@ function stubClipboard(writeText: ReturnType<typeof vi.fn>) {
   Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
 }
 
-describe("Issue ID copy surfaces (#87)", () => {
-  it("detail shows the ID + copy for an eligible issue and preserves existing content", () => {
-    render(<IssueDetail issue={makeIssue({ _id: ID, status: "acknowledged" })} />);
+const ALL_STATUSES: Issue["status"][] = ["open", "acknowledged", "in_progress", "resolved", "verified"];
+
+describe("Issue ID copy surfaces (#87, #134)", () => {
+  it.each(ALL_STATUSES)("detail shows the ID + copy for a %s issue and preserves content", (status) => {
+    render(<IssueDetail issue={makeIssue({ _id: ID, status })} />);
     expect(screen.getByText(ID)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /copy id/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "Burst pipe" })).toBeInTheDocument();
   });
 
-  it("detail omits the ID for an open (ineligible) issue", () => {
-    render(<IssueDetail issue={makeIssue({ _id: ID, status: "open" })} />);
-    expect(screen.queryByText(ID)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /copy/i })).not.toBeInTheDocument();
+  it("detail only mentions project creation for project-eligible statuses", () => {
+    const { unmount } = render(<IssueDetail issue={makeIssue({ _id: ID, status: "open" })} />);
+    expect(screen.queryByText(/for creating a project/i)).not.toBeInTheDocument();
+    unmount();
+    render(<IssueDetail issue={makeIssue({ _id: ID, status: "acknowledged" })} />);
+    expect(screen.getByText(/for creating a project/i)).toBeInTheDocument();
   });
 
-  it("card offers copy for eligible issues without altering its link; none for open", async () => {
+  it.each(ALL_STATUSES)("card shows the exact ID and copies it for a %s issue", async (status) => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     stubClipboard(writeText);
-    const { unmount } = render(<IssueCard issue={makeIssue({ _id: ID, status: "in_progress" })} />);
+    render(<IssueCard issue={makeIssue({ _id: ID, status })} />);
     expect(screen.getByRole("link", { name: "Burst pipe" })).toHaveAttribute("href", `/explore/${ID}`);
-    await userEvent.click(screen.getByRole("button", { name: "Copy issue ID" }));
+    expect(screen.getByText(ID)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /copy id/i }));
+    expect(writeText).toHaveBeenCalledTimes(1);
     expect(writeText).toHaveBeenCalledWith(ID);
-    unmount();
-    render(<IssueCard issue={makeIssue({ _id: ID, status: "open" })} />);
-    expect(screen.queryByRole("button", { name: "Copy issue ID" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Human-readable location display (#134)", () => {
+  it("card shows the reporter-supplied place name", () => {
+    render(<IssueCard issue={makeIssue({ locationLabel: "Kankarbagh, Patna, Bihar" })} />);
+    expect(screen.getByText("Kankarbagh, Patna, Bihar")).toBeInTheDocument();
+    expect(screen.queryByText("Location not named")).not.toBeInTheDocument();
+  });
+
+  it("card falls back for legacy/unlabeled issues and still renders everything else", () => {
+    render(<IssueCard issue={makeIssue()} />);
+    expect(screen.getByText("Location not named")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Burst pipe" })).toBeInTheDocument();
+    expect(screen.getByText("i1")).toBeInTheDocument();
+  });
+
+  it("a blank label counts as unlabeled", () => {
+    render(<IssueCard issue={makeIssue({ locationLabel: "  \n " })} />);
+    expect(screen.getByText("Location not named")).toBeInTheDocument();
+  });
+
+  it("renders markup-looking labels as inert text and strips bidi overrides", () => {
+    const { container } = render(
+      <IssueCard issue={makeIssue({ locationLabel: "<img src=x onerror=alert(1)> \u202Eevil" })} />,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain("<img src=x onerror=alert(1)> evil");
+    expect(container.textContent).not.toContain("\u202E");
+  });
+
+  it("detail shows the name with an unverified caption AND the canonical coordinates", () => {
+    render(<IssueDetail issue={makeIssue({ locationLabel: "Kankarbagh, Patna" })} />);
+    expect(screen.getByText("Kankarbagh, Patna")).toBeInTheDocument();
+    expect(screen.getByText(/not a verified address/i)).toBeInTheDocument();
+    expect(screen.getByText("12.90000, 77.50000")).toBeInTheDocument();
+  });
+
+  it("detail without a label shows the fallback and the coordinates, no verification caption", () => {
+    render(<IssueDetail issue={makeIssue()} />);
+    expect(screen.getByText("Location not named")).toBeInTheDocument();
+    expect(screen.getByText("12.90000, 77.50000")).toBeInTheDocument();
+    expect(screen.queryByText(/not a verified address/i)).not.toBeInTheDocument();
+  });
+
+  it("label has no effect on what is plotted: mappable position comes from coordinates only", () => {
+    const labelled = makeIssue({ locationLabel: "North Pole" });
+    const plain = makeIssue();
+    expect(toMappableIssues([labelled])).toEqual(toMappableIssues([plain]));
   });
 });
