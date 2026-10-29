@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { matchNavPath } from "@/lib/navigation";
+import { ariaCurrentFor, matchNavPath } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 /**
  * Navigation link that knows whether it is the current route. A tiny Client
  * Component so the Navbar itself can stay a Server Component: only the link
- * reads `usePathname`. Exact match → `aria-current="page"`; a nested route of
- * the link's section → `aria-current="true"`. Both get `activeClassName`.
+ * reads `usePathname`. Any match (exact or nested) gets `activeClassName`;
+ * only an exact match exposes `aria-current="page"` (see `lib/navigation.ts`).
  */
 export function NavLink({
   href,
@@ -28,9 +28,7 @@ export function NavLink({
     <Link
       href={href}
       className={cn(className, match && activeClassName)}
-      aria-current={
-        match === "page" ? "page" : match === "section" ? "true" : undefined
-      }
+      aria-current={ariaCurrentFor(match)}
     >
       {children}
     </Link>

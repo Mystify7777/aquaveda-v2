@@ -20,7 +20,7 @@ describe("RoleNavLinks active state (same rule as the primary links)", () => {
     ["USER", "Become an Expert", "/learn/expert-application"],
     ["EXPERT", "Review queue", "/learn/review"],
     ["ADMIN", "Expert applications", "/admin/expert-applications"],
-  ])("%s: '%s' is aria-current=page on its exact route and 'true' on nested routes", (role, label, href) => {
+  ])("%s: '%s' is aria-current=page on its exact route; nested routes highlight it without aria-current", (role, label, href) => {
     as(role);
     mockUsePathname.mockReturnValue(href);
     const exact = render(<RoleNavLinks className="base" activeClassName="is-active" />);
@@ -31,7 +31,9 @@ describe("RoleNavLinks active state (same rule as the primary links)", () => {
 
     mockUsePathname.mockReturnValue(`${href}/details`);
     render(<RoleNavLinks className="base" activeClassName="is-active" />);
-    expect(screen.getByRole("link", { name: new RegExp(label) })).toHaveAttribute("aria-current", "true");
+    const nested = screen.getByRole("link", { name: new RegExp(label) });
+    expect(nested).not.toHaveAttribute("aria-current");
+    expect(nested.className).toContain("is-active");
   });
 
   it("is not active on other routes and applies no active class", () => {

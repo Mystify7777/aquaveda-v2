@@ -119,10 +119,11 @@ describe("MobileNav", () => {
       expect(current().map((l) => [l.textContent, l.getAttribute("aria-current")])).toEqual([["Act", "page"]]);
     });
 
-    it("marks the parent section for nested routes (same rule as desktop)", async () => {
+    it("highlights the parent section on nested routes but exposes no aria-current (same rule as desktop)", async () => {
       mockUsePathname.mockReturnValue("/learn/mine");
       await openDrawer();
-      expect(current().map((l) => [l.textContent, l.getAttribute("aria-current")])).toEqual([["Learn", "true"]]);
+      expect(current()).toHaveLength(0);
+      expect(screen.getByRole("link", { name: "Learn" }).className).toContain("after:w-0.5");
     });
 
     it("shows a non-colour marker on the active link only", async () => {

@@ -78,10 +78,11 @@ describe("Navbar", () => {
       expect(current().map((l) => [l.textContent, l.getAttribute("aria-current")])).toEqual([["Explore", "page"]]);
     });
 
-    it("marks the parent section aria-current=\"true\" for nested routes", () => {
+    it("highlights the parent section on nested routes but exposes no aria-current", () => {
       mockUsePathname.mockReturnValue("/explore/66a1f0c2");
       render(<Navbar />);
-      expect(current().map((l) => [l.textContent, l.getAttribute("aria-current")])).toEqual([["Explore", "true"]]);
+      expect(current()).toHaveLength(0);
+      expect(within(primary()).getByRole("link", { name: "Explore" }).className).toContain("after:h-0.5");
     });
 
     it("marks nothing on the home page or on unrelated routes", () => {

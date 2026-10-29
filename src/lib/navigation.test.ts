@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { matchNavPath } from "@/lib/navigation";
+import { ariaCurrentFor, matchNavPath } from "@/lib/navigation";
 
 describe("matchNavPath", () => {
   it("returns 'page' for an exact match, ignoring a trailing slash", () => {
@@ -36,5 +36,13 @@ describe("matchNavPath", () => {
     expect(matchNavPath(null, "/explore")).toBeNull();
     expect(matchNavPath(undefined, "/explore")).toBeNull();
     expect(matchNavPath("", "/explore")).toBeNull();
+  });
+});
+
+describe("ariaCurrentFor", () => {
+  it("exposes only an exact match; section and no-match expose nothing", () => {
+    expect(ariaCurrentFor("page")).toBe("page");
+    expect(ariaCurrentFor("section")).toBeUndefined();
+    expect(ariaCurrentFor(null)).toBeUndefined();
   });
 });

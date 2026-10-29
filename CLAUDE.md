@@ -5,7 +5,7 @@
 ## Current Milestone
 
 Issue #2 — navigation accessibility/responsive hardening — **implemented.** Active-route state on desktop and mobile via a small
-client `NavLink` (exact → `aria-current="page"`, nested → `"true"`; matcher in `src/lib/navigation.ts`) so the Navbar stays a Server
+client `NavLink` (any match highlights; only an exact match exposes `aria-current="page"`, so one current link per landmark; matcher in `src/lib/navigation.ts`) so the Navbar stays a Server
 Component; drawer closes on any link activation, Escape/overlay/close, route change and growth to desktop width; 44px touch targets
 on mobile controls; forced-colors focus outline fallback. No new dependencies or routes.
 
