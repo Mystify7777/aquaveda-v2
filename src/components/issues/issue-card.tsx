@@ -1,13 +1,13 @@
 import Link from "next/link";
 
 import { CopyIssueId } from "@/components/issues/copy-issue-id";
+import { IssueCardLocation } from "@/components/issues/issue-location";
 import { IssueStatusBadge } from "@/components/issues/issue-status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { userTextPreview } from "@/lib/content/user-text";
 import { formatDate } from "@/lib/format-date";
 import type { Issue } from "@/lib/api/types/issue";
 import { categoryLabel, severityLabel } from "@/lib/issues/labels";
-import { isProjectEligible } from "@/lib/issues/status";
 
 export function IssueCard({ issue }: { issue: Issue }) {
   const meta = [categoryLabel(issue.category), severityLabel(issue.severity)].filter(Boolean);
@@ -31,7 +31,8 @@ export function IssueCard({ issue }: { issue: Issue }) {
           Reported by {issue.reportedBy.name} ·{" "}
           <time dateTime={issue.createdAt}>{formatDate(issue.createdAt)}</time>
         </p>
-        {isProjectEligible(issue.status) && <CopyIssueId issueId={issue._id} />}
+        <IssueCardLocation issue={issue} />
+        <CopyIssueId issueId={issue._id} showId />
       </CardContent>
     </Card>
   );

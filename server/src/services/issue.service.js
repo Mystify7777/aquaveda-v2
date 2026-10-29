@@ -22,6 +22,7 @@ import {
   ISSUE_SEVERITY_VALUES,
 } from "../domain/issue-classification.js";
 import { bboxProblem, searchTextProblem, searchTerms } from "../domain/issue-search.js";
+import { locationLabelProblem, normalizeLocationLabel } from "../domain/location-label.js";
 
 /**
  * Issue domain service.
@@ -82,11 +83,21 @@ function wrapMongooseValidationError(err) {
 /**
  * createIssue(actorContext, payload)
  *
- * payload: { title, description, location, severity?, category?, domain? }
+ * payload: { title, description, location, locationLabel?, severity?, category?, domain? }
  * — never accepts status, statusHistory, or reportedBy from the caller.
  */
 export async function createIssue(actorContext, payload) {
   requireActor(actorContext);
+
+  // Untrusted display text (#134). Same rules as createIssueSchema — one
+  // contract (domain/location-label.js), enforced here too because this
+  // service is also called directly, bypassing Zod.
+  if (payload.locationLabel !== undefined && typeof payload.locationLabel !== "string") {
+    throw validationFailed("locationLabel must be a string", { field: "locationLabel" });
+  }
+  const locationLabel = normalizeLocationLabel(payload.locationLabel);
+  const labelProblem = locationLabelProblem(locationLabel);
+  if (labelProblem) throw validationFailed(labelProblem, { field: "locationLabel" });
 
   const now = new Date();
 
@@ -95,6 +106,7 @@ export async function createIssue(actorContext, payload) {
       title: payload.title,
       description: payload.description,
       location: payload.location,
+      locationLabel,
       severity: payload.severity,
       category: payload.category,
       domain: payload.domain,

@@ -53,6 +53,11 @@ export const DomainErrorCode = Object.freeze({
   // by IP address / request signature — never by email, username, or any
   // user-payload field, to prevent account enumeration and account
   // lock-out attacks. The HTTP layer maps this to 429 Too Many Requests.
+
+  // --- Geocoding addition (Issue #134) ---
+  GEOCODER_UNAVAILABLE: "GEOCODER_UNAVAILABLE", // the external place-search
+  // provider is not configured, timed out, or failed. Never carries
+  // provider detail. The HTTP layer maps this to 503.
 });
 
 export class DomainError extends Error {
@@ -119,3 +124,6 @@ export const authorizationPolicyUnresolved = (message, details) =>
 
 export const tooManyRequests = (message, details) =>
   new DomainError(DomainErrorCode.TOO_MANY_REQUESTS, message, details);
+
+export const geocoderUnavailable = (message, details) =>
+  new DomainError(DomainErrorCode.GEOCODER_UNAVAILABLE, message, details);

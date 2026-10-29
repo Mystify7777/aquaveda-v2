@@ -9,6 +9,10 @@ import {
   parseBbox,
   searchTextProblem,
 } from "../domain/issue-search.js";
+import {
+  locationLabelProblem,
+  normalizeLocationLabel,
+} from "../domain/location-label.js";
 import { paginationQuerySchema } from "./shared/pagination.js";
 
 /**
@@ -47,10 +51,26 @@ export const geoPointSchema = z.object({
     }),
 });
 
+/**
+ * Optional reporter-supplied place name (#134). Normalized, then validated;
+ * a blank label is treated as absent. Untrusted display text only — see
+ * domain/location-label.js.
+ */
+export const locationLabelSchema = z
+  .string({ invalid_type_error: "locationLabel must be a string" })
+  .max(1000, "locationLabel is too long")
+  .transform((raw) => normalizeLocationLabel(raw))
+  .superRefine((value, ctx) => {
+    const problem = locationLabelProblem(value);
+    if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+  })
+  .optional();
+
 export const createIssueSchema = z.object({
   title: z.string().trim().min(1, "title is required"),
   description: z.string().trim().min(1, "description is required"),
   location: geoPointSchema,
+  locationLabel: locationLabelSchema,
   // Optional at creation; when supplied, must be a canonical value from
   // domain/issue-classification.js (Issue #67, decision-register D-9).
   // Omit the key to leave unclassified — empty strings are rejected.

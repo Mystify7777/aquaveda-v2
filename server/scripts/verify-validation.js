@@ -660,6 +660,21 @@ check("EA-3. reject: revision required, note REQUIRED, trimmed, 10..500; approve
   }
 });
 
+check("locationLabel: optional, normalized, rejects markup/over-length (#134)", () => {
+  const base = {
+    title: "t",
+    description: "d",
+    location: { type: "Point", coordinates: [77.5, 12.9] },
+  };
+  assert.equal(createIssueSchema.safeParse(base).success, true);
+  const ok = createIssueSchema.safeParse({ ...base, locationLabel: "  A,\n B " });
+  assert.equal(ok.success, true);
+  assert.equal(ok.data.locationLabel, "A, B");
+  assert.equal(createIssueSchema.safeParse({ ...base, locationLabel: "<b>x</b>" }).success, false);
+  assert.equal(createIssueSchema.safeParse({ ...base, locationLabel: "x".repeat(201) }).success, false);
+  assert.equal(createIssueSchema.safeParse({ ...base, locationLabel: 5 }).success, false);
+});
+
 // ---------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------

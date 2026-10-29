@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 
+import { LOCATION_LABEL_MAX_LENGTH } from "../domain/location-label.js";
 import {
   ISSUE_CATEGORY_VALUES,
   ISSUE_SEVERITY_VALUES,
@@ -153,6 +154,15 @@ const issueSchema = new Schema(
     location: {
       type: locationSchema,
       required: true,
+    },
+    // Optional, reporter-supplied, UNTRUSTED display text (#134;
+    // domain/location-label.js). Never geometry: `location` above is the
+    // only authoritative position. Absent on legacy/GPS/manual-coordinate
+    // issues; no default, no index, no migration.
+    locationLabel: {
+      type: String,
+      trim: true,
+      maxlength: LOCATION_LABEL_MAX_LENGTH,
     },
     severity: {
       type: String,

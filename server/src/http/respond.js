@@ -51,6 +51,9 @@ const ERROR_STATUS_MAP = Object.freeze({
 
   // Rate-limiting (Issue #42): 429 Too Many Requests.
   [DomainErrorCode.TOO_MANY_REQUESTS]: 429,
+
+  // Geocoding (Issue #134): provider unavailable/not configured.
+  [DomainErrorCode.GEOCODER_UNAVAILABLE]: 503,
 });
 
 /**

@@ -79,6 +79,19 @@ COOKIE_SAME_SITE=none  # locked: frontend/backend are different registrable
                         # NODE_ENV (browser requirement for SameSite=None).
 COOKIE_DOMAIN=          # leave unset. No cross-registrable-domain use case
                         # exists for the Domain attribute in this topology.
+
+# Place search (Issue #134) — all optional in development
+GEOCODER_BASE_URL=      # Nominatim-compatible https base URL. Unset: dev uses the public
+                        # OSMF instance (dev-only usage policy); PRODUCTION unset = place
+                        # search disabled (503, UI falls back to coordinates). Production
+                        # refuses the public OSMF host.
+GEOCODER_USER_AGENT=    # required in production when enabled; identifies the application
+GEOCODER_API_KEY=       # optional, server-side only; sent as `key=`
+GEOCODER_TIMEOUT_MS=4000
+GEOCODER_MIN_INTERVAL_MS=1100   # app-wide spacing between provider calls (>=1000 for public OSMF)
+GEOCODER_CACHE_TTL_MS=86400000
+GEOCODER_ATTRIBUTION_TEXT=      # default "© OpenStreetMap contributors"; set per provider terms
+GEOCODER_ATTRIBUTION_URL=       # default https://www.openstreetmap.org/copyright
 ```
 
 `ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist. For

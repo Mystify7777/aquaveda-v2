@@ -218,6 +218,20 @@ check("3d. Issue does NOT reject out-of-range-but-structurally-valid coordinates
   );
 });
 
+check("3z. Issue locationLabel is optional, trimmed, length-bounded (#134)", () => {
+  assert.equal(issueDoc().validateSync(), undefined, "valid without a label");
+  const labelled = issueDoc({ locationLabel: "  Patna, Bihar  " });
+  assert.equal(labelled.validateSync(), undefined);
+  assert.equal(labelled.locationLabel, "Patna, Bihar");
+  const err = issueDoc({ locationLabel: "x".repeat(201) }).validateSync();
+  assert.ok(err?.errors?.locationLabel, "201 chars must be rejected");
+  assert.equal(
+    Issue.schema.indexes().some(([f]) => "locationLabel" in f),
+    false,
+    "label must not be indexed (display text, never a query key)",
+  );
+});
+
 // ---------------------------------------------------------------------
 // 4. Knowledge rejection requires non-empty feedback
 // ---------------------------------------------------------------------
@@ -411,6 +425,7 @@ check("8b. Issue has exactly the expected top-level fields", () => {
     "title",
     "description",
     "location",
+    "locationLabel", // #134: optional reporter-supplied display text
     "severity",
     "category",
     "domain",

@@ -1,4 +1,8 @@
 import type { CreateIssuePayload } from "@/lib/api/types/issue";
+import {
+  locationLabelProblem,
+  normalizeLocationLabel,
+} from "@/lib/issues/location-contract";
 import { isIssueCategory, isIssueSeverity } from "@/lib/issues/classification";
 
 export interface IssueReportValues {
@@ -6,6 +10,12 @@ export interface IssueReportValues {
   description: string;
   latitude: string;
   longitude: string;
+  /**
+   * Place name chosen from a search result, "" when none. Meaningful only
+   * together with the coordinates it was resolved to: the form clears it
+   * whenever coordinates change by any other route (GPS, manual edit).
+   */
+  locationLabel: string;
   /** Canonical category value, or "" for none. */
   category: string;
   /** Canonical severity value, or "" for none. */
@@ -20,6 +30,7 @@ export const EMPTY_ISSUE_REPORT: IssueReportValues = {
   description: "",
   latitude: "",
   longitude: "",
+  locationLabel: "",
   category: "",
   severity: "",
 };
@@ -71,5 +82,9 @@ export function validateIssueReport(
   };
   if (values.category && isIssueCategory(values.category)) payload.category = values.category;
   if (values.severity && isIssueSeverity(values.severity)) payload.severity = values.severity;
+  // Optional untrusted display text: dropped (never blocks the report) if it
+  // does not satisfy the shared contract.
+  const label = normalizeLocationLabel(values.locationLabel);
+  if (label !== undefined && locationLabelProblem(label) === null) payload.locationLabel = label;
   return { ok: true, payload };
 }

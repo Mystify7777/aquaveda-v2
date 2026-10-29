@@ -6,6 +6,7 @@ import { authMiddleware } from "./middleware/auth.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { issueRouter } from "./routes/issue.routes.js";
+import { geocodeRouter } from "./routes/geocode.routes.js";
 import { knowledgeRouter } from "./routes/knowledge.routes.js";
 import { commentRouter } from "./routes/comment.routes.js";
 import { projectRouter } from "./routes/project.routes.js";
@@ -144,6 +145,9 @@ export function createApp() {
   // ROUTE-L1–L6): issueRouter includes public list endpoint (Issue #40)
   // along with create and update status operations.
   app.use("/api/v1/issues", issueRouter);
+  // Place search for the report form (Issue #134). Authenticated, rate
+  // limited, persists nothing.
+  app.use("/api/v1/geocode", geocodeRouter);
   app.use("/api/v1/knowledge", knowledgeRouter);
   app.use("/api/v1/comments", commentRouter);
   app.use("/api/v1/projects", projectRouter);

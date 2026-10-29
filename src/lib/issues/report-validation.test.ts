@@ -55,3 +55,31 @@ describe("validateIssueReport", () => {
     }
   });
 });
+
+describe("validateIssueReport locationLabel (#134)", () => {
+  it("omits the label when none was chosen (payload identical to before)", () => {
+    const r = validateIssueReport(valid);
+    expect(r.ok && "locationLabel" in r.payload).toBe(false);
+  });
+
+  it("includes a normalized label alongside, never instead of, coordinates", () => {
+    const r = validateIssueReport({ ...valid, locationLabel: "  Kankarbagh,\n Patna " });
+    expect(r).toMatchObject({
+      ok: true,
+      payload: { locationLabel: "Kankarbagh, Patna", location: { coordinates: [77.5, 12.9] } },
+    });
+  });
+
+  it("drops (does not block on) an invalid label", () => {
+    for (const bad of ["<b>x</b>", "x".repeat(201)]) {
+      const r = validateIssueReport({ ...valid, locationLabel: bad });
+      expect(r.ok).toBe(true);
+      expect(r.ok && "locationLabel" in r.payload).toBe(false);
+    }
+  });
+
+  it("a label never rescues missing coordinates", () => {
+    const r = validateIssueReport({ ...EMPTY_ISSUE_REPORT, title: "t", description: "d", locationLabel: "Patna" });
+    expect(r.ok).toBe(false);
+  });
+});
