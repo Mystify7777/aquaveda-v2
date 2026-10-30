@@ -1060,3 +1060,16 @@ Status: implemented; backend `npm test` 1227/1227 against real MongoDB, `verify:
 | LOC-L8 | Report form: place search primary; "Use my current location" kept; manual lat/lng collapsed under "Enter coordinates" (auto-expanded on invalid typed coordinates). A chosen place sets coordinates + label together; any other change to coordinates (manual edit, GPS) clears the label so it can never describe different coordinates. Provider failure never blocks reporting. |
 | LOC-L9 | New `DomainErrorCode.GEOCODER_UNAVAILABLE` (503). One new route (`/api/v1/geocode/search`); route-count lock amended for it. |
 | LOC-L10 | (Review pass) The label contract is enforced identically at the schema **and** `createIssue()` (same `domain/location-label.js` rules; non-string, markup and over-length labels are `VALIDATION_FAILED` for direct service callers too). Place-search submit respects the loading state (Enter == Search button). The report form discloses that search text is sent to a third-party service and device location is not. |
+
+---
+
+## 🔒 Locked — HTTP security headers (#129)
+
+Full rationale/ownership: `docs/architecture/http-security-headers.md`.
+
+| ID | Decision |
+|---|---|
+| HDR-L1 | Web headers are set once in `next.config.ts` `headers()` (source `/:path*`) from `src/lib/security-headers.ts`; API headers are set by `middleware/security-headers.js`, mounted first in `createApp()`. No path is covered by both. `X-Powered-By` removed on both. |
+| HDR-L2 | Values: `nosniff`; `X-Frame-Options: DENY`; web `Referrer-Policy: strict-origin-when-cross-origin` (**never** `no-referrer`/`same-origin`: OSM tiles require a Referer), API `no-referrer`; `Permissions-Policy` deny-list with only `geolocation=(self)` on web. |
+| HDR-L3 | HSTS is hosting-owned and not set by the app; CSP is a separate compatibility decision (findings recorded). Production headers are unverified until the deployed-URL checklist is run. |
+| HDR-L4 | No `helmet` dependency (its defaults would each need to be disabled/analyzed). Revisit if the header set grows. |

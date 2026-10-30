@@ -4,6 +4,9 @@
 
 ## Current Milestone
 
+Issue #129 — baseline HTTP security headers — **implemented (pending review).** Web via `next.config.ts` `headers()`, API via first-mounted Express middleware (HDR-L1–L4).
+**Open:** production header verification on deployed hosts (HSTS, CDN/static behavior) and the separate CSP decision; see `docs/architecture/http-security-headers.md`.
+
 Issue #134 — copyable Issue IDs for every status + human-readable locations — **implemented (pending review; PR not opened from the sandbox).**
 IDs: card/detail show the canonical ID for all statuses, decoupled from project eligibility. Locations: optional untrusted `Issue.locationLabel`
 persisted at report time (LOC-L1–L9); authenticated, rate-limited, cached `GET /api/v1/geocode/search` over a Nominatim-compatible adapter;
