@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 
 import { authMiddleware } from "./middleware/auth.js";
+import { securityHeaders } from "./middleware/security-headers.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { issueRouter } from "./routes/issue.routes.js";
@@ -116,6 +117,14 @@ function csrfOriginGuard(req, res, next) {
 
 export function createApp() {
   const app = express();
+
+  // Do not advertise the framework (Issue #129).
+  app.disable("x-powered-by");
+
+  // Baseline security headers (Issue #129). MUST stay first: it has to run
+  // before CORS preflight handling, the CSRF guard and the body parser so
+  // that their early/error responses carry the headers too.
+  app.use(securityHeaders);
 
   app.use(express.json());
   app.use(cookieParser());
