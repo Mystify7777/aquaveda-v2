@@ -57,34 +57,101 @@ function fakeRes() {
 // ---------------------------------------------------------------------------
 // resolveClientIp
 // ---------------------------------------------------------------------------
-describe("resolveClientIp", () => {
-  it("prefers x-forwarded-for (first entry) over other sources", () => {
+describe("resolveClientIp (trust-aware, Issue #27)", () => {
+  const XFF = "203.0.113.50, 70.41.3.18, 150.172.238.178";
+
+  it("hops=0 (no trusted proxy): forwarded headers are ignored entirely", () => {
     const req = fakeReq({
       ip: "10.0.0.1",
-      headers: {
-        "x-forwarded-for": "203.0.113.50, 70.41.3.18, 150.172.238.178",
-        "x-real-ip": "70.41.3.18",
-      },
+      headers: { "x-forwarded-for": XFF, "x-real-ip": "70.41.3.18" },
     });
-    assert.equal(resolveClientIp(req), "203.0.113.50");
+    assert.equal(resolveClientIp(req, 0), "10.0.0.1");
   });
 
-  it("falls back to x-real-ip when x-forwarded-for is absent", () => {
-    const req = fakeReq({
-      ip: "10.0.0.1",
-      headers: { "x-real-ip": "203.0.113.50" },
-    });
-    assert.equal(resolveClientIp(req), "203.0.113.50");
+  it("hops=1: the last entry (appended by the trusted proxy) is the client", () => {
+    const req = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": XFF } });
+    assert.equal(resolveClientIp(req, 1), "150.172.238.178");
   });
 
-  it("falls back to socket remoteAddress when no proxy headers are present", () => {
-    const req = fakeReq({ ip: "127.0.0.1" });
-    assert.equal(resolveClientIp(req), "127.0.0.1");
+  it("hops=2: the second-from-last entry is the client", () => {
+    const req = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": XFF } });
+    assert.equal(resolveClientIp(req, 2), "70.41.3.18");
+  });
+
+  it("a client-forged prefix cannot influence the result when hops is correct", () => {
+    const a = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "1.1.1.1, 198.51.100.7" } });
+    const b = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "2.2.2.2, 198.51.100.7" } });
+    assert.equal(resolveClientIp(a, 1), "198.51.100.7");
+    assert.equal(resolveClientIp(b, 1), "198.51.100.7");
+  });
+
+  it("fewer entries than hops: falls back to the first entry, never beyond the chain", () => {
+    const req = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "198.51.100.7" } });
+    assert.equal(resolveClientIp(req, 3), "198.51.100.7");
+  });
+
+  it("hops>0 but header absent: falls back to the socket address", () => {
+    assert.equal(resolveClientIp(fakeReq({ ip: "10.0.0.1" }), 1), "10.0.0.1");
+  });
+
+  it("a non-IP candidate (junk/oversized) falls back to the socket address", () => {
+    for (const junk of ["not-an-ip", "x".repeat(5000), "", " , "]) {
+      const req = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": junk } });
+      assert.equal(resolveClientIp(req, 1), "10.0.0.1");
+    }
+  });
+
+  it("X-Real-IP is never trusted", () => {
+    const req = fakeReq({ ip: "10.0.0.1", headers: { "x-real-ip": "203.0.113.50" } });
+    assert.equal(resolveClientIp(req, 1), "10.0.0.1");
+    assert.equal(resolveClientIp(req, 0), "10.0.0.1");
   });
 
   it("returns 'unknown' when nothing is available", () => {
-    const req = { headers: {}, socket: {} };
-    assert.equal(resolveClientIp(req), "unknown");
+    assert.equal(resolveClientIp({ headers: {}, socket: {} }, 0), "unknown");
+  });
+
+  it("reads TRUSTED_PROXY_HOPS from the environment when not given explicitly", () => {
+    const saved = process.env.TRUSTED_PROXY_HOPS;
+    try {
+      const req = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "9.9.9.9, 198.51.100.7" } });
+      delete process.env.TRUSTED_PROXY_HOPS;
+      assert.equal(resolveClientIp(req), "10.0.0.1");
+      process.env.TRUSTED_PROXY_HOPS = "1";
+      assert.equal(resolveClientIp(req), "198.51.100.7");
+    } finally {
+      if (saved === undefined) delete process.env.TRUSTED_PROXY_HOPS;
+      else process.env.TRUSTED_PROXY_HOPS = saved;
+    }
+  });
+});
+
+describe("createInMemoryStore reaper (Issue #27)", () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  it("never evicts a counter whose window is still open", async () => {
+    const store = createInMemoryStore({ cleanupIntervalMs: 15 });
+    for (let i = 0; i < 10; i++) store.hit("k", 3_600_000);
+    await sleep(80); // several reaper ticks, window still ~1h
+    assert.equal(store.hit("k", 3_600_000).totalHits, 11, "counter must survive the reaper");
+    store.reset();
+  });
+
+  it("does evict a key once its window has fully elapsed", async () => {
+    const store = createInMemoryStore({ cleanupIntervalMs: 15 });
+    store.hit("k", 20);
+    await sleep(120);
+    assert.equal(store._store.size, 0);
+  });
+
+  it("keeps per-key windows independent when one store is shared", async () => {
+    const store = createInMemoryStore({ cleanupIntervalMs: 15 });
+    store.hit("short", 20);
+    store.hit("long", 3_600_000);
+    await sleep(120);
+    assert.equal(store._store.has("short"), false);
+    assert.equal(store._store.has("long"), true);
+    store.reset();
   });
 });
 

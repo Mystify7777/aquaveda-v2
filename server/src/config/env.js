@@ -379,6 +379,37 @@ export function resolveGeocoderConfig(env = process.env) {
 }
 
 /**
+ * Number of trusted reverse-proxy hops in front of this API (Issue #27).
+ *
+ * The rate limiter keys clients by IP. `X-Forwarded-For` / `X-Real-IP` are
+ * plain request headers any client can forge, so they are honoured ONLY for
+ * the hop count declared here: the client address is the entry the Nth
+ * trusted proxy appended (counting from the right). 0 = no trusted proxy:
+ * forwarded headers are ignored and the socket address is used.
+ *
+ * Must equal the exact number of proxies in front of the app (e.g. 1 for a
+ * single platform load balancer that appends the client address). Too low
+ * merges clients behind the proxy into one bucket (fail-safe); too high lets
+ * a client choose its own key (bypass). Production must set it explicitly.
+ *
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @returns {number} integer 0..10
+ */
+export const MAX_TRUSTED_PROXY_HOPS = 10;
+
+export function resolveTrustedProxyHops(env = process.env) {
+  const raw = (env.TRUSTED_PROXY_HOPS ?? "").trim();
+  if (raw === "") return 0;
+  if (!/^\d+$/.test(raw) || Number(raw) > MAX_TRUSTED_PROXY_HOPS) {
+    throw new Error(
+      `Invalid TRUSTED_PROXY_HOPS value: "${env.TRUSTED_PROXY_HOPS}". ` +
+        `Expected an integer between 0 and ${MAX_TRUSTED_PROXY_HOPS} (number of trusted reverse proxies in front of the API).`
+    );
+  }
+  return Number(raw);
+}
+
+/**
  * Validates the startup configuration for the process (server.js).
  * Fails fast before opening database connections or starting HTTP listeners.
  *
@@ -401,6 +432,19 @@ export function validateStartupConfig(env = process.env) {
   // Geocoder (#134): fail fast on malformed/forbidden values. Absent config in
   // production is NOT an error — the feature is simply disabled.
   resolveGeocoderConfig(env);
+
+  // Rate-limit client identity (#27): validate when set; production must make
+  // the proxy-hop decision explicitly (0 = directly exposed) because the
+  // wrong default is either bypassable (trust headers) or a single shared
+  // bucket for all users (trust none behind a proxy).
+  resolveTrustedProxyHops(env);
+  if (env.NODE_ENV === "production" && (env.TRUSTED_PROXY_HOPS ?? "").trim() === "") {
+    throw new Error(
+      "Production configuration error: TRUSTED_PROXY_HOPS must be set explicitly " +
+        "(0 if the API is directly exposed, otherwise the number of trusted reverse proxies in front of it). " +
+        "See server/README.md."
+    );
+  }
 
   return true;
 }

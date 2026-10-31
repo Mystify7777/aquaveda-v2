@@ -12,6 +12,7 @@ import {
   assertTestDatabaseSeparation,
   resolveCookieSameSite,
   resolveCookieDomain,
+  resolveTrustedProxyHops,
 } from "../src/config/env.js";
 
 const VALID_ACCESS_SECRET = "secure-random-access-secret-32-chars-long";
@@ -337,5 +338,39 @@ describe("src/config/env.js — database separation guards", () => {
         "mongodb://127.0.0.1:27017/aquaveda_v2_dev"
       )
     );
+  });
+});
+
+describe("src/config/env.js — TRUSTED_PROXY_HOPS (Issue #27)", () => {
+  it("unset/blank outside production means 0: no forwarded header is trusted", () => {
+    assert.equal(resolveTrustedProxyHops({}), 0);
+    assert.equal(resolveTrustedProxyHops({ NODE_ENV: "development", TRUSTED_PROXY_HOPS: "  " }), 0);
+  });
+
+  it("parses an explicit integer hop count (0 means 'no proxy', allowed in production)", () => {
+    assert.equal(resolveTrustedProxyHops({ TRUSTED_PROXY_HOPS: "1" }), 1);
+    assert.equal(resolveTrustedProxyHops({ TRUSTED_PROXY_HOPS: "3" }), 3);
+    assert.equal(resolveTrustedProxyHops({ NODE_ENV: "production", TRUSTED_PROXY_HOPS: "0" }), 0);
+  });
+
+  it("rejects values that are not a small non-negative integer", () => {
+    for (const bad of ["-1", "1.5", "abc", "true", "11", "1e1", "0x1"]) {
+      assert.throws(() => resolveTrustedProxyHops({ TRUSTED_PROXY_HOPS: bad }), /TRUSTED_PROXY_HOPS/, bad);
+    }
+  });
+
+  it("production requires an explicit decision: unset fails startup validation", () => {
+    const prod = baseValidEnv({
+      NODE_ENV: "production",
+      JWT_ACCESS_SECRET: "valid-production-access-auth-key-abcdefghijklmn",
+      JWT_REFRESH_SECRET: "valid-production-refresh-auth-key-abcdefghijklmn",
+    });
+    assert.throws(() => validateStartupConfig(prod), /TRUSTED_PROXY_HOPS/);
+    assert.doesNotThrow(() => validateStartupConfig({ ...prod, TRUSTED_PROXY_HOPS: "1" }));
+    assert.doesNotThrow(() => validateStartupConfig({ ...prod, TRUSTED_PROXY_HOPS: "0" }));
+  });
+
+  it("development/test startup does not require it", () => {
+    assert.doesNotThrow(() => validateStartupConfig(baseValidEnv()));
   });
 });
