@@ -137,3 +137,11 @@ in_progress` and `in_progress → resolved` both require "an authorized
   and follows this ADR, not the other way around.
 - Recurrence/reopening of `verified` Issues is parked in
   `docs/future/parking-lot.md`, not designed against.
+
+## Update (2026-11-01): D-3a resolved by ADR-0007
+
+The two "mechanism deferred" rows above are specified by
+[ADR-0007](./ADR-0007-remediation-authorization.md): remediation authority is an
+explicit, EXPERT-issued, grantee-accepted, issue-scoped grant (embedded single assignee),
+checked atomically with the transition. The original text above is retained unchanged as
+the record of the earlier deferral.

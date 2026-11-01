@@ -4,6 +4,8 @@
 
 ## Current Milestone
 
+ADR-0007 — remediation authorization (D-3a resolved) — **accepted, revised after review, design only (no code).** Explicit EXPERT-issued, grantee-accepted, issue-scoped grant embedded on the Issue, identified by `grantId` (REM-L1–L10); adaptive self-grant below an EXPERT-count threshold; per-issue public activity log as a derived read model. **Next:** backend-domain implementation issue (no routes/UI/escalation), then routes/DTOs, timeline, UI.
+
 Issue #129 — baseline HTTP security headers — **implemented (pending review).** Web via `next.config.ts` `headers()`, API via first-mounted Express middleware (HDR-L1–L4).
 **Open:** production header verification on deployed hosts (HSTS, CDN/static behavior) and the separate CSP decision; see `docs/architecture/http-security-headers.md`.
 Issue #27 — authentication security audit — **fixes implemented (pending review).** Two confirmed defects fixed: rate-limit bypass via forged `X-Forwarded-For` (new required `TRUSTED_PROXY_HOPS`) and limiter reaper wiping live counters (AUD-L1–L3). **Open:** set/verify `TRUSTED_PROXY_HOPS` on the real host; browser verification (#29); optional hardening F-04…F-07 in `docs/architecture/authentication-security-audit-27.md`.

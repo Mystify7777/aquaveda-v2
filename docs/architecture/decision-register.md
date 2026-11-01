@@ -462,6 +462,10 @@ for the resolved values.
 
 **D-3a — Remediation-assertion authority.**
 
+> **RESOLVED 2026-11-01 by ADR-0007** (explicit, EXPERT-issued, grantee-accepted, issue-scoped
+> grant). The text below is retained as the historical record of the deferral; see
+> "Locked — Remediation authorization" at the end of this register.
+
 The Issue lifecycle (ADR-0003) requires `acknowledged → in_progress` and
 `in_progress → resolved` to be performed by an "authorized remediation
 actor." The mechanism by which a user obtains that authority is not
@@ -1082,3 +1086,22 @@ Full report: `docs/architecture/authentication-security-audit-27.md`. Release as
 | AUD-L1 | Rate-limit client identity trusts forwarded headers only through `TRUSTED_PROXY_HOPS` (Nth entry from the right; `X-Real-IP` never). Default 0 outside production; production startup requires an explicit value. Supersedes the "first `X-Forwarded-For` entry" rule of #42. |
 | AUD-L2 | The limiter's reaper evicts a key only when `newest hit + that key's window` has passed; live counters are never evicted. |
 | AUD-L3 | No change to JWT/Session architecture, cookies, CORS/CSRF, D-3a or L14/L17 (reuse detection and access-token-after-logout remain accepted trade-offs). F-03…F-07 are documented, not implemented. |
+
+---
+
+## 🔒 Locked — Remediation authorization (ADR-0007, resolves D-3a)
+
+Full decision: `docs/adr/ADR-0007-remediation-authorization.md` (revised 2026-11-01 after review). Design only; no code yet.
+
+| ID | Decision |
+|---|---|
+| REM-L1 | Remediation authority = an explicit **issue-scoped grant**, embedded as `Issue.remediation {grantId, actor, grantedBy, grantedAt, acceptedAt}`; single assignee; absent = unassigned. Never a role, never Project membership, never inferred from ownership/ADMIN. `acceptedAt`: null = pending, timestamp = accepted, once; removal keeps the history event. |
+| REM-L2 | EXPERT grants/withdraws; only the grantee accepts/declines/releases; ADMIN may only revoke (note required). Allowed only in `acknowledged`/`in_progress`. Volunteering is not stored and confers nothing. |
+| REM-L3 | `acknowledged → in_progress` and `in_progress → resolved` require the **accepted** grantee; nobody else, of any role. Verify/reject rules unchanged (EXPERT, resolver ≠ verifier); failed verification keeps the grant. |
+| REM-L4 | Every grant-dependent write filters on the exact `grantId` read in the pre-read (atomic, extends ADR-0006; prevents ABA replacement races). Zero-match ⇒ `NOT_FOUND`/`STATE_RACE`, never `FORBIDDEN`; the pre-read may return `FORBIDDEN` for demonstrable unauthorization. Not idempotent. |
+| REM-L5 | New embedded append-only `remediationHistory[]` typed events (separate from `statusHistory`); `statusHistory` gains optional `note` (≤2000, plain text, untrusted, non-empty when required: resolve/verify/reject/withdraw/revoke). A note has the audience of its own history. |
+| REM-L6 | Visibility by two independent rules, enforced in server DTOs: **role-based** (current EXPERT/ADMIN read workflow records, evaluated per request, so promotion/demotion changes it) and **participation-based** (other users read only events where they are performer/grantee, unaffected by role changes). Public sees `statusHistory`(+notes), the accepted assignee and the public activity log. Withdraw/revoke notes are role-based only; raw arrays are never returned. |
+| REM-L7 | `AUTHORIZATION_POLICY_UNRESOLVED` no longer emitted (enum retained pending cleanup). No new error codes. Additive schema, no migration, no index until the "my assignments" query exists. |
+| REM-L8 | **Adaptive self-grant:** an EXPERT may grant themselves iff `expertCount < SELF_GRANT_EXPERT_THRESHOLD` (default 5, `0` disables, validated at startup); otherwise a different EXPERT must grant. The count is a policy input outside the atomic filter (documented limitation, not an atomic guarantee); basis recorded on the private event; existing grants are unaffected by threshold changes. With one EXPERT a self-resolved issue waits in `resolved`; no verification bypass. |
+| REM-L9 | **Public issue activity log:** per-issue, chronological, append-only, visible to all, from submission through `verified`; a derived read model over `statusHistory` + `remediationHistory` (no new storage) covering **successful** Issue-document mutations only, with per-event redaction (no grantee before acceptance, no responsibility-event notes, no `grantId`, no policy metadata such as self-grant). Equal-timestamp order is a presentation tie-break, not causal. V2 does not merge comments/Projects/future sources. Delivered with the detail read only. |
+| REM-L10 | Grant validity is independent of the grantor's or grantee's later role changes; remedies are EXPERT `withdraw` and ADMIN `revoke`. |
