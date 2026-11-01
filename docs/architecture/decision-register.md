@@ -1073,3 +1073,12 @@ Full rationale/ownership: `docs/architecture/http-security-headers.md`.
 | HDR-L2 | Values: `nosniff`; `X-Frame-Options: DENY`; web `Referrer-Policy: strict-origin-when-cross-origin` (**never** `no-referrer`/`same-origin`: OSM tiles require a Referer), API `no-referrer`; `Permissions-Policy` deny-list with only `geolocation=(self)` on web. |
 | HDR-L3 | HSTS is hosting-owned and not set by the app; CSP is a separate compatibility decision (findings recorded). Production headers are unverified until the deployed-URL checklist is run. |
 | HDR-L4 | No `helmet` dependency (its defaults would each need to be disabled/analyzed). Revisit if the header set grows. |
+## 🔒 Locked — Authentication security audit (#27)
+
+Full report: `docs/architecture/authentication-security-audit-27.md`. Release assessment: CONDITIONAL PASS.
+
+| ID | Decision |
+|---|---|
+| AUD-L1 | Rate-limit client identity trusts forwarded headers only through `TRUSTED_PROXY_HOPS` (Nth entry from the right; `X-Real-IP` never). Default 0 outside production; production startup requires an explicit value. Supersedes the "first `X-Forwarded-For` entry" rule of #42. |
+| AUD-L2 | The limiter's reaper evicts a key only when `newest hit + that key's window` has passed; live counters are never evicted. |
+| AUD-L3 | No change to JWT/Session architecture, cookies, CORS/CSRF, D-3a or L14/L17 (reuse detection and access-token-after-logout remain accepted trade-offs). F-03…F-07 are documented, not implemented. |

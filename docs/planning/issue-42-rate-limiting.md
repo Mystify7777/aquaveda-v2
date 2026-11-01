@@ -38,22 +38,18 @@ or token-bucket approach:
 
 ## Client Identification
 
-Clients are identified **strictly by IP address**, resolved in this order:
+Clients are identified **strictly by IP address**, resolved by `resolveClientIp` (amended by Issue #27):
 
-1. `X-Forwarded-For` header (first entry — the original client IP behind a proxy chain)
-2. `X-Real-IP` header (common single-hop proxy header)
-3. `req.socket.remoteAddress` (direct connection, no proxy)
+1. `TRUSTED_PROXY_HOPS=0` (default outside production): `req.socket.remoteAddress`; forwarded headers are ignored.
+2. `TRUSTED_PROXY_HOPS=N>0`: the `X-Forwarded-For` entry appended by the Nth trusted proxy, counted **from the right**. Earlier (client-supplied) entries are never used. Falls back to the socket address if the header is absent or the selected entry is not a valid IP.
+3. `X-Real-IP` is never trusted.
 
-> **⚠ Deployment requirement — trusted reverse proxy:**
-> The rate limiter relies on the `X-Forwarded-For` header. This requires the application
-> to be deployed behind a trusted reverse proxy that guarantees this header is supplied
-> or properly overwritten. It should not be considered universally authoritative in
-> untrusted environments.
->
-> Without a trusted proxy layer, any client can spoof `X-Forwarded-For` and bypass
-> rate limiting entirely by sending an arbitrary IP in that header. Ensure your
-> reverse proxy (Nginx, Caddy, Cloudflare, Vercel Edge Network, etc.) strips and
-> re-sets this header before forwarding requests to the Express service.
+> **⚠ Deployment requirement:** `TRUSTED_PROXY_HOPS` must equal the exact number of reverse
+> proxies in front of the API (production startup fails if it is unset; use `0` when directly
+> exposed). A client can send any `X-Forwarded-For`, and many proxies append to it rather than
+> replace it, so trusting the first entry (the original behavior) allowed complete bypass.
+> Too high a value lets clients pick their own key; too low merges users behind the proxy into
+> one bucket. See `docs/architecture/authentication-security-audit-27.md` (F-01).
 
 ### Security: No Account Enumeration / Lock-out
 
