@@ -57,34 +57,124 @@ function fakeRes() {
 // ---------------------------------------------------------------------------
 // resolveClientIp
 // ---------------------------------------------------------------------------
-describe("resolveClientIp", () => {
-  it("prefers x-forwarded-for (first entry) over other sources", () => {
+describe("resolveClientIp (trust-aware, Issue #27)", () => {
+  const XFF = "203.0.113.50, 70.41.3.18, 150.172.238.178";
+
+  it("hops=0 (no trusted proxy): forwarded headers are ignored entirely", () => {
     const req = fakeReq({
       ip: "10.0.0.1",
-      headers: {
-        "x-forwarded-for": "203.0.113.50, 70.41.3.18, 150.172.238.178",
-        "x-real-ip": "70.41.3.18",
-      },
+      headers: { "x-forwarded-for": XFF, "x-real-ip": "70.41.3.18" },
     });
-    assert.equal(resolveClientIp(req), "203.0.113.50");
+    assert.equal(resolveClientIp(req, 0), "10.0.0.1");
   });
 
-  it("falls back to x-real-ip when x-forwarded-for is absent", () => {
-    const req = fakeReq({
-      ip: "10.0.0.1",
-      headers: { "x-real-ip": "203.0.113.50" },
-    });
-    assert.equal(resolveClientIp(req), "203.0.113.50");
+  it("hops=1: the last entry (appended by the trusted proxy) is the client", () => {
+    const req = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": XFF } });
+    assert.equal(resolveClientIp(req, 1), "150.172.238.178");
   });
 
-  it("falls back to socket remoteAddress when no proxy headers are present", () => {
-    const req = fakeReq({ ip: "127.0.0.1" });
-    assert.equal(resolveClientIp(req), "127.0.0.1");
+  it("hops=2: the second-from-last entry is the client", () => {
+    const req = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": XFF } });
+    assert.equal(resolveClientIp(req, 2), "70.41.3.18");
+  });
+
+  it("a client-forged prefix cannot influence the result when hops is correct", () => {
+    const a = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "1.1.1.1, 198.51.100.7" } });
+    const b = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "2.2.2.2, 198.51.100.7" } });
+    assert.equal(resolveClientIp(a, 1), "198.51.100.7");
+    assert.equal(resolveClientIp(b, 1), "198.51.100.7");
+  });
+
+  it("fewer entries than hops: fails safe to the socket address, never the leftmost entry", () => {
+    // e.g. a request that reached the app without passing every trusted proxy,
+    // carrying one client-forged entry.
+    const forged = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "203.0.113.10" } });
+    assert.equal(resolveClientIp(forged, 2), "10.0.0.1");
+    const two = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "203.0.113.10, 198.51.100.7" } });
+    assert.equal(resolveClientIp(two, 3), "10.0.0.1");
+    // exactly enough entries is still honoured (the outermost trusted proxy's entry)
+    assert.equal(resolveClientIp(two, 2), "203.0.113.10");
+  });
+
+  it("a rotating forged single entry cannot mint keys when hops exceed the entries", () => {
+    const keys = new Set();
+    for (let i = 1; i <= 50; i++) {
+      keys.add(resolveClientIp(fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": `203.0.113.${i}` } }), 2));
+    }
+    assert.deepEqual([...keys], ["10.0.0.1"]);
+  });
+
+  it("hops>0 but header absent: falls back to the socket address", () => {
+    assert.equal(resolveClientIp(fakeReq({ ip: "10.0.0.1" }), 1), "10.0.0.1");
+  });
+
+  it("a non-IP candidate (junk/oversized) falls back to the socket address", () => {
+    for (const junk of ["not-an-ip", "x".repeat(5000), "", " , "]) {
+      const req = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": junk } });
+      assert.equal(resolveClientIp(req, 1), "10.0.0.1");
+    }
+  });
+
+  it("X-Real-IP is never trusted", () => {
+    const req = fakeReq({ ip: "10.0.0.1", headers: { "x-real-ip": "203.0.113.50" } });
+    assert.equal(resolveClientIp(req, 1), "10.0.0.1");
+    assert.equal(resolveClientIp(req, 0), "10.0.0.1");
   });
 
   it("returns 'unknown' when nothing is available", () => {
-    const req = { headers: {}, socket: {} };
-    assert.equal(resolveClientIp(req), "unknown");
+    assert.equal(resolveClientIp({ headers: {}, socket: {} }, 0), "unknown");
+  });
+
+  it("reads TRUSTED_PROXY_HOPS from the environment when not given explicitly", () => {
+    const saved = process.env.TRUSTED_PROXY_HOPS;
+    try {
+      const req = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "9.9.9.9, 198.51.100.7" } });
+      delete process.env.TRUSTED_PROXY_HOPS;
+      assert.equal(resolveClientIp(req), "10.0.0.1");
+      process.env.TRUSTED_PROXY_HOPS = "1";
+      assert.equal(resolveClientIp(req), "198.51.100.7");
+    } finally {
+      if (saved === undefined) delete process.env.TRUSTED_PROXY_HOPS;
+      else process.env.TRUSTED_PROXY_HOPS = saved;
+    }
+  });
+});
+
+describe("createInMemoryStore reaper (Issue #27)", () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  it("never evicts a counter whose window is still open", async () => {
+    const store = createInMemoryStore({ cleanupIntervalMs: 15 });
+    for (let i = 0; i < 10; i++) store.hit("k", 3_600_000);
+    await sleep(80); // several reaper ticks, window still ~1h
+    assert.equal(store.hit("k", 3_600_000).totalHits, 11, "counter must survive the reaper");
+    store.reset();
+  });
+
+  it("does evict a key once its window has fully elapsed", async () => {
+    const store = createInMemoryStore({ cleanupIntervalMs: 15 });
+    store.hit("k", 20);
+    await sleep(120);
+    assert.equal(store._store.size, 0);
+  });
+
+  it("a key shared by two windows is retained for the longer one", async () => {
+    const store = createInMemoryStore({ cleanupIntervalMs: 15 });
+    store.hit("shared", 3_600_000);
+    store.hit("shared", 20); // a shorter-window caller must not shorten retention
+    await sleep(120);
+    assert.equal(store._store.has("shared"), true);
+    store.reset();
+  });
+
+  it("keeps per-key windows independent when one store is shared", async () => {
+    const store = createInMemoryStore({ cleanupIntervalMs: 15 });
+    store.hit("short", 20);
+    store.hit("long", 3_600_000);
+    await sleep(120);
+    assert.equal(store._store.has("short"), false);
+    assert.equal(store._store.has("long"), true);
+    store.reset();
   });
 });
 
@@ -122,6 +212,41 @@ describe("createRateLimiter", () => {
 
   beforeEach(() => {
     store = createInMemoryStore({ cleanupIntervalMs: 999_999 });
+  });
+
+  it("limiters sharing a store are isolated by keyPrefix, including their different windows", async () => {
+    const shared = createInMemoryStore({ cleanupIntervalMs: 15 });
+    const short = createRateLimiter({ windowMs: 40, maxRequests: 2, store: shared, keyPrefix: "short:" });
+    const long = createRateLimiter({ windowMs: 3_600_000, maxRequests: 2, store: shared, keyPrefix: "long:" });
+    const call = (limiter) => {
+      const res = fakeRes();
+      let passed = false;
+      limiter(fakeReq(), res, () => { passed = true; });
+      return passed;
+    };
+
+    assert.ok(call(short) && call(short));
+    assert.ok(call(long) && call(long));
+    assert.equal(call(short), false, "short limiter exhausted");
+    assert.equal(call(long), false, "long limiter exhausted independently");
+
+    await new Promise((r) => setTimeout(r, 150)); // several reaper ticks; short window elapsed
+    assert.ok(call(short), "short window elapsed, its counter was reaped/reset");
+    assert.equal(call(long), false, "long limiter's live counter must survive the short limiter's reaping");
+    shared.reset();
+  });
+
+  it("limiters that reuse a prefix share counters (documented invariant: use distinct prefixes)", () => {
+    const a = createRateLimiter({ windowMs: 60_000, maxRequests: 2, store, keyPrefix: "same:" });
+    const b = createRateLimiter({ windowMs: 60_000, maxRequests: 2, store, keyPrefix: "same:" });
+    const call = (limiter) => {
+      let passed = false;
+      limiter(fakeReq(), fakeRes(), () => { passed = true; });
+      return passed;
+    };
+    assert.ok(call(a));
+    assert.ok(call(b));
+    assert.equal(call(a), false, "counters are shared when the prefix is reused");
   });
 
   it("allows requests under the threshold and calls next()", () => {

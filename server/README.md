@@ -80,6 +80,12 @@ COOKIE_SAME_SITE=none  # locked: frontend/backend are different registrable
 COOKIE_DOMAIN=          # leave unset. No cross-registrable-domain use case
                         # exists for the Domain attribute in this topology.
 
+# Rate-limit client identity (Issue #27) — REQUIRED in production
+TRUSTED_PROXY_HOPS=     # number of trusted reverse proxies in front of the API. 0 = directly
+                        # exposed (forwarded headers ignored). N = take the X-Forwarded-For entry the
+                        # Nth proxy appended. Production startup fails if unset. Wrong value =
+                        # limiter bypass (too high) or one shared bucket for all users (too low).
+
 # Place search (Issue #134) — all optional in development
 GEOCODER_BASE_URL=      # Nominatim-compatible https base URL. Unset: dev uses the public
                         # OSMF instance (dev-only usage policy); PRODUCTION unset = place

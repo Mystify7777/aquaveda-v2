@@ -6,6 +6,7 @@
 
 Issue #129 — baseline HTTP security headers — **implemented (pending review).** Web via `next.config.ts` `headers()`, API via first-mounted Express middleware (HDR-L1–L4).
 **Open:** production header verification on deployed hosts (HSTS, CDN/static behavior) and the separate CSP decision; see `docs/architecture/http-security-headers.md`.
+Issue #27 — authentication security audit — **fixes implemented (pending review).** Two confirmed defects fixed: rate-limit bypass via forged `X-Forwarded-For` (new required `TRUSTED_PROXY_HOPS`) and limiter reaper wiping live counters (AUD-L1–L3). **Open:** set/verify `TRUSTED_PROXY_HOPS` on the real host; browser verification (#29); optional hardening F-04…F-07 in `docs/architecture/authentication-security-audit-27.md`.
 
 Issue #134 — copyable Issue IDs for every status + human-readable locations — **implemented (pending review; PR not opened from the sandbox).**
 IDs: card/detail show the canonical ID for all statuses, decoupled from project eligibility. Locations: optional untrusted `Issue.locationLabel`

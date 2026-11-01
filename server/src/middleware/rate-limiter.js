@@ -1,3 +1,6 @@
+import { isIP } from "node:net";
+
+import { resolveTrustedProxyHops } from "../config/env.js";
 import { tooManyRequests } from "../services/errors.js";
 import { sendError } from "../http/respond.js";
 
@@ -13,11 +16,11 @@ import { sendError } from "../http/respond.js";
  * constructs the DomainError shape directly so respond.js's
  * ERROR_STATUS_MAP handles the HTTP status).
  *
- * Identification: strictly by IP address — `x-forwarded-for` (first
- * entry, for reverse-proxy deployments), then `x-real-ip`, then
- * `req.socket.remoteAddress`. NEVER by email, username, or any
- * request-body field, to prevent account enumeration and account
- * lock-out attacks (Issue #42 security requirement).
+ * Identification: strictly by IP address, resolved by `resolveClientIp`
+ * (socket address, or the `x-forwarded-for` entry appended by the Nth
+ * TRUSTED proxy — see TRUSTED_PROXY_HOPS; Issue #27). NEVER by email,
+ * username, or any request-body field, to prevent account enumeration
+ * and account lock-out attacks (Issue #42 security requirement).
  *
  * Storage: in-memory by default via createInMemoryStore(). The store
  * interface ({ hit(key, windowMs) → { totalHits, resetTime } }) is
@@ -29,29 +32,51 @@ import { sendError } from "../http/respond.js";
  */
 
 /**
- * Resolves the client IP address from the request, following the
- * standard proxy-header chain. In production behind a reverse proxy
- * (Nginx, Cloudflare, Vercel), `x-forwarded-for` is the authoritative
- * source; `x-real-ip` is a common single-hop alternative; the raw
- * socket address is the last resort (correct for direct connections).
+ * Resolves the client IP used as the rate-limit key.
+ *
+ * `X-Forwarded-For` and `X-Real-IP` are ordinary request headers: a client
+ * can send any value, and common platform proxies APPEND to (not replace) a
+ * client-supplied `X-Forwarded-For`. Trusting the leftmost entry therefore
+ * lets one client mint unlimited keys and bypass every limiter (Issue #27).
+ *
+ * Instead only the entries added by trusted proxies are believed: with
+ * `trustedProxyHops = N` the client is the Nth entry from the RIGHT. With 0
+ * (default outside production) no forwarded header is trusted. `X-Real-IP`
+ * is never trusted (a single, unverifiable header). Anything that does not
+ * add up falls back to the socket address: a header with fewer entries than
+ * `trustedProxyHops`, or a selected entry that is not a valid IP (junk,
+ * port-suffixed). So a malformed header or a too-high hop count cannot make
+ * the leftmost (client-supplied) entry the key, nor create arbitrary or
+ * unbounded keys from header text.
+ *
+ * Limits no code can detect (documented in the audit report): a hop count
+ * that is too high while the header still carries enough entries, and
+ * direct access to the origin that bypasses the proxy (the origin must only
+ * be reachable through it). In both, a client can again choose its key.
  *
  * @param {import('express').Request} req
+ * @param {number} [trustedProxyHops] defaults to TRUSTED_PROXY_HOPS
  * @returns {string} The resolved client IP address.
  */
-export function resolveClientIp(req) {
-  const forwarded = req.headers["x-forwarded-for"];
-  if (forwarded) {
-    // x-forwarded-for can be a comma-separated list; the leftmost
-    // entry is the original client IP.
-    return forwarded.split(",")[0].trim();
-  }
+export function resolveClientIp(req, trustedProxyHops = resolveTrustedProxyHops()) {
+  const socketAddress = req.socket?.remoteAddress || "unknown";
+  if (trustedProxyHops === 0) return socketAddress;
 
-  const realIp = req.headers["x-real-ip"];
-  if (realIp) {
-    return realIp.trim();
-  }
+  const header = req.headers?.["x-forwarded-for"];
+  if (typeof header !== "string") return socketAddress;
 
-  return req.socket?.remoteAddress || "unknown";
+  const entries = header
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  // Fewer entries than trusted hops means the chain is not what the
+  // configuration claims (header stripped, or the request reached the app
+  // without passing every trusted proxy). The leftmost entry is then
+  // client-controlled, so never fall back to it: use the socket address.
+  if (entries.length < trustedProxyHops) return socketAddress;
+
+  const candidate = entries[entries.length - trustedProxyHops];
+  return candidate && isIP(candidate) ? candidate : socketAddress;
 }
 
 /**
@@ -75,29 +100,27 @@ export function createInMemoryStore({ cleanupIntervalMs = 60_000 } = {}) {
   /** @type {Map<string, number[]>} */
   const store = new Map();
 
+  // Window length last used for each key. The reaper needs it: a key is only
+  // dead once its NEWEST hit has aged out of ITS OWN window. (Issue #27: the
+  // reaper previously compared the newest hit against `now` alone, which is
+  // always true, so it wiped live counters every tick regardless of window
+  // length — a 1-hour limit effectively reset every cleanup interval.)
+  /** @type {Map<string, number>} */
+  const windows = new Map();
+
   /**
-   * Periodic reaper — removes entries whose every timestamp has expired.
-   * Does not need to know windowMs at construction time; it prunes
-   * entries where the most recent timestamp is older than the largest
-   * plausible window (here: any timestamp older than Date.now(), which
-   * is always true for expired windows since hit() records
-   * Date.now()-relative timestamps).
-   *
-   * In practice, each key's timestamps are pruned on every hit() call
-   * anyway — this reaper only matters for keys that stop receiving
-   * traffic entirely.
+   * Periodic reaper — removes only keys that no window can still reference,
+   * i.e. whose newest timestamp + that key's window has passed. Live counters
+   * are never evicted. (hit() also prunes per key on access; this catches
+   * keys that stopped receiving traffic.)
    */
   const reaper = setInterval(() => {
     const now = Date.now();
     for (const [key, timestamps] of store) {
-      // If the newest timestamp is older than now (all timestamps are
-      // in the past), no active window can still reference this key.
-      // This is conservative — a window could be up to `windowMs` in
-      // the future of the newest timestamp — but since hit() prunes
-      // per-key on access, this only catches abandoned keys where the
-      // precision doesn't matter.
-      if (timestamps.length === 0 || timestamps[timestamps.length - 1] < now) {
+      const newest = timestamps[timestamps.length - 1];
+      if (newest === undefined || newest + (windows.get(key) ?? 0) <= now) {
         store.delete(key);
+        windows.delete(key);
       }
     }
   }, cleanupIntervalMs);
@@ -126,6 +149,10 @@ export function createInMemoryStore({ cleanupIntervalMs = 60_000 } = {}) {
         timestamps = [];
         store.set(key, timestamps);
       }
+      // One key normally belongs to one limiter (distinct keyPrefix), but if a
+      // key is ever shared, keep the LONGEST window seen so the reaper can
+      // never evict a counter that a longer-window limiter still needs.
+      windows.set(key, Math.max(windows.get(key) ?? 0, windowMs));
 
       // Prune expired timestamps (everything before windowStart).
       while (timestamps.length > 0 && timestamps[0] <= windowStart) {
@@ -151,6 +178,7 @@ export function createInMemoryStore({ cleanupIntervalMs = 60_000 } = {}) {
      */
     reset() {
       store.clear();
+      windows.clear();
     },
 
     /**
@@ -181,8 +209,11 @@ export const defaultStore = createInMemoryStore();
  * @param {number} options.windowMs - Time window in milliseconds.
  * @param {number} options.maxRequests - Maximum allowed requests per window.
  * @param {object} [options.store] - Optional store instance (default: shared in-memory store).
- * @param {string} [options.keyPrefix] - Optional prefix for store keys to namespace
- *   different limiters sharing the same store (e.g., "login:", "register:").
+ * @param {string} [options.keyPrefix] - Prefix that namespaces this limiter's keys in a
+ *   shared store (e.g., "login:", "register:"). INVARIANT: every limiter that shares a
+ *   store MUST use a distinct prefix, so one store key always belongs to exactly one
+ *   limiter and one window. Same prefix ⇒ the limiters share counters (and the store
+ *   retains the key for the longest window either used).
  * @returns {import('express').RequestHandler}
  *
  * @example
