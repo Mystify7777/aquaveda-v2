@@ -103,4 +103,10 @@ describe("behind N trusted proxies (TRUSTED_PROXY_HOPS)", () => {
       assert.equal(await hit(login, { "x-forwarded-for": `198.51.100.${i + 1}` }), 400);
     }
   });
+
+  it("hops=2 with a single forged entry (request did not traverse the chain): limit still holds", async () => {
+    process.env.TRUSTED_PROXY_HOPS = "2";
+    const s = await statuses(login, login.limit + 3, (i) => ({ "x-forwarded-for": `203.0.113.${i + 1}` }));
+    assert.deepEqual(s.slice(login.limit), [429, 429, 429], `statuses: ${s}`);
+  });
 });

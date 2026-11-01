@@ -85,9 +85,23 @@ describe("resolveClientIp (trust-aware, Issue #27)", () => {
     assert.equal(resolveClientIp(b, 1), "198.51.100.7");
   });
 
-  it("fewer entries than hops: falls back to the first entry, never beyond the chain", () => {
-    const req = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "198.51.100.7" } });
-    assert.equal(resolveClientIp(req, 3), "198.51.100.7");
+  it("fewer entries than hops: fails safe to the socket address, never the leftmost entry", () => {
+    // e.g. a request that reached the app without passing every trusted proxy,
+    // carrying one client-forged entry.
+    const forged = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "203.0.113.10" } });
+    assert.equal(resolveClientIp(forged, 2), "10.0.0.1");
+    const two = fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": "203.0.113.10, 198.51.100.7" } });
+    assert.equal(resolveClientIp(two, 3), "10.0.0.1");
+    // exactly enough entries is still honoured (the outermost trusted proxy's entry)
+    assert.equal(resolveClientIp(two, 2), "203.0.113.10");
+  });
+
+  it("a rotating forged single entry cannot mint keys when hops exceed the entries", () => {
+    const keys = new Set();
+    for (let i = 1; i <= 50; i++) {
+      keys.add(resolveClientIp(fakeReq({ ip: "10.0.0.1", headers: { "x-forwarded-for": `203.0.113.${i}` } }), 2));
+    }
+    assert.deepEqual([...keys], ["10.0.0.1"]);
   });
 
   it("hops>0 but header absent: falls back to the socket address", () => {
@@ -144,6 +158,15 @@ describe("createInMemoryStore reaper (Issue #27)", () => {
     assert.equal(store._store.size, 0);
   });
 
+  it("a key shared by two windows is retained for the longer one", async () => {
+    const store = createInMemoryStore({ cleanupIntervalMs: 15 });
+    store.hit("shared", 3_600_000);
+    store.hit("shared", 20); // a shorter-window caller must not shorten retention
+    await sleep(120);
+    assert.equal(store._store.has("shared"), true);
+    store.reset();
+  });
+
   it("keeps per-key windows independent when one store is shared", async () => {
     const store = createInMemoryStore({ cleanupIntervalMs: 15 });
     store.hit("short", 20);
@@ -189,6 +212,41 @@ describe("createRateLimiter", () => {
 
   beforeEach(() => {
     store = createInMemoryStore({ cleanupIntervalMs: 999_999 });
+  });
+
+  it("limiters sharing a store are isolated by keyPrefix, including their different windows", async () => {
+    const shared = createInMemoryStore({ cleanupIntervalMs: 15 });
+    const short = createRateLimiter({ windowMs: 40, maxRequests: 2, store: shared, keyPrefix: "short:" });
+    const long = createRateLimiter({ windowMs: 3_600_000, maxRequests: 2, store: shared, keyPrefix: "long:" });
+    const call = (limiter) => {
+      const res = fakeRes();
+      let passed = false;
+      limiter(fakeReq(), res, () => { passed = true; });
+      return passed;
+    };
+
+    assert.ok(call(short) && call(short));
+    assert.ok(call(long) && call(long));
+    assert.equal(call(short), false, "short limiter exhausted");
+    assert.equal(call(long), false, "long limiter exhausted independently");
+
+    await new Promise((r) => setTimeout(r, 150)); // several reaper ticks; short window elapsed
+    assert.ok(call(short), "short window elapsed, its counter was reaped/reset");
+    assert.equal(call(long), false, "long limiter's live counter must survive the short limiter's reaping");
+    shared.reset();
+  });
+
+  it("limiters that reuse a prefix share counters (documented invariant: use distinct prefixes)", () => {
+    const a = createRateLimiter({ windowMs: 60_000, maxRequests: 2, store, keyPrefix: "same:" });
+    const b = createRateLimiter({ windowMs: 60_000, maxRequests: 2, store, keyPrefix: "same:" });
+    const call = (limiter) => {
+      let passed = false;
+      limiter(fakeReq(), fakeRes(), () => { passed = true; });
+      return passed;
+    };
+    assert.ok(call(a));
+    assert.ok(call(b));
+    assert.equal(call(a), false, "counters are shared when the prefix is reused");
   });
 
   it("allows requests under the threshold and calls next()", () => {

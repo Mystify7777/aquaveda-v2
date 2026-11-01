@@ -42,10 +42,17 @@ import { sendError } from "../http/respond.js";
  * Instead only the entries added by trusted proxies are believed: with
  * `trustedProxyHops = N` the client is the Nth entry from the RIGHT. With 0
  * (default outside production) no forwarded header is trusted. `X-Real-IP`
- * is never trusted (a single, unverifiable header). A selected entry that is
- * not a valid IP (junk, port-suffixed) falls back to the socket address, so
- * neither a malformed header nor a mis-set hop count can create arbitrary
- * or unbounded keys from header text.
+ * is never trusted (a single, unverifiable header). Anything that does not
+ * add up falls back to the socket address: a header with fewer entries than
+ * `trustedProxyHops`, or a selected entry that is not a valid IP (junk,
+ * port-suffixed). So a malformed header or a too-high hop count cannot make
+ * the leftmost (client-supplied) entry the key, nor create arbitrary or
+ * unbounded keys from header text.
+ *
+ * Limits no code can detect (documented in the audit report): a hop count
+ * that is too high while the header still carries enough entries, and
+ * direct access to the origin that bypasses the proxy (the origin must only
+ * be reachable through it). In both, a client can again choose its key.
  *
  * @param {import('express').Request} req
  * @param {number} [trustedProxyHops] defaults to TRUSTED_PROXY_HOPS
@@ -62,7 +69,13 @@ export function resolveClientIp(req, trustedProxyHops = resolveTrustedProxyHops(
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
-  const candidate = entries[Math.max(0, entries.length - trustedProxyHops)];
+  // Fewer entries than trusted hops means the chain is not what the
+  // configuration claims (header stripped, or the request reached the app
+  // without passing every trusted proxy). The leftmost entry is then
+  // client-controlled, so never fall back to it: use the socket address.
+  if (entries.length < trustedProxyHops) return socketAddress;
+
+  const candidate = entries[entries.length - trustedProxyHops];
   return candidate && isIP(candidate) ? candidate : socketAddress;
 }
 
@@ -136,7 +149,10 @@ export function createInMemoryStore({ cleanupIntervalMs = 60_000 } = {}) {
         timestamps = [];
         store.set(key, timestamps);
       }
-      windows.set(key, windowMs);
+      // One key normally belongs to one limiter (distinct keyPrefix), but if a
+      // key is ever shared, keep the LONGEST window seen so the reaper can
+      // never evict a counter that a longer-window limiter still needs.
+      windows.set(key, Math.max(windows.get(key) ?? 0, windowMs));
 
       // Prune expired timestamps (everything before windowStart).
       while (timestamps.length > 0 && timestamps[0] <= windowStart) {
@@ -193,8 +209,11 @@ export const defaultStore = createInMemoryStore();
  * @param {number} options.windowMs - Time window in milliseconds.
  * @param {number} options.maxRequests - Maximum allowed requests per window.
  * @param {object} [options.store] - Optional store instance (default: shared in-memory store).
- * @param {string} [options.keyPrefix] - Optional prefix for store keys to namespace
- *   different limiters sharing the same store (e.g., "login:", "register:").
+ * @param {string} [options.keyPrefix] - Prefix that namespaces this limiter's keys in a
+ *   shared store (e.g., "login:", "register:"). INVARIANT: every limiter that shares a
+ *   store MUST use a distinct prefix, so one store key always belongs to exactly one
+ *   limiter and one window. Same prefix ⇒ the limiters share counters (and the store
+ *   retains the key for the longest window either used).
  * @returns {import('express').RequestHandler}
  *
  * @example
