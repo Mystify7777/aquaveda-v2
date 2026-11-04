@@ -86,6 +86,11 @@ TRUSTED_PROXY_HOPS=     # number of trusted reverse proxies in front of the API.
                         # Nth proxy appended. Production startup fails if unset. Wrong value =
                         # limiter bypass (too high) or one shared bucket for all users (too low).
 
+# Remediation grants (ADR-0007) — optional, policy default
+SELF_GRANT_EXPERT_THRESHOLD=   # an EXPERT may grant remediation to THEMSELVES only while the number of
+                               # EXPERT accounts is below this value (default 5; 0 disables self-grant).
+                               # Counts accounts, not active experts. Affects only future grants.
+
 # Place search (Issue #134) — all optional in development
 GEOCODER_BASE_URL=      # Nominatim-compatible https base URL. Unset: dev uses the public
                         # OSMF instance (dev-only usage policy); PRODUCTION unset = place

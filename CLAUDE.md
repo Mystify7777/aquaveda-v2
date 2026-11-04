@@ -4,6 +4,8 @@
 
 ## Current Milestone
 
+Issue #140 — ADR-0007 backend domain slice (remediation grants + lifecycle authorization) — **implemented, pending review.** Grant operations (`remediation.service.js`), accepted-grantee authorization for start/resolve, notes, append-only `remediationHistory`, adaptive self-grant, pure activity-log/visibility projections, `getIssueActivityLog` / `getIssueWorkflowView` service reads; no routes/UI/escalation/indexes/collections. Findings fixed in-slice: private fields leaked via raw-document serialization (REM-L11) and a status-level ABA race in verification (REM-L12). **Next:** routes + public/workflow DTOs (replace the generic PATCH), then timeline UI.
+
 ADR-0007 — remediation authorization (D-3a resolved) — **accepted, revised after review, design only (no code).** Explicit EXPERT-issued, grantee-accepted, issue-scoped grant embedded on the Issue, identified by `grantId` (REM-L1–L10); adaptive self-grant below an EXPERT-count threshold; per-issue public activity log as a derived read model. **Next:** backend-domain implementation issue (no routes/UI/escalation), then routes/DTOs, timeline, UI.
 
 Issue #129 — baseline HTTP security headers — **implemented (pending review).** Web via `next.config.ts` `headers()`, API via first-mounted Express middleware (HDR-L1–L4).

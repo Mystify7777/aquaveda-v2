@@ -410,3 +410,38 @@ issues; route/DTO shapes; UI.
 2. Routes + public/workflow DTOs (replace generic PATCH) with their own register entries.
 3. Read-only lifecycle timeline on the Issue detail page (consumes the activity log).
 4. Grant/accept and start/resolve/verify UI.
+
+## Implementation amendments (Issue #140, backend domain slice)
+
+Findings made while implementing against the real code. Each is an implementation
+requirement of this ADR, recorded so the rationale survives refactoring.
+
+1. **Private workflow state must not cross the HTTP boundary (M1).** Routes serialize raw
+   Mongoose documents and Mongoose returns every stored field on read, so adding
+   `remediation` / `remediationHistory` would have exposed pending grantees and private notes
+   in every public and PATCH response. `Issue` now has a `toJSON` transform that strips both
+   fields; internal code reads them as document properties and `toObject()` is unaffected.
+   Consequence: the accepted assignee is **not** visible over HTTP until the routes/DTO slice
+   wires the pure projections (`domain/issue-activity.js`). `statusHistory[].note` is public by
+   §7 and serializes normally.
+2. **`statusHistory` length is part of every transition's atomic filter (M2) — a concurrency
+   correctness requirement, not a test workaround.** The previous filter pinned only `status`.
+   A status can return to a value the pre-read already saw (`resolved → in_progress →
+   resolved`), so a decision derived from the pre-read ("the resolver is A, so B is
+   independent") could be silently stale; this let a resolver verify their own resolution
+   (reproduced against real MongoDB). History is append-only, so an unchanged length means no
+   transition was recorded since the pre-read. This is the status-level analogue of pinning the
+   exact `grantId`, and it extends ADR-0006. Do not remove it when simplifying `changeStatus`.
+3. **Check order does not reveal private grant state.** Grantee-only operations
+   (`accept`/`decline`/`release`) answer `FORBIDDEN` uniformly to anyone who is not the current
+   grantee, whether or not a grant exists; start/resolve check status legality first (public),
+   then answer `FORBIDDEN` to non-grantees uniformly, and `INVALID_STATE` (`GRANT_NOT_ACCEPTED`)
+   only to the grantee of a still-pending grant. Note validation follows authorization.
+4. **`changeStatus(actor, id, target, { note })`**: the optional fourth argument is additive.
+   The existing `PATCH /issues/:id/status` route passes no note and is unchanged, so
+   resolve/verify/reject cannot be completed over HTTP in this slice; this is moot because
+   no grant routes exist yet. For the two formerly D-3a-gated transitions the route now
+   returns `403 FORBIDDEN` (no accepted grant) instead of `409 AUTHORIZATION_POLICY_UNRESOLVED`.
+5. **Project isolation:** `createProject` reads only `Issue.status` (`.select("status")`).
+6. The expert count for self-grant is read only on the self-grant path (no supporting index is
+   added; none is allowed in this slice).

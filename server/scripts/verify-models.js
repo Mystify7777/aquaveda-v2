@@ -338,7 +338,7 @@ check("6c. Project.originIssue is immutable: true", () => {
 // ---------------------------------------------------------------------
 check("7a. Issue.statusHistory subdocument has exactly the expected fields", () => {
   const subSchema = Issue.schema.path("statusHistory").schema;
-  const expected = ["_id", "fromStatus", "toStatus", "actor", "timestamp"].sort();
+  const expected = ["_id", "fromStatus", "toStatus", "actor", "timestamp", "note"].sort(); // note: ADR-0007 §6
   const actual = Object.keys(subSchema.paths).sort();
   assert.deepEqual(actual, expected, `got fields: ${actual.join(", ")}`);
 });
@@ -432,8 +432,70 @@ check("8b. Issue has exactly the expected top-level fields", () => {
     "status",
     "reportedBy",
     "statusHistory",
+    "remediation", // ADR-0007: current grant (private workflow state)
+    "remediationHistory", // ADR-0007: append-only responsibility events (private)
   ].sort();
   assert.deepEqual(topLevelFields(Issue.schema), expected);
+});
+
+check("8b-1. Issue.remediation grant shape (ADR-0007 §1): exact fields, required identity, acceptedAt defaults to null", () => {
+  const sub = Issue.schema.path("remediation").schema;
+  assert.deepEqual(Object.keys(sub.paths).sort(), ["acceptedAt", "actor", "grantId", "grantedAt", "grantedBy"]);
+  for (const f of ["grantId", "actor", "grantedBy", "grantedAt"]) {
+    assert.equal(sub.path(f).isRequired, true, `${f} must be required`);
+  }
+  assert.ok(!sub.path("acceptedAt").isRequired);
+  assert.equal(sub.path("acceptedAt").options.default, null);
+});
+
+check("8b-2. Issue.remediation is absent by default (existing Issues stay valid, no migration)", () => {
+  const doc = new Issue({
+    title: "t",
+    description: "d",
+    location: { type: "Point", coordinates: [77.5, 12.9] },
+    reportedBy: new mongoose.Types.ObjectId(),
+  });
+  assert.equal(doc.validateSync(), undefined);
+  assert.equal(doc.remediation, undefined);
+  assert.equal("remediation" in doc.toObject(), false);
+  assert.deepEqual(doc.remediationHistory.toObject(), []);
+});
+
+check("8b-3. Issue.remediationHistory events: exact fields, six types, note bounded", () => {
+  const sub = Issue.schema.path("remediationHistory").schema;
+  assert.deepEqual(
+    Object.keys(sub.paths).sort(),
+    ["actor", "expertCount", "grantId", "grantee", "note", "selfGrant", "threshold", "timestamp", "type"],
+  );
+  assert.deepEqual(sub.path("type").enumValues, ["granted", "accepted", "declined", "released", "withdrawn", "revoked"]);
+  assert.equal(sub.path("note").options.maxlength, 2000);
+  assert.equal(Issue.schema.path("statusHistory").schema.path("note").options.maxlength, 2000);
+});
+
+check("8b-4. No flat resolvedBy/verifiedBy/reviewer/assignee-style fields on Issue (ADR-0005/0007)", () => {
+  const banned = /^(resolvedBy|verifiedBy|reviewer|assignedTo|assignee|remediator)$/i;
+  const bad = Object.keys(Issue.schema.paths).filter((p) => banned.test(p));
+  assert.deepEqual(bad, []);
+});
+
+check("8b-5. Issue JSON serialization strips private remediation state but keeps public status notes (#140 M1)", () => {
+  const id = new mongoose.Types.ObjectId();
+  const doc = new Issue({
+    title: "t",
+    description: "d",
+    location: { type: "Point", coordinates: [77.5, 12.9] },
+    reportedBy: id,
+    statusHistory: [{ fromStatus: null, toStatus: "open", actor: id, timestamp: new Date(), note: "public note" }],
+    remediation: { grantId: id, actor: id, grantedBy: id, grantedAt: new Date() },
+    remediationHistory: [{ type: "granted", grantId: id, actor: id, grantee: id, timestamp: new Date(), note: "private" }],
+  });
+  const json = JSON.parse(JSON.stringify(doc));
+  assert.equal("remediation" in json, false);
+  assert.equal("remediationHistory" in json, false);
+  assert.equal(json.statusHistory[0].note, "public note");
+  // internal access and toObject() are unaffected
+  assert.ok(doc.remediation && doc.remediationHistory.length === 1);
+  assert.ok("remediation" in doc.toObject());
 });
 
 check("8c. Knowledge has exactly the expected top-level fields", () => {

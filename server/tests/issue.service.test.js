@@ -28,14 +28,14 @@ async function makeOpenIssue(reporter = fakeActor("USER")) {
 }
 
 /**
- * Test-fixture-only helper. Several tests need an Issue forced directly
- * into a status the service layer cannot currently reach on its own via
- * changeStatus() — specifically "in_progress" and "resolved", which sit
- * behind D-3a's unresolved authorization gates. This fixture is allowed
- * to bypass that authorization check (it's testing what happens around
- * D-3a, not exercising it), but bypassing authorization is not license
- * to construct a domain-invalid history. The resulting statusHistory
- * must still read as a real, legal walk through ADR-0003's transition
+ * Test-fixture-only helper. Several older tests need an Issue forced
+ * directly into a status without driving the full grant flow (ADR-0007:
+ * "in_progress" and "resolved" are reachable only by an accepted grantee;
+ * the grant-driven flows are covered in lifecycle.authorization.test.js and
+ * remediation.*.test.js). This fixture bypasses that authorization on
+ * purpose, but bypassing authorization is not license to construct a
+ * domain-invalid history. The resulting statusHistory must still read as a
+ * real, legal walk through ADR-0003's transition
  * graph — "open -> verified" in one hop is not a state this Issue could
  * ever actually have reached, D-3a or not.
  *
@@ -185,22 +185,19 @@ describe("issue.service — changeStatus: legal transitions", () => {
   it("resolved -> verified succeeds for a DIFFERENT EXPERT than the resolver", async () => {
     const issue = await makeOpenIssue();
     const expertA = fakeActor("EXPERT");
-    // Drive to `resolved` directly via the model, bypassing D-3a's
-    // unresolved acknowledged->in_progress / in_progress->resolved gates
-    // — those transitions cannot be reached through the service at all
-    // right now (by design). Setting up `resolved` state directly via
-    // the model is the correct way to test the transition THIS service
-    // operation actually can perform (resolved -> verified), without
-    // pretending D-3a is solved.
+    // Drive to `resolved` directly via the model: this test targets the
+    // verification transition only. The grant-gated start/resolve
+    // transitions are covered in lifecycle.authorization.test.js.
     await forceStatus(issue._id, "resolved", expertA.id);
 
     const expertB = fakeActor("EXPERT");
-    const updated = await changeStatus(expertB, issue._id, "verified");
+    const updated = await changeStatus(expertB, issue._id, "verified", { note: "  Checked on site; flow restored.  " });
     assert.equal(updated.status, "verified");
     const lastEntry = updated.statusHistory[updated.statusHistory.length - 1];
     assert.equal(lastEntry.fromStatus, "resolved");
     assert.equal(lastEntry.toStatus, "verified");
     assert.equal(String(lastEntry.actor), expertB.id);
+    assert.equal(lastEntry.note, "Checked on site; flow restored."); // ADR-0007 §6: normalized, stored
   });
 
   it("resolved -> in_progress (failed verification) succeeds for an EXPERT", async () => {
@@ -209,11 +206,12 @@ describe("issue.service — changeStatus: legal transitions", () => {
     await forceStatus(issue._id, "resolved", resolver.id);
 
     const expert = fakeActor("EXPERT");
-    const updated = await changeStatus(expert, issue._id, "in_progress");
+    const updated = await changeStatus(expert, issue._id, "in_progress", { note: "Leak persists after the repair." });
     assert.equal(updated.status, "in_progress");
     const lastEntry = updated.statusHistory[updated.statusHistory.length - 1];
     assert.equal(lastEntry.fromStatus, "resolved");
     assert.equal(lastEntry.toStatus, "in_progress");
+    assert.equal(lastEntry.note, "Leak persists after the repair.");
   });
 });
 
@@ -292,65 +290,6 @@ describe("issue.service — authorization", () => {
   });
 });
 
-describe("issue.service — D-3a: unresolved authorization policy", () => {
-  it("acknowledged -> in_progress throws AUTHORIZATION_POLICY_UNRESOLVED for every role, not silently allowed", async () => {
-    const issue = await makeOpenIssue();
-    await forceStatus(issue._id, "acknowledged");
-
-    for (const role of ["USER", "EXPERT", "ADMIN"]) {
-      await assert.rejects(
-        () => changeStatus(fakeActor(role), issue._id, "in_progress"),
-        (err) => {
-          assert.equal(
-            err.code,
-            DomainErrorCode.AUTHORIZATION_POLICY_UNRESOLVED,
-          );
-          return true;
-        },
-        `role ${role} should not be silently authorized`,
-      );
-    }
-  });
-
-  it("in_progress -> resolved throws AUTHORIZATION_POLICY_UNRESOLVED for every role, not silently allowed", async () => {
-    const issue = await makeOpenIssue();
-    await forceStatus(issue._id, "in_progress");
-
-    for (const role of ["USER", "EXPERT", "ADMIN"]) {
-      await assert.rejects(
-        () => changeStatus(fakeActor(role), issue._id, "resolved"),
-        (err) => {
-          assert.equal(
-            err.code,
-            DomainErrorCode.AUTHORIZATION_POLICY_UNRESOLVED,
-          );
-          return true;
-        },
-        `role ${role} should not be silently authorized`,
-      );
-    }
-  });
-
-  it("D-3a rejection does NOT modify the Issue document at all", async () => {
-    const issue = await makeOpenIssue();
-    await forceStatus(issue._id, "acknowledged");
-    const before = await Issue.findById(issue._id).lean();
-
-    await assert.rejects(() =>
-      changeStatus(fakeActor("EXPERT"), issue._id, "in_progress"),
-    );
-
-    const after = await Issue.findById(issue._id).lean();
-    assert.equal(after.status, "acknowledged");
-    // Compare against the pre-rejection state directly, rather than a
-    // hardcoded history length — this is robust to forceStatus's own
-    // fixture-setup entry and asserts the actual invariant that matters:
-    // the rejected D-3a call appended nothing and changed nothing.
-    assert.equal(after.statusHistory.length, before.statusHistory.length);
-    assert.deepEqual(after, before);
-  });
-});
-
 describe("issue.service — not found and state race", () => {
   it("changeStatus on a non-existent Issue throws NOT_FOUND", async () => {
     await assert.rejects(
@@ -403,8 +342,8 @@ describe("issue.service — not found and state race", () => {
     const expertB = fakeActor("EXPERT");
 
     const results = await Promise.allSettled([
-      changeStatus(expertA, issue._id, "verified"),
-      changeStatus(expertB, issue._id, "verified"),
+      changeStatus(expertA, issue._id, "verified", { note: "A: verified" }),
+      changeStatus(expertB, issue._id, "verified", { note: "B: verified" }),
     ]);
 
     const succeeded = results.filter((r) => r.status === "fulfilled");

@@ -6,13 +6,12 @@ import { Issue } from "../models/Issue.js";
 // this import (services never queried the User collection before
 // Issue #48's read endpoints), so it's added here specifically for the
 // new listIssues/getIssueById functions, not incidentally.
-import "../models/User.js";
+import { User } from "../models/User.js";
 import {
   notFound,
   forbidden,
   invalidState,
   stateRace,
-  authorizationPolicyUnresolved,
   DomainError,
   DomainErrorCode,
 } from "./errors.js";
@@ -23,6 +22,8 @@ import {
 } from "../domain/issue-classification.js";
 import { bboxProblem, searchTextProblem, searchTerms } from "../domain/issue-search.js";
 import { locationLabelProblem, normalizeLocationLabel } from "../domain/location-label.js";
+import { parseNote } from "../domain/lifecycle-note.js";
+import { projectPublicActivityLog, projectWorkflowView } from "../domain/issue-activity.js";
 
 /**
  * Issue domain service.
@@ -128,41 +129,53 @@ export async function createIssue(actorContext, payload) {
 }
 
 /**
- * Authorization for a specific transition. Returns nothing on success;
- * throws a DomainError on failure. Kept as its own function so the D-3a
- * gate is a single, clearly-named place rather than inline branching
- * spread through changeStatus().
+ * Authorization for a specific transition. Returns `{ grantId }` for the
+ * grant-dependent transitions (so the caller can put the EXACT grant observed
+ * here into the atomic filter, ADR-0007 §4) and `{}` otherwise; throws a
+ * DomainError on failure.
+ *
+ * Remediation authority (ADR-0007, which resolved D-3a) comes ONLY from an
+ * accepted grant held by the actor: no role, ownership, reporter status,
+ * Project membership, or ADMIN grants it.
+ *
+ * Error choice for the grant-dependent transitions: status legality was
+ * already checked (status is public). A non-grantee gets FORBIDDEN
+ * uniformly — whether a pending grant exists is private (ADR-0007 §7) and
+ * must not be distinguishable. The grantee of a still-pending grant gets
+ * INVALID_STATE (they already know about it).
  *
  * @param {"open"|"acknowledged"|"in_progress"|"resolved"|"verified"} fromStatus
  * @param {string} targetStatus
  * @param {{id: string, role: string}} actorContext
  * @param {object} issueDoc - the currently-loaded Issue, needed for the
- *   history-derived verification check
+ *   history-derived verification check and the grant check
+ * @returns {{ grantId?: import("mongoose").Types.ObjectId }}
  */
 function authorizeTransition(fromStatus, targetStatus, actorContext, issueDoc) {
   if (fromStatus === "open" && targetStatus === "acknowledged") {
     requireRole(actorContext, "EXPERT");
-    return;
+    return {};
   }
 
-  if (fromStatus === "acknowledged" && targetStatus === "in_progress") {
-    // D-3a: remediation-assertion authority is unresolved. This is not
-    // an ordinary authorization failure — no actor, of any role, can be
-    // correctly evaluated for this transition yet, because the policy
-    // itself does not exist. Do not fall back to "any authenticated
-    // user," a REMEDIATOR role, or Project-membership authority.
-    throw authorizationPolicyUnresolved(
-      "authorization for acknowledged -> in_progress is not yet defined (D-3a)",
-      { transition: "acknowledged->in_progress" },
-    );
-  }
-
-  if (fromStatus === "in_progress" && targetStatus === "resolved") {
-    // Same D-3a gate.
-    throw authorizationPolicyUnresolved(
-      "authorization for in_progress -> resolved is not yet defined (D-3a)",
-      { transition: "in_progress->resolved" },
-    );
+  if (
+    (fromStatus === "acknowledged" && targetStatus === "in_progress") ||
+    (fromStatus === "in_progress" && targetStatus === "resolved")
+  ) {
+    const transition = `${fromStatus}->${targetStatus}`;
+    const grant = issueDoc.remediation;
+    if (!grant || String(grant.actor) !== String(actorContext.id)) {
+      throw forbidden(
+        "only the accepted remediation grantee may perform this transition",
+        { transition },
+      );
+    }
+    if (!grant.acceptedAt) {
+      throw invalidState("the remediation grant has not been accepted yet", {
+        transition,
+        reason: "GRANT_NOT_ACCEPTED",
+      });
+    }
+    return { grantId: grant.grantId };
   }
 
   if (fromStatus === "resolved" && targetStatus === "verified") {
@@ -189,13 +202,13 @@ function authorizeTransition(fromStatus, targetStatus, actorContext, issueDoc) {
         { transition: "resolved->verified" },
       );
     }
-    return;
+    return {};
   }
 
   if (fromStatus === "resolved" && targetStatus === "in_progress") {
     // Failed verification. EXPERT-authorized, per ADR-0003.
     requireRole(actorContext, "EXPERT");
-    return;
+    return {};
   }
 
   // Should be unreachable — transition legality is checked before this
@@ -206,17 +219,45 @@ function authorizeTransition(fromStatus, targetStatus, actorContext, issueDoc) {
   );
 }
 
+/** Transitions whose explanation is mandatory (ADR-0007 §6). */
+const NOTE_REQUIRED_TRANSITIONS = new Set([
+  "in_progress->resolved", // the resolution statement
+  "resolved->verified", // the verification rationale
+  "resolved->in_progress", // the failed-verification reason
+]);
+
 /**
- * changeStatus(actorContext, issueId, targetStatus)
+ * changeStatus(actorContext, issueId, targetStatus, { note })
  *
  * Implements the ADR-0006 conditional-atomic-update sequence:
  *   1. load current state
  *   2. validate transition legality
- *   3. validate authorization
- *   4. conditional atomic update, gated on the expected current status
- *   5. zero-match -> distinguish not-found vs. state-race
+ *   3. validate authorization (accepted grantee / EXPERT rules)
+ *   4. validate the note (required for resolve, verify, reject)
+ *   5. conditional atomic update, gated on everything observed in step 1
+ *   6. zero-match -> distinguish not-found vs. state-race
+ *
+ * CONCURRENCY CORRECTNESS REQUIREMENT (do not "simplify" away): the write's
+ * filter pins the status AND the observed `statusHistory` length. The history
+ * is append-only, so an unchanged length means "no transition has been
+ * recorded since the pre-read". Pinning the status alone is not enough: a
+ * status can return to its original value (resolved -> in_progress ->
+ * resolved), and a pre-read-derived authorization decision — "the resolver
+ * is A, so verifier B is independent" — is then silently stale (B may have
+ * become the resolver in between). This ABA race was reproduced against the
+ * previous filter (#140, finding M2) and let a resolver verify their own
+ * resolution. Grant-dependent transitions additionally pin the exact observed
+ * grant (`remediation.grantId` + actor + accepted), so a withdrawn/replaced
+ * grant can never authorize a stale write. A zero-match write NEVER reports
+ * FORBIDDEN: a stale snapshot cannot prove the actor lacked authority.
+ *
+ * @param {{id: string, role: string}} actorContext
+ * @param {string} issueId
+ * @param {string} targetStatus
+ * @param {{ note?: string }} [options] untrusted plain text; required for
+ *   resolve/verify/reject, optional otherwise
  */
-export async function changeStatus(actorContext, issueId, targetStatus) {
+export async function changeStatus(actorContext, issueId, targetStatus, { note } = {}) {
   requireActor(actorContext);
 
   if (!ISSUE_STATUSES.includes(targetStatus)) {
@@ -253,11 +294,32 @@ export async function changeStatus(actorContext, issueId, targetStatus) {
   // legal at all — an illegal target is reported as such regardless of
   // who's asking, rather than leaking authorization details about a
   // transition that could never happen anyway.
-  authorizeTransition(expectedStatus, targetStatus, actorContext, issue);
+  const authorization = authorizeTransition(expectedStatus, targetStatus, actorContext, issue);
+
+  // Note validation is after authorization so an unauthorized caller learns
+  // nothing from note errors.
+  const parsedNote = parseNote(note, {
+    required: NOTE_REQUIRED_TRANSITIONS.has(`${expectedStatus}->${targetStatus}`),
+  });
+  if (!parsedNote.ok) {
+    throw validationFailed(parsedNote.problem, { field: "note" });
+  }
+
+  const filter = {
+    _id: issueId,
+    status: expectedStatus,
+    // Concurrency correctness requirement — see the function comment.
+    statusHistory: { $size: issue.statusHistory.length },
+  };
+  if (authorization.grantId) {
+    filter["remediation.grantId"] = authorization.grantId;
+    filter["remediation.actor"] = actorContext.id;
+    filter["remediation.acceptedAt"] = { $ne: null };
+  }
 
   const now = new Date();
   const updated = await Issue.findOneAndUpdate(
-    { _id: issueId, status: expectedStatus },
+    filter,
     {
       $set: { status: targetStatus },
       $push: {
@@ -266,6 +328,7 @@ export async function changeStatus(actorContext, issueId, targetStatus) {
           toStatus: targetStatus,
           actor: actorContext.id,
           timestamp: now,
+          ...(parsedNote.value !== undefined ? { note: parsedNote.value } : {}),
         },
       },
     },
@@ -276,11 +339,10 @@ export async function changeStatus(actorContext, issueId, targetStatus) {
     return updated;
   }
 
-  // Zero-match: the conditional filter (_id + expected status) matched
-  // nothing. Distinguish "deleted between read and write" from "state
-  // changed between read and write" — conflating them would mislabel a
-  // genuine concurrency race as a not-found error. ADR-0006 requires
-  // this distinction explicitly.
+  // Zero-match: the conditional filter matched nothing. Distinguish
+  // "deleted between read and write" from "state changed between read and
+  // write" — conflating them would mislabel a genuine concurrency race as a
+  // not-found error. ADR-0006 requires this distinction explicitly.
   const stillExists = await Issue.exists({ _id: issueId });
   if (!stillExists) {
     throw notFound(
@@ -288,7 +350,7 @@ export async function changeStatus(actorContext, issueId, targetStatus) {
     );
   }
   throw stateRace(
-    `Issue ${issueId} status changed before this transition could be applied`,
+    `Issue ${issueId} changed before this transition could be applied`,
     { expectedStatus, targetStatus },
   );
 }
@@ -474,4 +536,58 @@ export async function getIssueById(issueId) {
     throw notFound(`Issue ${issueId} not found`);
   }
   return issue;
+}
+
+/**
+ * Collects every user id the projections may need to name, from a plain Issue.
+ */
+function collectActorIds(plain) {
+  const ids = [plain.reportedBy];
+  for (const h of plain.statusHistory ?? []) ids.push(h.actor);
+  if (plain.remediation) ids.push(plain.remediation.actor, plain.remediation.grantedBy);
+  for (const e of plain.remediationHistory ?? []) ids.push(e.actor, e.grantee);
+  return ids;
+}
+
+/** One batched lookup of { name, role } for the given ids (never the whole User). */
+async function loadActors(ids) {
+  const unique = [...new Set(ids.filter(Boolean).map((id) => String(id._id ?? id)))];
+  if (unique.length === 0) return new Map();
+  const users = await User.find({ _id: { $in: unique } }).select("_id name role").lean();
+  return new Map(users.map((u) => [String(u._id), { name: u.name, role: u.role }]));
+}
+
+async function loadIssueForProjection(issueId) {
+  let issue;
+  try {
+    issue = await Issue.findById(issueId);
+  } catch (err) {
+    throw wrapMongooseValidationError(err);
+  }
+  if (!issue) throw notFound(`Issue ${issueId} not found`);
+  return issue.toObject(); // internal read: private fields intact; projections redact them
+}
+
+/**
+ * Public activity log for one Issue (ADR-0007 §8): a derived read model over
+ * statusHistory + remediationHistory with per-event redaction. No
+ * authentication required. Not a route; the routes slice will expose it.
+ */
+export async function getIssueActivityLog(issueId) {
+  const plain = await loadIssueForProjection(issueId);
+  const actors = await loadActors(collectActorIds(plain));
+  return projectPublicActivityLog(plain, actors);
+}
+
+/**
+ * Workflow view for an authenticated viewer (ADR-0007 §7): responsibility
+ * state, the public assignee, the pending grant (only for role-based viewers,
+ * the grantee, or the grantor) and the remediation events this viewer may
+ * see. The viewer's role is the CURRENT role supplied by the caller.
+ */
+export async function getIssueWorkflowView(viewerContext, issueId) {
+  requireActor(viewerContext);
+  const plain = await loadIssueForProjection(issueId);
+  const actors = await loadActors(collectActorIds(plain));
+  return projectWorkflowView(plain, viewerContext, actors);
 }
