@@ -13,6 +13,7 @@ import {
   resolveCookieSameSite,
   resolveCookieDomain,
   resolveTrustedProxyHops,
+  resolveSelfGrantThreshold,
 } from "../src/config/env.js";
 
 const VALID_ACCESS_SECRET = "secure-random-access-secret-32-chars-long";
@@ -372,5 +373,40 @@ describe("src/config/env.js — TRUSTED_PROXY_HOPS (Issue #27)", () => {
 
   it("development/test startup does not require it", () => {
     assert.doesNotThrow(() => validateStartupConfig(baseValidEnv()));
+  });
+});
+
+describe("src/config/env.js — SELF_GRANT_EXPERT_THRESHOLD (ADR-0007)", () => {
+  it("unset or blank means the default of 5", () => {
+    assert.equal(resolveSelfGrantThreshold({}), 5);
+    assert.equal(resolveSelfGrantThreshold({ SELF_GRANT_EXPERT_THRESHOLD: "   " }), 5);
+  });
+
+  it("parses an explicit integer; 0 disables self-grant", () => {
+    assert.equal(resolveSelfGrantThreshold({ SELF_GRANT_EXPERT_THRESHOLD: "0" }), 0);
+    assert.equal(resolveSelfGrantThreshold({ SELF_GRANT_EXPERT_THRESHOLD: "3" }), 3);
+    assert.equal(resolveSelfGrantThreshold({ SELF_GRANT_EXPERT_THRESHOLD: " 12 " }), 12);
+    assert.equal(resolveSelfGrantThreshold({ SELF_GRANT_EXPERT_THRESHOLD: "1000" }), 1000);
+  });
+
+  it("rejects negative, fractional, non-numeric, exponent/hex and absurd values", () => {
+    for (const bad of ["-1", "1.5", "abc", "true", "1e2", "0x5", "1001", "99999999"]) {
+      assert.throws(() => resolveSelfGrantThreshold({ SELF_GRANT_EXPERT_THRESHOLD: bad }), /SELF_GRANT_EXPERT_THRESHOLD/, bad);
+    }
+  });
+
+  it("startup validation fails fast on a malformed value (any environment) and accepts a valid or absent one", () => {
+    const base = baseValidEnv();
+    assert.doesNotThrow(() => validateStartupConfig(base));
+    assert.doesNotThrow(() => validateStartupConfig({ ...base, SELF_GRANT_EXPERT_THRESHOLD: "0" }));
+    assert.throws(() => validateStartupConfig({ ...base, SELF_GRANT_EXPERT_THRESHOLD: "-3" }), /SELF_GRANT_EXPERT_THRESHOLD/);
+    const prod = baseValidEnv({
+      NODE_ENV: "production",
+      TRUSTED_PROXY_HOPS: "1",
+      JWT_ACCESS_SECRET: "valid-production-access-auth-key-abcdefghijklmn",
+      JWT_REFRESH_SECRET: "valid-production-refresh-auth-key-abcdefghijklmn",
+    });
+    assert.doesNotThrow(() => validateStartupConfig(prod), "unset is fine in production (a policy default, not a deployment prerequisite)");
+    assert.throws(() => validateStartupConfig({ ...prod, SELF_GRANT_EXPERT_THRESHOLD: "x" }), /SELF_GRANT_EXPERT_THRESHOLD/);
   });
 });

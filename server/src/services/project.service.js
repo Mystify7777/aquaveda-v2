@@ -58,7 +58,9 @@ export async function createProject(actorContext, payload) {
 
   let issue;
   try {
-    issue = await Issue.findById(payload.originIssue);
+    // Only `status` is needed. Deliberately NOT loading the whole Issue: Project
+    // operations never read or write remediation state (ADR-0007 §11).
+    issue = await Issue.findById(payload.originIssue).select("status");
   } catch (err) {
     // Malformed originIssue -> raw Mongoose CastError, translated to the
     // same DomainError contract as every other failure mode.

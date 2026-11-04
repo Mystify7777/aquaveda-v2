@@ -410,6 +410,32 @@ export function resolveTrustedProxyHops(env = process.env) {
 }
 
 /**
+ * Adaptive self-grant threshold (ADR-0007 §2).
+ *
+ * An EXPERT may grant remediation to themselves only while the number of
+ * EXPERT accounts is BELOW this value; otherwise a different EXPERT must
+ * grant. Default 5. `0` disables self-grant entirely. This is a policy
+ * knob (not a secret) and affects only future grants, never existing ones.
+ *
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @returns {number} integer 0..1000
+ */
+export const DEFAULT_SELF_GRANT_EXPERT_THRESHOLD = 5;
+export const MAX_SELF_GRANT_EXPERT_THRESHOLD = 1000;
+
+export function resolveSelfGrantThreshold(env = process.env) {
+  const raw = (env.SELF_GRANT_EXPERT_THRESHOLD ?? "").trim();
+  if (raw === "") return DEFAULT_SELF_GRANT_EXPERT_THRESHOLD;
+  if (!/^\d+$/.test(raw) || Number(raw) > MAX_SELF_GRANT_EXPERT_THRESHOLD) {
+    throw new Error(
+      `Invalid SELF_GRANT_EXPERT_THRESHOLD value: "${env.SELF_GRANT_EXPERT_THRESHOLD}". ` +
+        `Expected an integer between 0 and ${MAX_SELF_GRANT_EXPERT_THRESHOLD} (0 disables self-grant).`
+    );
+  }
+  return Number(raw);
+}
+
+/**
  * Validates the startup configuration for the process (server.js).
  * Fails fast before opening database connections or starting HTTP listeners.
  *
@@ -437,6 +463,9 @@ export function validateStartupConfig(env = process.env) {
   // the proxy-hop decision explicitly (0 = directly exposed) because the
   // wrong default is either bypassable (trust headers) or a single shared
   // bucket for all users (trust none behind a proxy).
+  // Self-grant policy (ADR-0007): fail fast on a malformed value; unset => 5.
+  resolveSelfGrantThreshold(env);
+
   resolveTrustedProxyHops(env);
   if (env.NODE_ENV === "production" && (env.TRUSTED_PROXY_HOPS ?? "").trim() === "") {
     throw new Error(

@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 
 import { LOCATION_LABEL_MAX_LENGTH } from "../domain/location-label.js";
+import { NOTE_MAX_LENGTH } from "../domain/lifecycle-note.js";
+import { REMEDIATION_EVENT_TYPES } from "../domain/remediation.js";
 import {
   ISSUE_CATEGORY_VALUES,
   ISSUE_SEVERITY_VALUES,
@@ -65,19 +67,61 @@ const issueStatusHistoryEntrySchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      // Deliberately NOT role-gated or Project-membership-gated here.
-      // D-3a (remediation-assertion authority) is unresolved by design —
-      // this field stays a neutral User reference so the eventual
-      // authorization mechanism can be layered on in the service layer
-      // without a schema migration. See decision-register.md D-3a.
+      // Deliberately NOT role-gated or Project-membership-gated here: this is
+      // a neutral User reference recording who performed the transition.
+      // Remediation authority is NOT derived from it; it comes only from an
+      // accepted grant (`remediation`, ADR-0007, which resolved D-3a).
     },
     timestamp: {
       type: Date,
       required: true,
       default: Date.now,
     },
+    // Optional explanation of the transition (ADR-0007 §6): resolution
+    // statement, verification rationale, rejection reason. Untrusted plain
+    // text, normalized/required-ness enforced by the service; absent on
+    // legacy entries. PUBLIC by ADR-0007 §7 (unlike remediationHistory notes).
+    note: {
+      type: String,
+      maxlength: NOTE_MAX_LENGTH,
+    },
   },
   { _id: true }, // default Mongoose behavior kept; each entry gets a stable id
+);
+
+// Current remediation grant (ADR-0007 §1). Absent = unassigned; acceptedAt
+// null = pending, a Date = accepted. The ONLY source of remediation
+// authority. `grantId` is the stable identity of this specific grant and is
+// part of every grant-dependent conditional write (ADR-0007 §4), so a stale
+// operation can never act on a replacement grant.
+const remediationGrantSchema = new Schema(
+  {
+    grantId: { type: Schema.Types.ObjectId, required: true },
+    actor: { type: Schema.Types.ObjectId, ref: "User", required: true }, // the grantee
+    grantedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    grantedAt: { type: Date, required: true },
+    acceptedAt: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
+// Append-only audit trail of responsibility changes (ADR-0007 §5). Deliberately
+// separate from statusHistory (different shape, events and audience;
+// ADR-0005: no generic shared history abstraction).
+const remediationEventSchema = new Schema(
+  {
+    type: { type: String, enum: REMEDIATION_EVENT_TYPES, required: true },
+    grantId: { type: Schema.Types.ObjectId, required: true },
+    actor: { type: Schema.Types.ObjectId, ref: "User", required: true }, // performer
+    grantee: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    timestamp: { type: Date, required: true },
+    note: { type: String, maxlength: NOTE_MAX_LENGTH },
+    // Only on `granted` events that were self-grants: the policy basis (private).
+    selfGrant: { type: Boolean },
+    expertCount: { type: Number },
+    threshold: { type: Number },
+  },
+  { _id: false },
 );
 
 /**
@@ -92,7 +136,7 @@ const issueStatusHistoryEntrySchema = new Schema(
  * NOT enforced here (service layer):
  * - legality of a status transition (ADR-0003's transition graph)
  * - transition authority (who may perform which transition)
- * - D-3a (authorized remediation actor mechanism) — unresolved by design
+ * - remediation authority (ADR-0007: an accepted `remediation` grant is the only source)
  * - `immutable: true` on `reportedBy` is defense-in-depth only; it guards
  *   `.save()` but does not stop every possible update path (e.g. a raw
  *   `updateOne`). The real guarantee is that no service operation ever
@@ -201,8 +245,33 @@ const issueSchema = new Schema(
       // `reportedBy` and `createdAt` values that only exist once the
       // document is being created.
     },
+    // ADR-0007. Both fields are PRIVATE workflow state: they are stripped from
+    // every JSON serialization below, and public/workflow views are produced
+    // only by the pure projections in domain/issue-activity.js.
+    remediation: {
+      type: remediationGrantSchema,
+      default: undefined, // absent on unassigned and on all pre-existing Issues
+    },
+    remediationHistory: {
+      type: [remediationEventSchema],
+      default: [],
+    },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: {
+      // Routes serialize raw documents (`sendSuccess(res, doc)`), and Mongoose
+      // returns every stored field on read. Without this, pending grantees and
+      // private notes would leak through every public/PATCH response (#140
+      // finding M1). Internal code still reads these as document properties;
+      // `toObject()` is unaffected.
+      transform(_doc, ret) {
+        delete ret.remediation;
+        delete ret.remediationHistory;
+        return ret;
+      },
+    },
+  },
 );
 
 // Approved indexes only (persistence-design.md §6 / ADR-0005):

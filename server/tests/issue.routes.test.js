@@ -9,6 +9,8 @@ import { issueRouter } from "../src/routes/issue.routes.js";
 import { User } from "../src/models/User.js";
 import { register } from "../src/services/auth.service.js";
 import { Issue } from "../src/models/Issue.js";
+import { changeStatus } from "../src/services/issue.service.js";
+import { acceptRemediation, grantRemediation, withdrawRemediation } from "../src/services/remediation.service.js";
 import { setupTestDb, teardownTestDb, clearCollections, fakeActor, validPoint } from "./helpers/testDb.js";
 
 /**
@@ -462,7 +464,7 @@ describe("PATCH /api/v1/issues/:issueId/status", () => {
     assert.equal(res.json.code, "VALIDATION_FAILED");
   });
 
-  it("409s with AUTHORIZATION_POLICY_UNRESOLVED (never 403) for the D-3a-gated acknowledged -> in_progress transition", async () => {
+  it("403s (FORBIDDEN, not the former D-3a 409) for acknowledged -> in_progress when the actor holds no accepted grant (ADR-0007)", async () => {
     const expert = await makeAuthedUser("EXPERT");
     const issue = await makeOpenIssue(expert.accessToken);
 
@@ -472,14 +474,14 @@ describe("PATCH /api/v1/issues/:issueId/status", () => {
       body: { targetStatus: "acknowledged" },
     });
 
+    // An EXPERT without an accepted grant has no remediation authority.
     const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
       cookies: authCookie(expert.accessToken),
       body: { targetStatus: "in_progress" },
     });
 
-    assert.equal(res.status, 409);
-    assert.notEqual(res.status, 403);
-    assert.equal(res.json.code, "AUTHORIZATION_POLICY_UNRESOLVED");
+    assert.equal(res.status, 403);
+    assert.equal(res.json.code, "FORBIDDEN");
     assert.equal(res.json.success, false);
     assert.equal(res.json.data, null);
   });
@@ -573,5 +575,105 @@ describe("POST /api/v1/issues — locationLabel (#134, backward compatible)", ()
     assert.equal(res.status, 200);
     assert.equal(res.json.data.items.length, 1);
     assert.equal(res.json.data.items[0].locationLabel, undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADR-0007 / #140 finding M1: private remediation state must never cross the
+// HTTP boundary. Routes serialize raw documents, so this is asserted on the
+// real serialized responses (list, detail, PATCH), not on the transform function.
+// ---------------------------------------------------------------------------
+describe("private remediation state never leaks over HTTP (#140 M1)", () => {
+  const PRIVATE_GRANT = "PRIVATE-grant-reason-zq91";
+  const PRIVATE_WITHDRAW = "PRIVATE-withdraw-reason-zq92";
+
+  async function scenario() {
+    const expert = await makeAuthedUser("EXPERT");
+    const expert2 = await makeAuthedUser("EXPERT");
+    const grantee = await makeAuthedUser("USER");
+    const reporter = await makeAuthedUser("USER");
+    const created = await request("POST", "/api/v1/issues", {
+      cookies: authCookie(reporter.accessToken),
+      body: { title: "Leak", description: "Burst pipe", location: { type: "Point", coordinates: [85.1, 25.6] } },
+    });
+    assert.equal(created.status, 201);
+    const id = created.json.data._id;
+    const ex = { id: expert.user.id, role: "EXPERT" };
+    const ex2 = { id: expert2.user.id, role: "EXPERT" };
+    const gr = { id: grantee.user.id, role: "USER" };
+    await changeStatus(ex, id, "acknowledged", { note: "PUBLIC-ack-note" });
+    await grantRemediation(ex, id, gr.id, { note: PRIVATE_GRANT });
+    await withdrawRemediation(ex2, id, { note: PRIVATE_WITHDRAW });
+    await grantRemediation(ex, id, gr.id);
+    return { id, ex, ex2, gr, grantee, expert, reporter };
+  }
+
+  const FORBIDDEN_KEYS = ["remediation", "remediationHistory", "grantId", "grantedBy", "acceptedAt"];
+
+  function assertNoPrivateState(res, extraSecrets = []) {
+    const text = JSON.stringify(res.json);
+    for (const key of FORBIDDEN_KEYS) assert.ok(!text.includes(`"${key}"`), `response must not contain "${key}"`);
+    for (const secret of [PRIVATE_GRANT, PRIVATE_WITHDRAW, ...extraSecrets]) {
+      assert.ok(!text.includes(secret), `response must not contain ${secret}`);
+    }
+  }
+
+  it("GET /issues (list) and GET /issues/:id (detail), anonymous: no private state, public status note present", async () => {
+    const { id, gr } = await scenario();
+    const list = await request("GET", "/api/v1/issues");
+    assert.equal(list.status, 200);
+    assertNoPrivateState(list, [gr.id]); // a PENDING grantee's identity is private
+    assert.ok(JSON.stringify(list.json).includes("PUBLIC-ack-note"));
+
+    const detail = await request("GET", `/api/v1/issues/${id}`);
+    assert.equal(detail.status, 200);
+    assertNoPrivateState(detail, [gr.id]);
+    const note = detail.json.data.statusHistory.find((h) => h.toStatus === "acknowledged").note;
+    assert.equal(note, "PUBLIC-ack-note", "statusHistory[].note stays public");
+  });
+
+  it("an authenticated EXPERT also receives no private state from the public reads", async () => {
+    const { id, expert } = await scenario();
+    const detail = await request("GET", `/api/v1/issues/${id}`, { cookies: authCookie(expert.accessToken) });
+    assertNoPrivateState(detail);
+  });
+
+  it("PATCH /issues/:id/status response (grantee starts work via the existing route) carries no private state", async () => {
+    const { id, gr, grantee } = await scenario();
+    await acceptRemediation(gr, id);
+    const res = await request("PATCH", `/api/v1/issues/${id}/status`, {
+      cookies: authCookie(grantee.accessToken),
+      body: { targetStatus: "in_progress" },
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    assert.equal(res.json.data.status, "in_progress");
+    assertNoPrivateState(res);
+    // internal reads still see the grant
+    assert.ok((await Issue.findById(id)).remediation);
+  });
+
+  it("PATCH by a non-grantee EXPERT is 403 FORBIDDEN and leaks nothing about the pending grant", async () => {
+    const { id, expert } = await scenario();
+    const res = await request("PATCH", `/api/v1/issues/${id}/status`, {
+      cookies: authCookie(expert.accessToken),
+      body: { targetStatus: "in_progress" },
+    });
+    assert.equal(res.status, 403);
+    assert.equal(res.json.code, "FORBIDDEN");
+    assertNoPrivateState(res);
+  });
+
+  it("a legacy issue (stored without the new fields) is served unchanged", async () => {
+    const reporter = await makeAuthedUser("USER");
+    const inserted = await Issue.collection.insertOne({
+      title: "Legacy", description: "Pre-ADR-0007", location: { type: "Point", coordinates: [77.5, 12.9] },
+      reportedBy: (await User.findOne({ _id: reporter.user.id }))._id, status: "open",
+      statusHistory: [{ fromStatus: null, toStatus: "open", actor: (await User.findOne({ _id: reporter.user.id }))._id, timestamp: new Date() }],
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+    const res = await request("GET", `/api/v1/issues/${inserted.insertedId}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.title, "Legacy");
+    assertNoPrivateState(res);
   });
 });
