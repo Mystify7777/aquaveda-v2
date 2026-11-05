@@ -25,20 +25,20 @@ function profile(actors, ref) {
   return found ? { _id: id, name: found.name, role: found.role } : null;
 }
 
-function toStatusHistoryEntry(h, actors) {
+/** History entry without actor profile: the pre-#142 shape (string `actor`, subdocument `_id`). */
+function toHistoryCore(h) {
   return {
     ...(h._id != null ? { _id: String(h._id) } : {}),
     fromStatus: h.fromStatus ?? null,
     toStatus: h.toStatus,
     actor: idOf(h.actor),
-    actorProfile: profile(actors, h.actor),
     timestamp: h.timestamp,
     ...(h.note !== undefined && h.note !== null ? { note: h.note } : {}),
   };
 }
 
-/** List item / created issue: the pre-#142 public fields, explicitly allowlisted. */
-export function toPublicIssueSummaryDTO(plain, actors) {
+/** Fields shared by every public Issue shape (no actor references). */
+function toIssueCore(plain) {
   return {
     _id: String(plain._id),
     title: plain.title,
@@ -51,10 +51,20 @@ export function toPublicIssueSummaryDTO(plain, actors) {
     category: plain.category ?? "",
     domain: plain.domain,
     status: plain.status,
-    reportedBy: profile(actors, plain.reportedBy),
-    statusHistory: (plain.statusHistory ?? []).map((h) => toStatusHistoryEntry(h, actors)),
     createdAt: plain.createdAt,
     updatedAt: plain.updatedAt,
+  };
+}
+
+/** List item: the pre-#142 public fields, explicitly allowlisted, plus `actorProfile` on history. */
+export function toPublicIssueSummaryDTO(plain, actors) {
+  return {
+    ...toIssueCore(plain),
+    reportedBy: profile(actors, plain.reportedBy),
+    statusHistory: (plain.statusHistory ?? []).map((h) => ({
+      ...toHistoryCore(h),
+      actorProfile: profile(actors, h.actor),
+    })),
   };
 }
 
@@ -65,11 +75,10 @@ export function toPublicIssueSummaryDTO(plain, actors) {
  * GET shape is a coordinated follow-up, not part of #142.
  */
 export function toCreatedIssueDTO(plain) {
-  const { reportedBy: _unused, statusHistory, ...rest } = toPublicIssueSummaryDTO(plain, new Map());
   return {
-    ...rest,
+    ...toIssueCore(plain),
     reportedBy: idOf(plain.reportedBy),
-    statusHistory: statusHistory.map(({ actorProfile: _drop, ...entry }) => entry),
+    statusHistory: (plain.statusHistory ?? []).map(toHistoryCore),
   };
 }
 

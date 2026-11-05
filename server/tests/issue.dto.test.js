@@ -14,7 +14,7 @@ import {
   projectWorkflowView,
 } from "../src/domain/issue-activity.js";
 import { sendError } from "../src/http/respond.js";
-import { CLIENT_SAFE_REASONS } from "../src/http/reasons.js";
+import { CLIENT_SAFE_REASONS, isClientSafeReason } from "../src/http/reasons.js";
 import { DomainError, DomainErrorCode } from "../src/services/errors.js";
 
 /**
@@ -269,9 +269,15 @@ describe("failure envelope `reason` allowlist", () => {
     assert.ok(!("reason" in out.body));
   });
 
-  it("the allowlist is exactly the documented set", () => {
+  it("the allowlist is exactly the documented set and cannot be mutated", () => {
     assert.deepEqual([...CLIENT_SAFE_REASONS].sort(), [
       "GRANT_ALREADY_ACCEPTED", "GRANT_EXISTS", "GRANT_NOT_ACCEPTED", "NO_GRANT", "SELF_GRANT_NOT_PERMITTED",
     ]);
+    assert.ok(Object.isFrozen(CLIENT_SAFE_REASONS));
+    assert.throws(() => CLIENT_SAFE_REASONS.push("INJECTED"), TypeError);
+    assert.equal(isClientSafeReason("INJECTED"), false);
+    assert.equal(isClientSafeReason("NO_GRANT"), true);
+    assert.equal(isClientSafeReason(undefined), false);
+    assert.equal(isClientSafeReason({ toString: () => "NO_GRANT" }), false);
   });
 });

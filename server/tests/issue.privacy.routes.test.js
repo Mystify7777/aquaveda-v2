@@ -155,3 +155,94 @@ describe("mutation responses return only the approved DTO", () => {
   });
 });
 
+
+describe("revocation privacy (ADMIN revoke of the accepted grant)", () => {
+  const REVOKE = "PRIVATE-revoke-note";
+  let revokeRes;
+
+  beforeEach(async () => {
+    revokeRes = await app.request("POST", `/api/v1/issues/${issueId}/remediation/revoke`, {
+      token: w.admin.token,
+      body: { note: REVOKE },
+    });
+    assert.equal(revokeRes.status, 200, JSON.stringify(revokeRes.json));
+  });
+
+  it("mutation response: shape is exact, state is unassigned, and the note lives only in the role-based workflow view", () => {
+    const { data } = revokeRes.json;
+    assert.deepEqual(Object.keys(data).sort(), ["issue", "workflow"]);
+    assert.equal(data.workflow.state, "unassigned");
+    assert.equal(data.issue.assignee, null);
+    assert.ok(!("activity" in data.issue));
+    assertNoPrivateKeys(assert, revokeRes.json);
+    // the ADMIN is a role-based viewer, so the revoke event (with its note) is in THEIR workflow...
+    assert.ok(data.workflow.events.some((e) => e.type === "revoked" && e.note === REVOKE));
+    // ...but never in the issue part of the response
+    const issuePart = JSON.stringify(data.issue);
+    for (const secret of [REVOKE, G1, W, G2]) assert.ok(!issuePart.includes(secret));
+  });
+
+  it("public detail: no grantee, no admin identity, no notes; the revoke is an anonymous activity entry", async () => {
+    const res = await app.request("GET", `/api/v1/issues/${issueId}`);
+    assert.equal(res.status, 200);
+    for (const secret of [REVOKE, G1, W, G2]) assert.ok(!res.text.includes(secret), `public detail leaks ${secret}`);
+    assert.ok(!res.text.includes(w.admin.id), "the revoking admin's identity is not public");
+    assert.equal(res.json.data.assignee, null);
+    assertNoPrivateKeys(assert, res.json);
+    const entry = res.json.data.activity.find((e) => e.type === "responsibility_revoked");
+    assert.ok(entry, "revocation is visible as an activity entry");
+    assert.equal(entry.actor, null);
+    assert.equal(entry.note, null);
+  });
+
+  it("public list stays free of revoke state", async () => {
+    const res = await app.request("GET", "/api/v1/issues");
+    for (const secret of [REVOKE, G1, W, G2]) assert.ok(!res.text.includes(secret));
+    assertNoPrivateKeys(assert, res.json);
+  });
+
+  it("participant (former grantee): sees the revoke as type/performerRole/time only, never its note", async () => {
+    const res = await workflow(w.grantee.token);
+    assert.equal(res.json.data.state, "unassigned");
+    const revoked = res.json.data.events.find((e) => e.type === "revoked");
+    assert.deepEqual(Object.keys(revoked).sort(), ["performerRole", "timestamp", "type"]);
+    assert.equal(revoked.performerRole, "ADMIN");
+    assert.ok(!res.text.includes(REVOKE));
+    assert.ok(!res.text.includes(W), "withdraw note stays role-based only");
+    assertNoPrivateKeys(assert, res.json);
+  });
+
+  it("unrelated user: unassigned and no events; the former assignee is no longer exposed", async () => {
+    const res = await workflow(w.other.token);
+    assert.equal(res.json.data.state, "unassigned");
+    assert.equal(res.json.data.assignee, null);
+    assert.deepEqual(res.json.data.events, []);
+    assert.ok(!res.text.includes(REVOKE));
+  });
+
+  it("role-based EXPERT sees the revoke note and its ADMIN actor, but no grantId or policy metadata", async () => {
+    const res = await workflow(w.expert2.token);
+    const revoked = res.json.data.events.find((e) => e.type === "revoked");
+    assert.equal(revoked.note, REVOKE);
+    assert.equal(revoked.actor, w.admin.id);
+    assertNoPrivateKeys(assert, res.json);
+  });
+
+  it("role change: a demoted ADMIN keeps participation in their own revoke event but loses its note", async () => {
+    await setRole(w.admin, "USER");
+    const res = await workflow(w.admin.token);
+    assert.equal(res.json.data.events.length, 1);
+    assert.deepEqual(Object.keys(res.json.data.events[0]).sort(), ["performerRole", "timestamp", "type"]);
+    assert.ok(!res.text.includes(REVOKE));
+  });
+
+  it("an EXPERT cannot revoke (403) and the refusal leaks no grant or note data", async () => {
+    const res = await app.request("POST", `/api/v1/issues/${issueId}/remediation/revoke`, {
+      token: w.expert2.token,
+      body: { note: "attempt" },
+    });
+    assert.equal(res.status, 403);
+    for (const secret of [REVOKE, G1, W, G2, w.grantee.id]) assert.ok(!res.text.includes(secret));
+    assert.deepEqual(Object.keys(res.json).sort(), ["code", "data", "message", "success"]);
+  });
+});
