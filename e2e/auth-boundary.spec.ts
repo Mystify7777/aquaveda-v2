@@ -75,8 +75,9 @@ test.describe("authenticated route boundary", () => {
     await expect(page).toHaveURL(/\/$/);
 
     const cookiesAfterRegister = await context.cookies(API_ORIGIN);
+    const authPathCookiesAfterRegister = await context.cookies(`${API_ORIGIN}/api/v1/auth/refresh`);
     expect(cookiesAfterRegister.some((cookie) => cookie.name === "access_token")).toBeTruthy();
-    expect(cookiesAfterRegister.some((cookie) => cookie.name === "refresh_token")).toBeTruthy();
+    expect(authPathCookiesAfterRegister.some((cookie) => cookie.name === "refresh_token")).toBeTruthy();
 
     await page.getByRole("button", { name: "Sign out" }).first().click();
 
@@ -91,7 +92,8 @@ test.describe("authenticated route boundary", () => {
     await expect(page.getByText("Sign in to continue")).toBeVisible();
 
     const cookiesAfterLogout = await context.cookies(API_ORIGIN);
+    const authPathCookiesAfterLogout = await context.cookies(`${API_ORIGIN}/api/v1/auth/refresh`);
     expect(cookiesAfterLogout.some((cookie) => cookie.name === "access_token")).toBeFalsy();
-    expect(cookiesAfterLogout.some((cookie) => cookie.name === "refresh_token")).toBeFalsy();
+    expect(authPathCookiesAfterLogout.some((cookie) => cookie.name === "refresh_token")).toBeFalsy();
   });
 });
