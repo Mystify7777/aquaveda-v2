@@ -37,6 +37,28 @@ export function logConnectionError(err, { redactErrors = false, log = console.er
   log("[db] MongoDB connection error:", redactErrors ? safeErrorTag(err) : err.message);
 }
 
+/**
+ * Mongoose `readyState` value meaning "connected": the only state in which the
+ * process can serve database-backed requests (0 disconnected, 2 connecting and
+ * 3 disconnecting are all NOT ready).
+ */
+const READY_STATE_CONNECTED = 1;
+
+/**
+ * Whether the MongoDB connection is currently usable (#127). Reads Mongoose's
+ * own connection state, which the driver keeps current after startup:
+ * `disconnected` flips it to 0 when the server is lost, and it returns to 1 on
+ * `reconnected` without any application code. No query is issued, so this is
+ * synchronous and cheap. A silent network partition is detected on the driver's
+ * heartbeat cycle (default 10 s), not instantly; process death is near-instant.
+ *
+ * @param {{ readyState?: number }} [connection] injectable for tests.
+ * @returns {boolean}
+ */
+export function isDatabaseReady(connection = mongoose.connection) {
+  return connection?.readyState === READY_STATE_CONNECTED;
+}
+
 // Tracks an in-flight connection attempt so concurrent calls to connectDB()
 // (e.g. during startup) reuse the same attempt instead of racing to open a
 // second connection.

@@ -12,6 +12,7 @@ import { knowledgeRouter } from "./routes/knowledge.routes.js";
 import { commentRouter } from "./routes/comment.routes.js";
 import { projectRouter } from "./routes/project.routes.js";
 import { expertApplicationRouter } from "./routes/expert-application.routes.js";
+import { healthRouter } from "./routes/health.routes.js";
 import { sendError } from "./http/respond.js";
 
 /**
@@ -132,6 +133,11 @@ export function createApp() {
   app.use(requestLogger);
   app.use(csrfOriginGuard);
 
+  // Liveness + readiness probes (#127). Mounted BEFORE authMiddleware on
+  // purpose: actor resolution reads the database when a valid access cookie is
+  // present, and a probe must never depend on MongoDB or on a cookie.
+  app.use("/api/v1", healthRouter);
+
   // Global actor resolution (Phase E/L6): every route, present and
   // future, receives req.actorContext (populated or null) before it
   // runs. This is the ONLY place actorContext is produced — routes
@@ -139,11 +145,6 @@ export function createApp() {
   // token never rejects the request here, preserving Product
   // Invariant 5 (anonymous browsing).
   app.use(authMiddleware);
-
-  // Minimal health check — no business logic, no DB dependency check yet.
-  app.get("/api/v1/health", (req, res) => {
-    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
-  });
 
   // The five-endpoint minimal auth API (decision-register.md L4). This
   // router is self-contained — it never calls issue/knowledge/comment/

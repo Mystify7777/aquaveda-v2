@@ -1149,3 +1149,15 @@ Exposes ADR-0007 over HTTP **without changing its domain policy**. Backend only;
 | List shape and pagination | Preserved | Items keep `statusHistory`; no `activity`/`assignee`. |
 | Anonymous list/detail reads | Preserved | No actor required. |
 | Error codes and HTTP status mapping | Preserved | No new codes. |
+
+## 🔒 Locked — Liveness and readiness (#127)
+
+Full contract: `docs/architecture/health-and-readiness.md`.
+
+| ID | Decision |
+|---|---|
+| HLT-L1 | `GET /api/v1/health` stays **liveness**: unchanged `200 {status, timestamp}`, no MongoDB dependency. `GET /api/v1/ready` is **readiness**: `200 {"status":"ready"}` / `503 {"status":"unavailable"}`, `Cache-Control: no-store`. Bodies are fixed literals; no connection string, host, credential, driver error, stack or topology data is ever returned. |
+| HLT-L2 | Readiness is `mongoose.connection.readyState === 1` (`isDatabaseReady()` in `config/db.js`), no query, no parallel health mechanism. Verified against a real `mongod`: loss flips it to 0 almost immediately, the driver's own reconnect returns it to 1 (about 5–10 s). A silent partition is detected on the driver heartbeat (default 10 s). |
+| HLT-L3 | Both probes are mounted **before** `authMiddleware`: that middleware reads the database when a valid access cookie is present, so a probe behind it was not independent of MongoDB. Probes still pass the security headers, CORS and request logger. |
+| HLT-L4 | The Playwright server wait moved from `/api/v1/health` to `/api/v1/ready`. The old wait meant "database connected" only because `server.js` does not listen before the first connect; the smoke suite needs the database, so it now waits on the endpoint that says so. Startup order is unchanged. |
+| HLT-L5 | Readiness must not be used as a restart/liveness signal (a database outage would restart every healthy instance). No other dependency is added to readiness until the API cannot serve without it. |

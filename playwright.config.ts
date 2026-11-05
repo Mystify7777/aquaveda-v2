@@ -29,7 +29,8 @@ export default defineConfig({
   webServer: [
     {
       command: "npm --prefix server start",
-      url: `${API_ORIGIN}/api/v1/health`,
+      // Readiness, not liveness (#127): the smoke suite needs the database.
+      url: `${API_ORIGIN}/api/v1/ready`,
       env: BACKEND_ENV,
       reuseExistingServer: false,
       timeout: 60_000,

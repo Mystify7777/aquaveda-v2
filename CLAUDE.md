@@ -4,6 +4,8 @@
 
 ## Current Milestone
 
+Issue #127 — separate liveness and database readiness — **implemented (pending review).** `GET /api/v1/health` stays liveness (no MongoDB); new `GET /api/v1/ready` is readiness from `mongoose.connection.readyState` (`isDatabaseReady()`), 200/503 with fixed bodies, mounted before `authMiddleware` (HLT-L1–L5). Playwright now waits on `/api/v1/ready`. Tests: `server/tests/health.routes.test.js`. **Open:** deployed-platform probe configuration (liveness vs readiness) is hosting-side.
+
 Issue #139 — pin JWT verification to HS256 and require `exp` — **implemented (pending review).** Access and refresh verification now use `algorithms: ["HS256"]` plus an explicit `exp` presence check (AUD-L4, resolves audit F-05); issuer unchanged apart from passing the default algorithm explicitly. Claims, lifetimes, secrets, cookies, rotation, actor context and D-3a untouched. Tests: `server/tests/auth-tokens.verification.test.js`.
 
 Issue #142 — ADR-0007 HTTP exposure (explicit lifecycle + remediation routes, explicit public/workflow DTOs, allowlisted failure `reason`) — **implemented; full backend suite verified against real MongoDB (1453/1453) before PR; pending architecture review and CI.** 13 routes under `/api/v1/issues` (RT-142-1), `PATCH .../status` removed (RT-142-2), `changeStatus` gains `expectedFrom` (RT-142-3, atomic filter unchanged), DTOs in `services/issue.dto.js`, compatibility ledger in `decision-register.md`. Domain policy, schema, indexes, frontend untouched. `POST /issues` 201 keeps its pre-#142 shape (dedicated mapper). **Follow-ups:** align the 201 shape with GET, frontend typings, timeline + action UI.
