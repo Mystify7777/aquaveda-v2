@@ -29,7 +29,7 @@ The currently implemented domain routes are state-changing operations:
 
 The concrete routes are:
 
-- `POST /api/v1/issues` and `PATCH /api/v1/issues/:issueId/status`
+- `POST /api/v1/issues`, plus the explicit Issue lifecycle/remediation actions (#142): `POST /api/v1/issues/:issueId/{acknowledge,start,resolve,verify,fail-verification}` and `POST /api/v1/issues/:issueId/remediation/{grant,accept,decline,release,withdraw,revoke}` (`PATCH .../status` was removed); `GET /api/v1/issues/:issueId/workflow` also requires an actor
 - `POST /api/v1/knowledge`
 - `POST /api/v1/knowledge/:knowledgeId/{submit,approve,reject,revise}`
 - `POST /api/v1/comments`

@@ -306,6 +306,10 @@ describe("POST /api/v1/issues", () => {
     assert.equal(res.json.success, true);
     assert.equal(res.json.data.title, "Leaking pipe");
     assert.equal(res.json.data.status, "open");
+    // #142 compatibility: the 201 keeps its pre-#142 shape (reportedBy is an id string; no __v).
+    assert.equal(typeof res.json.data.reportedBy, "string");
+    assert.ok(!("__v" in res.json.data));
+    assert.ok(!("actorProfile" in res.json.data.statusHistory[0]));
     assert.equal(typeof res.json.message, "string");
     assert.ok(res.json.message.length > 0);
     assert.equal(Object.keys(res.json).sort().join(","), "data,message,success");
@@ -385,122 +389,27 @@ describe("POST /api/v1/issues", () => {
   });
 });
 
-describe("PATCH /api/v1/issues/:issueId/status", () => {
-  async function makeOpenIssue(accessToken) {
-    const res = await request("POST", "/api/v1/issues", {
-      cookies: authCookie(accessToken),
-      body: {
-        title: "Leaking pipe",
-        description: "Water pooling near the market",
-        location: validPoint(),
-      },
-    });
-    return res.json.data;
-  }
-
-  it("200s on a valid EXPERT-authorized transition (open -> acknowledged)", async () => {
+describe("PATCH /api/v1/issues/:issueId/status (removed in #142)", () => {
+  it("is gone: 404, and a would-be legal transition mutates nothing", async () => {
     const reporter = await makeAuthedUser("USER");
     const expert = await makeAuthedUser("EXPERT");
-    const issue = await makeOpenIssue(reporter.accessToken);
-
-    const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
-      cookies: authCookie(expert.accessToken),
-      body: { targetStatus: "acknowledged" },
-    });
-
-    assert.equal(res.status, 200);
-    assert.equal(res.json.success, true);
-    assert.equal(res.json.data.status, "acknowledged");
-  });
-
-  it("400s with VALIDATION_FAILED for an unrecognized targetStatus", async () => {
-    const reporter = await makeAuthedUser("USER");
-    const issue = await makeOpenIssue(reporter.accessToken);
-
-    const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
+    const created = await request("POST", "/api/v1/issues", {
       cookies: authCookie(reporter.accessToken),
-      body: { targetStatus: "not_a_real_status" },
+      body: { title: "Leaking pipe", description: "Water pooling", location: validPoint() },
     });
+    const id = created.json.data._id;
 
-    assert.equal(res.status, 400);
-    assert.equal(res.json.code, "VALIDATION_FAILED");
-  });
-
-  it("403s with FORBIDDEN when a non-EXPERT attempts open -> acknowledged", async () => {
-    const reporter = await makeAuthedUser("USER");
-    const issue = await makeOpenIssue(reporter.accessToken);
-
-    const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
-      cookies: authCookie(reporter.accessToken),
-      body: { targetStatus: "acknowledged" },
-    });
-
-    assert.equal(res.status, 403);
-    assert.equal(res.json.code, "FORBIDDEN");
-  });
-
-  it("404s with NOT_FOUND for a well-formed but nonexistent issueId", async () => {
-    const expert = await makeAuthedUser("EXPERT");
-    const fakeId = "507f1f77bcf86cd799439011";
-
-    const res = await request("PATCH", `/api/v1/issues/${fakeId}/status`, {
+    const res = await request("PATCH", `/api/v1/issues/${id}/status`, {
       cookies: authCookie(expert.accessToken),
       body: { targetStatus: "acknowledged" },
     });
 
     assert.equal(res.status, 404);
-    assert.equal(res.json.code, "NOT_FOUND");
-  });
-
-  it("400s with VALIDATION_FAILED (CastError translation) for a malformed issueId", async () => {
-    const expert = await makeAuthedUser("EXPERT");
-
-    const res = await request("PATCH", "/api/v1/issues/not-a-valid-object-id/status", {
-      cookies: authCookie(expert.accessToken),
-      body: { targetStatus: "acknowledged" },
-    });
-
-    assert.equal(res.status, 400);
-    assert.equal(res.json.code, "VALIDATION_FAILED");
-  });
-
-  it("403s (FORBIDDEN, not the former D-3a 409) for acknowledged -> in_progress when the actor holds no accepted grant (ADR-0007)", async () => {
-    const expert = await makeAuthedUser("EXPERT");
-    const issue = await makeOpenIssue(expert.accessToken);
-
-    // Move to acknowledged first (a legal, EXPERT-authorized transition).
-    await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
-      cookies: authCookie(expert.accessToken),
-      body: { targetStatus: "acknowledged" },
-    });
-
-    // An EXPERT without an accepted grant has no remediation authority.
-    const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
-      cookies: authCookie(expert.accessToken),
-      body: { targetStatus: "in_progress" },
-    });
-
-    assert.equal(res.status, 403);
-    assert.equal(res.json.code, "FORBIDDEN");
-    assert.equal(res.json.success, false);
-    assert.equal(res.json.data, null);
-  });
-
-  it("409s with STATE_RACE style envelope on a genuinely illegal transition (open -> verified)", async () => {
-    const expert = await makeAuthedUser("EXPERT");
-    const issue = await makeOpenIssue(expert.accessToken);
-
-    const res = await request("PATCH", `/api/v1/issues/${issue._id}/status`, {
-      cookies: authCookie(expert.accessToken),
-      body: { targetStatus: "verified" },
-    });
-
-    assert.equal(res.status, 409);
-    assert.equal(res.json.code, "INVALID_STATE");
+    const stored = await Issue.findById(id);
+    assert.equal(stored.status, "open");
+    assert.equal(stored.statusHistory.length, 1);
   });
 });
-
-
 
 describe("GET /api/v1/issues/:issueId (Issue #48 — public read, no auth required)", () => {
   it("200s for an anonymous request", async () => {
@@ -610,9 +519,9 @@ describe("private remediation state never leaks over HTTP (#140 M1)", () => {
 
   const FORBIDDEN_KEYS = ["remediation", "remediationHistory", "grantId", "grantedBy", "acceptedAt"];
 
-  function assertNoPrivateState(res, extraSecrets = []) {
+  function assertNoPrivateState(res, extraSecrets = [], allowKeys = []) {
     const text = JSON.stringify(res.json);
-    for (const key of FORBIDDEN_KEYS) assert.ok(!text.includes(`"${key}"`), `response must not contain "${key}"`);
+    for (const key of FORBIDDEN_KEYS.filter((k) => !allowKeys.includes(k))) assert.ok(!text.includes(`"${key}"`), `response must not contain "${key}"`);
     for (const secret of [PRIVATE_GRANT, PRIVATE_WITHDRAW, ...extraSecrets]) {
       assert.ok(!text.includes(secret), `response must not contain ${secret}`);
     }
@@ -638,25 +547,34 @@ describe("private remediation state never leaks over HTTP (#140 M1)", () => {
     assertNoPrivateState(detail);
   });
 
-  it("PATCH /issues/:id/status response (grantee starts work via the existing route) carries no private state", async () => {
+  it("POST /issues/:id/start response (accepted grantee) carries no private state; the accepted assignee is public", async () => {
     const { id, gr, grantee } = await scenario();
     await acceptRemediation(gr, id);
-    const res = await request("PATCH", `/api/v1/issues/${id}/status`, {
+    const res = await request("POST", `/api/v1/issues/${id}/start`, {
       cookies: authCookie(grantee.accessToken),
-      body: { targetStatus: "in_progress" },
+      body: {},
     });
     assert.equal(res.status, 200, JSON.stringify(res.json));
-    assert.equal(res.json.data.status, "in_progress");
-    assertNoPrivateState(res);
+    assert.equal(res.json.data.issue.status, "in_progress");
+    // `acceptedAt` is public on `assignee` once accepted (ADR-0007 section 7).
+    // The grantee is a PARTICIPANT of the `granted` event, so their own workflow
+    // view may include that event's note; the withdraw note (role-based only) may not.
+    const text = JSON.stringify(res.json);
+    for (const key of FORBIDDEN_KEYS.filter((k) => k !== "acceptedAt")) {
+      assert.ok(!text.includes(`"${key}"`), `response must not contain "${key}"`);
+    }
+    assert.ok(!text.includes(PRIVATE_WITHDRAW), "withdraw note is never visible through participation");
+    assert.ok(text.includes(PRIVATE_GRANT), "a participant sees the notes of their own events");
+    assert.equal(res.json.data.issue.assignee.actor._id, String(gr.id));
     // internal reads still see the grant
     assert.ok((await Issue.findById(id)).remediation);
   });
 
-  it("PATCH by a non-grantee EXPERT is 403 FORBIDDEN and leaks nothing about the pending grant", async () => {
+  it("POST /issues/:id/start by a non-grantee EXPERT is 403 FORBIDDEN and leaks nothing about the pending grant", async () => {
     const { id, expert } = await scenario();
-    const res = await request("PATCH", `/api/v1/issues/${id}/status`, {
+    const res = await request("POST", `/api/v1/issues/${id}/start`, {
       cookies: authCookie(expert.accessToken),
-      body: { targetStatus: "in_progress" },
+      body: {},
     });
     assert.equal(res.status, 403);
     assert.equal(res.json.code, "FORBIDDEN");
