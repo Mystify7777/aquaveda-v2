@@ -246,6 +246,14 @@ export async function verifyPassword(plaintext, stored) {
 // fail-clearly-at-point-of-use pattern rather than failing at import
 // time.
 
+/**
+ * The single JWT algorithm for this application (#139). Issuance signs with it
+ * and verification is pinned to it, so the two sides cannot drift. Tokens signed
+ * with any other algorithm (HS384/HS512 included, even with the correct secret)
+ * or with `alg: none` are rejected at verification.
+ */
+export const JWT_ALGORITHM = "HS256";
+
 const ACCESS_TOKEN_EXPIRES_DEFAULT = DEFAULT_ACCESS_TOKEN_EXPIRES;
 const REFRESH_TOKEN_EXPIRES_DEFAULT = DEFAULT_REFRESH_TOKEN_EXPIRES;
 
@@ -290,6 +298,7 @@ export function getRefreshTokenLifetimeMs() {
  */
 export function signAccessToken({ sub }) {
   return jwt.sign({ sub }, getAccessSecret(), {
+    algorithm: JWT_ALGORITHM,
     expiresIn: getAccessExpires(),
   });
 }
@@ -304,36 +313,56 @@ export function signAccessToken({ sub }) {
  */
 export function signRefreshToken({ sub, sid }) {
   return jwt.sign({ sub, sid }, getRefreshSecret(), {
+    algorithm: JWT_ALGORITHM,
     expiresIn: getRefreshExpires(),
   });
 }
 
 /**
- * Verify an access token's signature and expiry.
+ * Shared verification for both token kinds: algorithm pinned to HS256 via the
+ * library's own `algorithms` option, and `exp` REQUIRED. jsonwebtoken only
+ * validates `exp` when present and has no option to require it (`maxAge`
+ * requires `iat`, not `exp`), so presence is checked explicitly after the
+ * library has verified signature, algorithm and expiry. The failure is the
+ * library's own `JsonWebTokenError` so every caller's existing generic
+ * handling applies unchanged.
+ */
+function verifyPinned(token, secret) {
+  const decoded = jwt.verify(token, secret, { algorithms: [JWT_ALGORITHM] });
+  if (typeof decoded.exp !== "number") {
+    throw new jwt.JsonWebTokenError("jwt exp required");
+  }
+  return decoded;
+}
+
+/**
+ * Verify an access token: signature, HS256-only algorithm, required and
+ * unexpired `exp`.
  *
  * @param {string} token
  * @returns {{ sub: string }} the decoded payload
  * @throws {Error} (jsonwebtoken's own JsonWebTokenError/TokenExpiredError)
- *   if the token is malformed, tampered, or expired — callers (the
- *   future auth middleware) are responsible for translating this into
- *   whatever they need it to mean (e.g. "no valid actor"), not this
- *   file, which stays HTTP/DomainError-agnostic like every other
- *   utility in this project.
+ *   if the token is malformed, tampered, signed with any other algorithm,
+ *   lacks `exp`, or is expired — callers (the auth middleware) are
+ *   responsible for translating this into whatever they need it to mean
+ *   (e.g. "no valid actor"), not this file, which stays HTTP/DomainError-
+ *   agnostic like every other utility in this project.
  */
 export function verifyAccessToken(token) {
-  const decoded = jwt.verify(token, getAccessSecret());
+  const decoded = verifyPinned(token, getAccessSecret());
   return { sub: decoded.sub };
 }
 
 /**
- * Verify a refresh token's signature and expiry.
+ * Verify a refresh token: signature, HS256-only algorithm, required and
+ * unexpired `exp`.
  *
  * @param {string} token
  * @returns {{ sub: string, sid: string }} the decoded payload
  * @throws {Error} same contract as verifyAccessToken
  */
 export function verifyRefreshToken(token) {
-  const decoded = jwt.verify(token, getRefreshSecret());
+  const decoded = verifyPinned(token, getRefreshSecret());
   return { sub: decoded.sub, sid: decoded.sid };
 }
 
