@@ -7,7 +7,7 @@ Method: code reading of token/service/model/middleware/route/config/limiter, rev
 
 ## Authentication flow map
 - **register/login** (`auth.routes.js` → `auth.service.js`): per-IP limiter → Zod (`auth.validation.js`) → service (scrypt hash/verify, `Session` row created, access+refresh JWT issued before DB writes) → two HttpOnly cookies (`access_token` path `/`; `refresh_token` path `/api/v1/auth`).
-- **request auth** (`middleware/auth.js`): verify access JWT (HS256 secret A) → load User from DB each request (role is never trusted from the token) → `req.actorContext = { id, role }`; any failure ⇒ anonymous (null).
+- **request auth** (`middleware/auth.js`): verify access JWT (HS256-pinned, `exp` required, secret A) → load User from DB each request (role is never trusted from the token) → `req.actorContext = { id, role }`; any failure ⇒ anonymous (null).
 - **refresh**: limiter → verify refresh JWT (secret B, distinct, enforced at startup) → atomic `Session.findOneAndDelete({_id, userId, tokenHash, expiresAt>now})` → issue new pair/session (rotation; single-use guaranteed by the atomic delete).
 - **logout**: delete session by `sid`, clear both cookies with identical Path/Domain/SameSite.
 - **browser boundary** (`app.js`): CORS allowlist (callback `false`, never wildcard) → `csrfOriginGuard` on POST/PUT/PATCH/DELETE: exact Origin match, else Referer origin match, else 403; empty allowlist ⇒ all mutations rejected. Security headers first (#129).
@@ -21,7 +21,7 @@ Method: code reading of token/service/model/middleware/route/config/limiter, rev
 | F-02 | Medium | Confirmed correctness gap | Abuse resistance | **Fixed** | `middleware/rate-limiter.js` reaper |
 | F-03 | Low | Defense-in-depth (info disclosure; channel already open by design) | Credentials | Documented | `auth.service.js` `login` |
 | F-04 | Low | Defense-in-depth | Credentials | Follow-up decision | `auth-tokens.js` `SCRYPT_PARAMS` |
-| F-05 | Informational | Defense-in-depth | JWT | Documented | `auth-tokens.js` verify calls |
+| F-05 | Informational | Defense-in-depth | JWT | **Fixed (#139)** | `auth-tokens.js` verify calls |
 | F-06 | Informational | Defense-in-depth | Abuse resistance | Documented | limiter is per-IP only |
 | F-07 | Informational | Defense-in-depth | Sessions | Documented | `auth.service.js` session creation |
 
@@ -48,6 +48,8 @@ Measured median 1.9 ms (unknown email, no hash computed) vs 30.8 ms (known email
 ### F-05 — JWT verification does not pin algorithms or require `exp` (Informational)
 Probed: `alg=none`, wrong-secret HS256 and a refresh-secret-signed token are **rejected**. A token signed with HS384 using the correct secret, and a correctly signed token with no `exp`, are **accepted** (library default allows HS256/384/512; `exp` is not required at verify time). Both require possession of the secret, which is what the model already assumes; our issuer always sets HS256 + `exp`. Optional hardening: pass `algorithms: ["HS256"]` and `maxAge`. No claim/issuer/audience changes are recommended: separate secrets already give access/refresh type separation (enforced distinct at startup).
 
+**Resolution (#139):** issued tokens use `HS256` (now passed explicitly via `JWT_ALGORITHM`); both `verifyAccessToken` and `verifyRefreshToken` are pinned to `algorithms: ["HS256"]` and require a numeric, unexpired `exp` (checked explicitly after `jwt.verify`, since the library has no option to require it). Tokens that violate either contract are rejected with the same generic failures as before. `maxAge` was deliberately not used: it needs `iat` and would add a second lifetime rule. Regression tests: `server/tests/auth-tokens.verification.test.js`. See AUD-L4.
+
 ### F-06 — No per-account throttle (Informational)
 Limiter is per-IP by explicit Issue #42 rule (no account lock-out). A distributed attacker (many real IPs) can still try one account's password many times. Mitigations present: scrypt cost, per-IP limits. A per-account *slow-down* (not lock-out) would be a separate design decision.
 
@@ -68,7 +70,7 @@ Each login creates a `Session` until its TTL expires. Growth is bounded by the (
 ## Deferred / needs separate decision or environment
 1. **Set `TRUSTED_PROXY_HOPS` for the real host chain and verify** (send a forged `X-Forwarded-For` to the deployed API; the limiter must still throttle by the real address). Required before production start (startup now enforces the variable is set).
 2. **#29** — real cross-origin browser verification of cookies/CSRF; **#129** — hosting-level headers. No browser test was run in this audit.
-3. F-04 scrypt parameter/capacity decision; F-05/F-06/F-07 optional hardening (separate issues if wanted).
+3. F-04 scrypt parameter/capacity decision; F-06/F-07 optional hardening (F-05 fixed in #139) (separate issues if wanted).
 4. Distributed rate limiting is not needed yet; the in-memory store is per instance (N instances ⇒ N× the limit).
 
 ## Release assessment: CONDITIONAL PASS
