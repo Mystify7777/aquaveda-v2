@@ -1,4 +1,5 @@
 import { DomainErrorCode } from "../services/errors.js";
+import { isClientSafeReason } from "./reasons.js";
 
 /**
  * Shared HTTP response/error-mapping utility.
@@ -89,12 +90,16 @@ export function sendError(res, err) {
   const status = ERROR_STATUS_MAP[err?.code];
 
   if (status !== undefined) {
-    res.status(status).json({
+    const body = {
       success: false,
       data: null,
       message: err.message,
       code: err.code,
-    });
+    };
+    // Optional, additive (#142): only an allowlisted reason; never `details`.
+    const reason = err.details?.reason;
+    if (isClientSafeReason(reason)) body.reason = reason;
+    res.status(status).json(body);
     return;
   }
 

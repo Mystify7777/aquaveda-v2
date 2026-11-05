@@ -5,38 +5,39 @@ contribution boundary.
 
 ## Public behavior
 
-The frontend does not require a session for public navigation or future read
-surfaces such as approved Knowledge, Issues, Projects, maps, search, filters,
-or public discussions. The current backend branch has no domain GET/listing
-routes yet, so this issue does not invent them.
+The frontend does not require a session for public navigation or read surfaces
+such as approved Knowledge, Issues, Projects, maps, search, and filters. Domain
+read routes now exist; each one's public-read policy is set by its own route
+contract (decision register, "Locked — Routes" and the RT-142 entries), not by
+the presence of the global auth middleware. For Issues:
+`GET /api/v1/issues` and `GET /api/v1/issues/:issueId` are anonymous reads,
+while `GET /api/v1/issues/:issueId/workflow` requires an actor and returns a
+view built for that actor only.
 
-The currently available public HTTP probes are `GET /api/v1/health` and
-`GET /api/v1/auth/me`. The latter returns `200` with `{ user: null }` for an
-anonymous request. Public visibility and authorization are separate concerns:
-when future read routes exist, their public-read policy must be decided by
-their route contract rather than by the presence of the global auth middleware.
+Auth probes: `GET /api/v1/health` and `GET /api/v1/auth/me` (`200` with
+`{ user: null }` for an anonymous request).
 
 ## Contribution behavior
 
-The currently implemented domain routes are state-changing operations:
+The state-changing domain operations require an actor:
 
 | Route group | Anonymous request | Authenticated request |
 |---|---|---|
-| `POST /api/v1/issues` and issue status changes | `401 UNAUTHORIZED` | `req.actorContext` is passed to the service |
+| `POST /api/v1/issues` and the Issue lifecycle/remediation actions | `401 UNAUTHORIZED` | `req.actorContext` is passed to the service |
 | Knowledge create and lifecycle changes | `401 UNAUTHORIZED` | Existing service authorization applies |
 | `POST /api/v1/comments` | `401 UNAUTHORIZED` | Existing comment rules apply |
 | `POST /api/v1/projects` | `401 UNAUTHORIZED` | Existing project rules apply |
 
-The concrete routes are:
+The concrete state-changing Issue routes are:
 
-- `POST /api/v1/issues` and `PATCH /api/v1/issues/:issueId/status`
+- `POST /api/v1/issues`, plus the explicit Issue lifecycle/remediation actions (#142): `POST /api/v1/issues/:issueId/{acknowledge,start,resolve,verify,fail-verification}` and `POST /api/v1/issues/:issueId/remediation/{grant,accept,decline,release,withdraw,revoke}` (`PATCH .../status` was removed in #142)
 - `POST /api/v1/knowledge`
 - `POST /api/v1/knowledge/:knowledgeId/{submit,approve,reject,revise}`
 - `POST /api/v1/comments`
 - `POST /api/v1/projects`
 
-These are the currently implemented contribution operations. No domain
-listing, detail, edit, or delete route is included in this boundary.
+Read routes are documented per route contract (see above). No generic edit or
+delete route exists in this boundary.
 
 The global auth middleware is advisory: it resolves the HttpOnly access cookie
 to `actorContext = { id, role }`, or `null` for an anonymous request. Each
@@ -75,8 +76,8 @@ Existing service authorization remains operation-specific: `requireActor()`
 enforces authentication, `requireRole()` handles existing single-role gates,
 and the Knowledge author checks and self-review protections remain local to
 their operations. No generic ownership rule is introduced. D-3a remains
-unresolved; the two Issue transitions guarded by
-`AUTHORIZATION_POLICY_UNRESOLVED` are not changed by this boundary.
+resolved by ADR-0007 (issue-scoped remediation grants, exposed in #142); no
+service emits `AUTHORIZATION_POLICY_UNRESOLVED` any more.
 
 ## Validation and limitations
 

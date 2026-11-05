@@ -23,7 +23,17 @@ import {
 import { bboxProblem, searchTextProblem, searchTerms } from "../domain/issue-search.js";
 import { locationLabelProblem, normalizeLocationLabel } from "../domain/location-label.js";
 import { parseNote } from "../domain/lifecycle-note.js";
-import { projectPublicActivityLog, projectWorkflowView } from "../domain/issue-activity.js";
+import {
+  projectPublicActivityLog,
+  projectPublicAssignee,
+  projectWorkflowView,
+} from "../domain/issue-activity.js";
+import {
+  toMutationDTO,
+  toPublicIssueDetailDTO,
+  toPublicIssueSummaryDTO,
+  toWorkflowDTO,
+} from "./issue.dto.js";
 
 /**
  * Issue domain service.
@@ -257,7 +267,7 @@ const NOTE_REQUIRED_TRANSITIONS = new Set([
  * @param {{ note?: string }} [options] untrusted plain text; required for
  *   resolve/verify/reject, optional otherwise
  */
-export async function changeStatus(actorContext, issueId, targetStatus, { note } = {}) {
+export async function changeStatus(actorContext, issueId, targetStatus, { note, expectedFrom } = {}) {
   requireActor(actorContext);
 
   if (!ISSUE_STATUSES.includes(targetStatus)) {
@@ -283,7 +293,13 @@ export async function changeStatus(actorContext, issueId, targetStatus, { note }
 
   const expectedStatus = issue.status;
   const legalTargets = LEGAL_TRANSITIONS[expectedStatus] ?? [];
-  if (!legalTargets.includes(targetStatus)) {
+  // Explicit-edge guard (#142): a named route (start, fail-verification, ...)
+  // pins its SOURCE status, not only its target, because two edges share
+  // `in_progress` as a target. Evaluated with the legality check, before
+  // authorization, and reported identically. The atomic filter below is
+  // unchanged (status + statusHistory length + grant pins, ADR-0006/0007).
+  const wrongSource = expectedFrom !== undefined && expectedFrom !== expectedStatus;
+  if (wrongSource || !legalTargets.includes(targetStatus)) {
     throw invalidState(
       `illegal transition: ${expectedStatus} -> ${targetStatus}`,
       { from: expectedStatus, to: targetStatus },
@@ -590,4 +606,46 @@ export async function getIssueWorkflowView(viewerContext, issueId) {
   const plain = await loadIssueForProjection(issueId);
   const actors = await loadActors(collectActorIds(plain));
   return projectWorkflowView(plain, viewerContext, actors);
+}
+
+// ---------------------------------------------------------------------------
+// HTTP view builders (Issue #142). Routes call ONLY these for Issue payloads:
+// every result passes through an explicit-allowlist mapper (issue.dto.js).
+// ---------------------------------------------------------------------------
+
+/** Public detail: issue + accepted assignee + public activity log. Anonymous. */
+export async function getPublicIssueDetail(issueId) {
+  const plain = await loadIssueForProjection(issueId);
+  const actors = await loadActors(collectActorIds(plain));
+  return toPublicIssueDetailDTO(plain, actors, {
+    assignee: projectPublicAssignee(plain, actors),
+    activity: projectPublicActivityLog(plain, actors),
+  });
+}
+
+/** Public list page: same pagination envelope as listIssues, items mapped. No activity. */
+export async function listPublicIssues(query) {
+  const page = await listIssues(query);
+  const plains = page.items.map((doc) => doc.toObject());
+  const ids = plains.flatMap((p) => [p.reportedBy, ...(p.statusHistory ?? []).map((h) => h.actor)]);
+  const actors = await loadActors(ids);
+  return { ...page, items: plains.map((p) => toPublicIssueSummaryDTO(p, actors)) };
+}
+
+/** Workflow read for the actual authenticated viewer (never shared between viewers). */
+export async function getIssueWorkflowDTO(viewerContext, issueId) {
+  return toWorkflowDTO(await getIssueWorkflowView(viewerContext, issueId));
+}
+
+/**
+ * Mutation response for the performing actor: { issue (no activity), workflow }.
+ * `doc` is the post-write document returned by the domain service.
+ */
+export async function buildMutationResult(viewerContext, doc) {
+  const plain = doc.toObject();
+  const actors = await loadActors(collectActorIds(plain));
+  return toMutationDTO(
+    toPublicIssueDetailDTO(plain, actors, { assignee: projectPublicAssignee(plain, actors) }),
+    toWorkflowDTO(projectWorkflowView(plain, viewerContext, actors)),
+  );
 }

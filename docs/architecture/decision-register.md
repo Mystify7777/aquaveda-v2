@@ -1113,5 +1113,38 @@ Full decision: `docs/adr/ADR-0007-remediation-authorization.md` (revised 2026-11
 | REM-L11 | **`Issue` JSON serialization strips `remediation` and `remediationHistory`** (`toJSON` transform): routes serialize raw documents, so without it pending grantees and private notes leak through list/detail/PATCH responses. Verified at the HTTP boundary by real-HTTP tests. The accepted assignee is not publicly served until the routes/DTO slice. |
 | REM-L12 | **Every lifecycle transition pins the observed `statusHistory` length in its atomic filter** (concurrency correctness requirement, extends ADR-0006). A status can return to a previously observed value, so pinning `status` alone left the verification-independence check open to an ABA race (reproduced: the new resolver could verify their own resolution). Grant-dependent transitions additionally pin the exact `grantId`. Do not remove when refactoring `changeStatus`. |
 | REM-L13 | Check ordering never distinguishes "no grant" from "someone else's pending grant" for non-grantees (`FORBIDDEN` uniformly); the grantee of a pending grant gets `INVALID_STATE` (`GRANT_NOT_ACCEPTED`). Note validation follows authorization. |
-| REM-L14 | `PATCH /issues/:id/status` is unchanged; for start/resolve without an accepted grant it now returns **403 FORBIDDEN** (was 409 `AUTHORIZATION_POLICY_UNRESOLVED`, which no service emits any more; enum and mapping retained). ROUTE-L4's D-3a example is historical. |
+| REM-L14 | **SUPERSEDED by RT-142-2 (#142): `PATCH /issues/:id/status` was removed.** Historical text: `PATCH /issues/:id/status` is unchanged; for start/resolve without an accepted grant it now returns **403 FORBIDDEN** (was 409 `AUTHORIZATION_POLICY_UNRESOLVED`, which no service emits any more; enum and mapping retained). ROUTE-L4's D-3a example is historical. |
 | REM-L15 | `createProject` reads only `Issue.status`; Project operations never read or write remediation state. |
+
+## 🔒 Locked — Issue HTTP contract for ADR-0007 (Issue #142)
+
+Exposes ADR-0007 over HTTP **without changing its domain policy**. Backend only; no frontend, persistence, index, collection, transaction or migration change. Status: implemented; full backend suite verified against real MongoDB (1453/1453) before the PR; pending architecture review and CI.
+
+| ID | Decision |
+|---|---|
+| RT-142-1 | **Routes** (base `/api/v1/issues`): `GET /` and `GET /:id` public; `GET /:id/workflow` (actor required); `POST /` ; lifecycle `POST /:id/{acknowledge,start,resolve,verify,fail-verification}`; remediation `POST /:id/remediation/{grant,accept,decline,release,withdraw,revoke}`. Explicit operations, 1:1 with domain services; ROUTE-L2's inventory is amended again. No route checks a role, a grant or an edge; services own authorization (ROUTE-L1/L3). |
+| RT-142-2 | **`PATCH /:id/status` is removed** (breaking; REM-L14 superseded). It could not carry a `note`, and kept a second path to every transition. A removed route returns 404 and mutates nothing (tested). No frontend caller existed. |
+| RT-142-3 | **Explicit source edge.** `changeStatus(actor, id, target, { note, expectedFrom })`: `expectedFrom` is checked in the pre-read, together with legality and before authorization, and reports `INVALID_STATE` like an illegal transition. Needed because `start` and `fail-verification` share the target `in_progress`. The atomic filter (status + `statusHistory` length + grant pins, REM-L4/L12) is **unchanged**. |
+| RT-142-4 | **Edge contracts.** acknowledge `open→acknowledged` (EXPERT, note optional); start `acknowledged→in_progress` (accepted grantee, optional); resolve `in_progress→resolved` (accepted grantee, note **required**); verify `resolved→verified` (EXPERT, not the resolver, note **required**); fail-verification `resolved→in_progress` (EXPERT, note **required**, accepted grant stays active). Notes follow ADR-0007 §6; "required" is enforced by the service after authorization, so Zod does not mark it required. |
+| RT-142-5 | **Explicit DTO allowlists** in `services/issue.dto.js`: public summary (list), created-issue (201, pre-#142 contract preserved), public detail (= summary + `assignee` + `activity`), workflow, mutation. No document spreading, **no raw-document fallback** (a mapper failure is a generic 500). Never present in any Issue response: `remediation`, `remediationHistory`, `grantId`, `grantedBy`, self-grant metadata (`selfGrant`, `expertCount`, `threshold`), `__v`. The model `toJSON` strip stays as defense-in-depth only. |
+| RT-142-6 | **Public detail carries `activity`** (ADR-0007 §8; derived by `projectPublicActivityLog`) and `assignee` (`{actor, acceptedAt}`, only for an **accepted** grant; pending ⇒ `null`). List items carry neither. No `/activity` route. |
+| RT-142-7 | **Workflow DTO** `{state, assignee, pending, events}` is built per request from `projectWorkflowView` for the actual `req.actorContext` (never cached/shared). `pending = {actor, grantor, grantedAt}`: `grantor` is the public HTTP field name for the domain projection's `grantedBy` (the projection is unchanged; the HTTP mapper renames it so the forbidden raw key never appears). Pending details are visible only to role-based viewers, the grantee and the grantor; everyone else sees `unassigned`. `grantId` and policy metadata are stripped **even for role-based viewers** (stricter than ADR §7: no client operation needs them). Participant `withdrawn`/`revoked` events expose `{type, performerRole, timestamp}` only. |
+| RT-142-8 | **Mutation responses** are `{ issue, workflow }`: the updated public issue **without** `activity` (clients refetch the detail) and the performing viewer's own workflow view. |
+| RT-142-9 | **Failure `reason`.** The envelope stays `{success, data, message, code}` with an optional, additive `reason` from the fixed set in `http/reasons.js` (module-private lookup behind a predicate; the exported list is frozen) (`GRANT_EXISTS`, `GRANT_ALREADY_ACCEPTED`, `GRANT_NOT_ACCEPTED`, `NO_GRANT`, `SELF_GRANT_NOT_PERMITTED`). `err.details` is never forwarded; `expertCount`/`threshold` never leave the server. Extending the set is a contract change. |
+| RT-142-10 | **Validation boundary.** Zod checks shape only (`granteeId` ObjectId, `note` string). A malformed `:issueId` is rejected by the **service** (`CastError` → `VALIDATION_FAILED` 400), not by a route param schema, and ADMIN-only `revoke` answers 403 before loading the issue (ADR-0007 order). No rate limiting added (out of scope). |
+| RT-142-11 | **Out of scope / follow-ups:** frontend `Issue`/`ApiFailure` typings (`actorProfile`, `assignee`, `activity`, `reason`), timeline and grant/transition UI, slimming `statusHistory` out of list items, rate limits on Issue writes, removing the dead `AUTHORIZATION_POLICY_UNRESOLVED` enum value. |
+
+### Compatibility ledger (#142)
+
+| Change | Kind | Detail |
+|---|---|---|
+| `PATCH /issues/:id/status` | **Breaking (removed)** | Replaced by the explicit action routes (RT-142-1/2). |
+| `__v` removed from every Issue response | Removal | Mongoose artifact; now excluded by allowlist. |
+| `POST /issues` 201 | **Preserved** (decision at review) | Dedicated `toCreatedIssueDTO`: `reportedBy` stays the reporter id string, history entries carry no `actorProfile`; only the persistence-only `__v` is removed. Aligning it with GET and the frontend type is a coordinated follow-up. Covered by DTO and HTTP tests. |
+| `statusHistory[].actor` | **Preserved** | Still an id string. `statusHistory[]._id` also preserved. |
+| `statusHistory[].actorProfile` | Additive | Public actor or `null`. |
+| Detail: `assignee`, `activity` | Additive | RT-142-6. |
+| Failure envelope: `reason` | Additive, optional | RT-142-9. |
+| List shape and pagination | Preserved | Items keep `statusHistory`; no `activity`/`assignee`. |
+| Anonymous list/detail reads | Preserved | No actor required. |
+| Error codes and HTTP status mapping | Preserved | No new codes. |
