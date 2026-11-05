@@ -1161,3 +1161,16 @@ Full contract: `docs/architecture/health-and-readiness.md`.
 | HLT-L3 | Both probes are mounted **before** `authMiddleware`: that middleware reads the database when a valid access cookie is present, so a probe behind it was not independent of MongoDB. Probes still pass the security headers, CORS and request logger. |
 | HLT-L4 | The Playwright server wait moved from `/api/v1/health` to `/api/v1/ready`. The old wait meant "database connected" only because `server.js` does not listen before the first connect; the smoke suite needs the database, so it now waits on the endpoint that says so. Startup order is unchanged. |
 | HLT-L5 | Readiness must not be used as a restart/liveness signal (a database outage would restart every healthy instance). No other dependency is added to readiness until the API cannot serve without it. |
+
+## 🔒 Locked — Dashboard read contract (#53)
+
+Full contract: `docs/architecture/dashboard-contract.md`. **No approved metric list existed in the repository; this contract is bounded to the evidence found at inspection** (derived-only decision, F4 plan wording, the "my reported Issues" note) plus the explicit decisions below.
+
+| ID | Decision |
+|---|---|
+| DSH-L1 | `GET /api/v1/dashboard`: authenticated (any role, existing `requireActor`), no role variants, no parameters, shared envelope, `Cache-Control: private, no-store`. Response shape `{ platform: { issues, knowledge, projects }, mine: { issuesReported, knowledge, projects } }` exactly as documented; zero-filled, no ids/timestamps/raw fields. |
+| DSH-L2 | **Users-by-role is excluded.** No approved source authorizes exposing role counts. Adding it is a separate, explicit, additive decision. |
+| DSH-L3 | `platform` is strictly `issues`, `knowledge`, `projects`: aggregates of already-public data. It must not grow into activity, trends, remediation, recommendations, comments, leaderboards or anything about another user. |
+| DSH-L4 | `mine.projects` is `{ created, contributing }` with disjoint semantics (creator excluded from `contributing`; duplicates not double counted). |
+| DSH-L5 | Derived only: no new collection, model or index. Project `creator`/`contributors` indexes remain deferred (persistence design); **revisit trigger:** profiling shows Dashboard latency attributable to those counts, or the Project collection becomes large. Seven parallel queries is an implementation detail, not a requirement. |
+| DSH-L6 | `mine` confers no authority and implies no remediation/assignment view (D-3a untouched). Issues, Knowledge and Project data are read-only here; nothing is written. |

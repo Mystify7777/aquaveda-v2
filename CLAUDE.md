@@ -4,6 +4,8 @@
 
 ## Current Milestone
 
+Issue #53 — Dashboard aggregation read contract — **implemented (pending review).** `GET /api/v1/dashboard` (authenticated, any role): `platform` aggregates of public data + the caller's own `mine`, zero-filled, no ids. No approved metric list existed; contract bounded to inspected evidence (DSH-L1–L6). Users-by-role excluded; no indexes/collections added (revisit trigger recorded). Tests: `dashboard.service.test.js`, `dashboard.routes.test.js`. **Next:** #54 Dashboard frontend consumes this contract.
+
 Issue #127 — separate liveness and database readiness — **implemented (pending review).** `GET /api/v1/health` stays liveness (no MongoDB); new `GET /api/v1/ready` is readiness from `mongoose.connection.readyState` (`isDatabaseReady()`), 200/503 with fixed bodies, mounted before `authMiddleware` (HLT-L1–L5). Playwright now waits on `/api/v1/ready`. Tests: `server/tests/health.routes.test.js`. **Open:** deployed-platform probe configuration (liveness vs readiness) is hosting-side.
 
 Issue #139 — pin JWT verification to HS256 and require `exp` — **implemented (pending review).** Access and refresh verification now use `algorithms: ["HS256"]` plus an explicit `exp` presence check (AUD-L4, resolves audit F-05); issuer unchanged apart from passing the default algorithm explicitly. Claims, lifetimes, secrets, cookies, rotation, actor context and D-3a untouched. Tests: `server/tests/auth-tokens.verification.test.js`.

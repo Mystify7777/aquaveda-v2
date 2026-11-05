@@ -13,6 +13,7 @@ import { commentRouter } from "./routes/comment.routes.js";
 import { projectRouter } from "./routes/project.routes.js";
 import { expertApplicationRouter } from "./routes/expert-application.routes.js";
 import { healthRouter } from "./routes/health.routes.js";
+import { dashboardRouter } from "./routes/dashboard.routes.js";
 import { sendError } from "./http/respond.js";
 
 /**
@@ -161,6 +162,8 @@ export function createApp() {
   app.use("/api/v1/knowledge", knowledgeRouter);
   app.use("/api/v1/comments", commentRouter);
   app.use("/api/v1/projects", projectRouter);
+  // Authenticated, derived Dashboard read (Issue #53).
+  app.use("/api/v1/dashboard", dashboardRouter);
   app.use("/api/v1/expert-application", expertApplicationRouter);
 
   // No route matched. Conforms to the ApiResponse<T> envelope
