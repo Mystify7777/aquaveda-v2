@@ -82,8 +82,8 @@ or hrefs built at runtime that never render in a test. External, `#frag`,
 `?query` and relative hrefs are never resolved. It is an approximation of
 Next.js routing on purpose; the real router is covered by e2e (#85).
 
-**Deferred links:** links to not-yet-built routes (currently `/community`,
-`/dashboard` in the nav) must be listed in the test's `deferred` array. The
+**Deferred links:** links to not-yet-built routes (currently only `/community`
+in the nav; `/dashboard` gained its page in #54) must be listed in the test's `deferred` array. The
 check fails if a deferred route gains a page, so the list cannot go stale.
 
 **Adding coverage:** render the component, then
@@ -230,6 +230,6 @@ installed (`npx playwright install chromium`): `npm run test:e2e` (Playwright bu
   list -> ADMIN gets 403 on `GET /knowledge/review-queue` and the review page shows the denial
   (ADMIN != EXPERT) -> applicant's session now resolves `EXPERT` (role is read from the DB per request)
   -> EXPERT approves the pending article -> it appears as a link on public `/learn`.
-- **Out of scope:** Community/Dashboard (deferred routes), rich-text, visual regression. Knowledge
+- **Out of scope:** Community (deferred route), rich-text, visual regression. Knowledge
   moderation is covered only through the governance flow above; reject paths and re-application are not.
 - Vitest excludes `e2e/`; Playwright owns `*.spec.ts`.
