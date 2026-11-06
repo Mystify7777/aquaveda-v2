@@ -70,4 +70,10 @@ The Project `creator` / `contributors` counts scan the collection (no index; the
 
 ## Relationship to #54
 
-#54 renders this response as-is. Field names and semantics above are the contract; changing a field, adding a metric or exposing another user's data requires a new decision recorded in the decision register.
+#54 (implemented) renders this response as-is at `/dashboard` and performs no aggregation:
+
+- `src/app/(protected)/dashboard/page.tsx`: the page, gated by the `(protected)` layout (anonymous, session-failure and unreachable-backend states never render it).
+- `src/components/dashboard/dashboard-view.tsx`: one `GET /api/v1/dashboard` through the shared `apiRequest` / `useApiResource` (no other endpoint is called), with loading (`role="status"`), error (`LoadError`, `role="alert"`, generic copy, retry; 401 shows the sign-in link) and success states. An all-zero response is a normal render.
+- `src/lib/api/types/dashboard.ts`, `src/lib/api/dashboard.ts`: the typed contract and the request.
+
+Field names and semantics above are the contract; changing a field, adding a metric or exposing another user's data requires a new decision recorded in the decision register.

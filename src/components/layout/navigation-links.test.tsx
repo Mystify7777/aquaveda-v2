@@ -9,11 +9,11 @@ import { findBrokenLinks, internalHrefs } from "@/test-utils/app-routes";
 
 /**
  * Issue #81 — public navigation links must target implemented pages.
- * Community and Dashboard are linked ahead of their milestones; they are
- * the ONLY accepted misses. When one gains a page, findBrokenLinks fails
- * until it is removed from this list.
+ * Community is linked ahead of its milestone; it is the ONLY accepted miss
+ * (Dashboard gained its page in #54). When Community gains a page,
+ * findBrokenLinks fails until it is removed from this list.
  */
-const DEFERRED = ["/community", "/dashboard"] as const;
+const DEFERRED = ["/community"] as const;
 
 vi.mock("@/components/layout/auth-controls", () => ({ AuthControls: () => null }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
