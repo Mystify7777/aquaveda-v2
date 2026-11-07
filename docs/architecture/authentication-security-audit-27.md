@@ -3,7 +3,7 @@
 Audited: `main` @ 792642d. Scope: implementation vs. locked architecture (L1–L17, `authentication-architecture-decision-report.md`). No redesign; D-3a untouched.
 Method: code reading of token/service/model/middleware/route/config/limiter, review of existing tests, then **executed probes against the real app + real MongoDB 8.3.7** before any finding was recorded.
 
-**Release assessment: CONDITIONAL PASS** (see end). Two confirmed defects were fixed with regression tests; one deployment setting (`TRUSTED_PROXY_HOPS`) must be configured, and the cross-origin browser flow is still unverified (#29).
+**Release assessment: CONDITIONAL PASS** (see end). Two confirmed defects were fixed with regression tests; one deployment setting (`TRUSTED_PROXY_HOPS`) must still be configured on the real host chain.
 
 ## Authentication flow map
 - **register/login** (`auth.routes.js` → `auth.service.js`): per-IP limiter → Zod (`auth.validation.js`) → service (scrypt hash/verify, `Session` row created, access+refresh JWT issued before DB writes) → two HttpOnly cookies (`access_token` path `/`; `refresh_token` path `/api/v1/auth`).
@@ -64,14 +64,24 @@ Each login creates a `Session` until its TTL expires. Growth is bounded by the (
 - CORS: exact allowlist, no wildcard with credentials. CSRF: origin/referer guard fail-closed on missing/malformed/`null` origins and on an empty allowlist; preflights unaffected.
 - Error envelopes: no stack/DB detail; only known mapped codes forward their message.
 
+## #29 cross-origin browser integration verification
+- **Credentialed browser requests / frontend config:** `src/lib/api/client.ts` hard-sets `credentials: "include"`; `src/lib/api/client.test.ts` asserts this contract.
+- **Explicit allowed origins + `Access-Control-Allow-Credentials`:** `server/tests/auth.routes.test.js` covers allowed/disallowed origins and asserts echoed `Access-Control-Allow-Origin` only for allowlisted origins plus `Access-Control-Allow-Credentials: true` (no wildcard grant path).
+- **Preflight behavior:** the same suite now exercises `OPTIONS` preflight for a JSON `POST` auth request, asserting allowlisted success and disallowed-origin omission of CORS grant headers.
+- **Access/refresh cookie acceptance and sending in a real browser:** `e2e/auth-boundary.spec.ts` (`cross-origin cookie session is accepted on login and cleared on logout`) verifies the API-origin cookie jar receives both auth cookies after registration/login and loses both after logout.
+- **Logout clearing:** server route tests assert clear-cookie semantics (empty values + matching paths) and refresh-token invalidation.
+- **Local vs production assumptions kept separate:**
+  - Local/browser suite: `e2e/env.ts` runs with localhost origins and an explicit allowlist (`ALLOWED_ORIGINS=http://localhost:3000`) to prove behavior in development topology.
+  - Production/deployment: `server/README.md` keeps deployment facts explicit (`COOKIE_SAME_SITE=none`, `COOKIE_DOMAIN` unset, no wildcard `ALLOWED_ORIGINS`) and marks host-chain dependent items (`TRUSTED_PROXY_HOPS`) as environment-owned.
+
 ## By design (locked decisions, not findings)
 - **L14**: refresh-token reuse is not detected/family-revoked — only the single-use guarantee. **L17**: an already-issued access token remains valid until expiry (default 15 m) after logout/session deletion; the middleware re-reads the User each request, so deleted users and role changes take effect immediately. Both are accepted trade-offs of the locked architecture.
 
 ## Deferred / needs separate decision or environment
 1. **Set `TRUSTED_PROXY_HOPS` for the real host chain and verify** (send a forged `X-Forwarded-For` to the deployed API; the limiter must still throttle by the real address). Required before production start (startup now enforces the variable is set).
-2. **#29** — real cross-origin browser verification of cookies/CSRF; **#129** — hosting-level headers. No browser test was run in this audit.
+2. **#129** — hosting-level headers.
 3. F-04 scrypt parameter/capacity decision; F-06/F-07 optional hardening (F-05 fixed in #139) (separate issues if wanted).
 4. Distributed rate limiting is not needed yet; the in-memory store is per instance (N instances ⇒ N× the limit).
 
 ## Release assessment: CONDITIONAL PASS
-No confirmed critical/high vulnerability remains in the audited code: the High (F-01) and the Medium (F-02) are fixed and covered. The pass is conditional because (a) F-01's real-world protection depends on `TRUSTED_PROXY_HOPS` matching the host, which only a deployed check can confirm, and (b) browser-level cross-origin behavior (#29) has not been exercised. Green tests alone do not establish either.
+No confirmed critical/high vulnerability remains in the audited code: the High (F-01) and the Medium (F-02) are fixed and covered. The pass remains conditional because F-01's real-world protection depends on `TRUSTED_PROXY_HOPS` matching the host chain, which only a deployed check can confirm.

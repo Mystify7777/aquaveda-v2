@@ -366,9 +366,9 @@ describe("POST /api/v1/auth/refresh", () => {
 describe("Phase H — cross-site cookie attributes", () => {
   it("sets SameSite=None and Secure on both cookies regardless of NODE_ENV", async () => {
     // Locked topology: frontend/backend are different registrable
-    // domains. COOKIE_SAME_SITE defaults to "lax" only when unset —
-    // this test asserts the deployment-real value. Set explicitly here
-    // in case the developer's local .env hasn't been updated yet.
+    // domains. COOKIE_SAME_SITE defaults to "none" in this repository;
+    // set explicitly anyway so this test stays deterministic if a local
+    // environment overrides it.
     const originalSameSite = process.env.COOKIE_SAME_SITE;
     const originalNodeEnv = process.env.NODE_ENV;
     process.env.COOKIE_SAME_SITE = "none";
@@ -410,6 +410,11 @@ describe("POST /api/v1/auth/logout", () => {
       cookies: { refresh_token: cookies.refresh_token.value },
     });
     assert.equal(logoutRes.status, 200);
+    const cleared = parseSetCookies(logoutRes.setCookieHeaders);
+    assert.equal(cleared.access_token.value, "");
+    assert.equal(cleared.refresh_token.value, "");
+    assert.ok(cleared.access_token.attrs.some((a) => a === "path=/"));
+    assert.ok(cleared.refresh_token.attrs.some((a) => a.startsWith("path=/api/v1/auth")));
 
     const refreshRes = await request("POST", "/api/v1/auth/refresh", {
       cookies: { refresh_token: cookies.refresh_token.value },
@@ -486,6 +491,28 @@ describe("CORS (review-pass correction: regression coverage)", () => {
     });
   }
 
+  function preflightRequest(origin) {
+    return new Promise((resolve, reject) => {
+      const req = http.request(
+        `${corsBaseUrl}/api/v1/auth/login`,
+        {
+          method: "OPTIONS",
+          headers: {
+            Origin: origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+          },
+        },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve({ status: res.statusCode, headers: res.headers }));
+        }
+      );
+      req.on("error", reject);
+      req.end();
+    });
+  }
+
   it("an allowed origin receives Access-Control-Allow-Origin (echoed back) and Access-Control-Allow-Credentials: true", async () => {
     const headers = await corsRequest(ALLOWED_ORIGIN);
 
@@ -510,6 +537,20 @@ describe("CORS (review-pass correction: regression coverage)", () => {
     // (already implicit in corsRequest resolving at all), restated
     // explicitly for clarity.
     assert.ok(headers);
+  });
+
+  it("preflight for an allowed origin succeeds and advertises credentials", async () => {
+    const { status, headers } = await preflightRequest(ALLOWED_ORIGIN);
+    assert.equal(status, 204);
+    assert.equal(headers["access-control-allow-origin"], ALLOWED_ORIGIN);
+    assert.equal(headers["access-control-allow-credentials"], "true");
+    assert.match(headers["access-control-allow-methods"] || "", /\bPOST\b/);
+  });
+
+  it("preflight for a disallowed origin does not grant CORS headers", async () => {
+    const { headers } = await preflightRequest(DISALLOWED_ORIGIN);
+    assert.equal(headers["access-control-allow-origin"], undefined);
+    assert.equal(headers["access-control-allow-credentials"], undefined);
   });
 });
 describe("Rate-limiter state isolation between auth test cases (regression)", () => {
