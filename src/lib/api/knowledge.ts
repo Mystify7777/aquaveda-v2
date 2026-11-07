@@ -71,20 +71,23 @@ export function reviseKnowledge(knowledgeId: string, payload: ReviseKnowledgePay
 // the session cookie belongs to the API origin, so a Next server render
 // cannot forward it.
 
-export function getMyKnowledge(query?: MyKnowledgeQuery) {
+export function getMyKnowledge(query?: MyKnowledgeQuery, init?: { signal?: AbortSignal }) {
   return apiRequest<PaginatedResponse<WorkflowKnowledgeSummary>>(
     buildApiUrl("/api/v1/knowledge/mine", query as Record<string, string | number | undefined>),
-    { cache: "no-store" },
+    { cache: "no-store", signal: init?.signal },
   );
 }
 
-export function getReviewQueue(query?: ReviewQueueQuery) {
+export function getReviewQueue(query?: ReviewQueueQuery, init?: { signal?: AbortSignal }) {
   return apiRequest<PaginatedResponse<WorkflowKnowledgeSummary>>(
     buildApiUrl("/api/v1/knowledge/review-queue", query as Record<string, string | number | undefined>),
-    { cache: "no-store" },
+    { cache: "no-store", signal: init?.signal },
   );
 }
 
-export function getKnowledgeWorkflow(knowledgeId: string) {
-  return apiRequest<WorkflowKnowledge>(lifecycleUrl(knowledgeId, "workflow"), { cache: "no-store" });
+export function getKnowledgeWorkflow(knowledgeId: string, init?: { signal?: AbortSignal }) {
+  return apiRequest<WorkflowKnowledge>(lifecycleUrl(knowledgeId, "workflow"), {
+    cache: "no-store",
+    signal: init?.signal,
+  });
 }

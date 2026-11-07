@@ -103,7 +103,7 @@ function ApplicationDetail({
  */
 export function ExpertApplicationQueue({ page }: { page: number }) {
   const { resource, reload } = useApiResource(
-    () => getPendingExpertApplications({ page }),
+    (signal) => getPendingExpertApplications({ page }, { signal }),
     `expert-queue:${page}`,
   );
   const status = useExpertStatus();

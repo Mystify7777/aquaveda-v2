@@ -59,6 +59,25 @@ scattered across components. It handles:
 - JSON request bodies: stringified bodies receive `Content-Type: application/json` unless the caller explicitly supplies a content type
 - Error normalization using the `code` field on error responses
 
+### Request lifetime: timeout and cancellation (#128)
+
+Every `apiRequest` is time-bounded and cancellable; the underlying request is genuinely aborted, never just abandoned.
+
+- **Default limit:** `DEFAULT_API_TIMEOUT_MS` = 15 s, covering connection, headers **and reading the body**. Override per call with `timeoutMs`. There are no automatic retries.
+- **Caller cancellation:** pass a standard `signal`. One internal `AbortController` is composed from the time limit and the caller's signal (a listener, not `AbortSignal.any`/`timeout`, so it works in every supported browser and under fake timers).
+- **What callers receive** (all `ApiError`):
+
+  | Outcome | `kind` | extra | Guard |
+  |---|---|---|---|
+  | Time limit exceeded | `network` | `reason: "timeout"` | `isApiTimeout(e)` |
+  | Caller aborted | `aborted` | | `isApiAbort(e)` |
+  | Other transport failure | `network` | | (existing) |
+  | API answered with failure / unusable body | `http` / `response` | | (existing) |
+
+  A timeout is `network`-kind on purpose: every existing "service unreachable" presentation applies unchanged, and `reason` makes it distinguishable. A cancellation is **not a failure**: whoever aborts on purpose ignores it. A non-abort failure while reading the body still propagates unchanged.
+- **`useApiResource`:** the fetcher receives an `AbortSignal` (`useApiResource((signal) => getX({ signal }), key)`). It is aborted on unmount, key change and reload, and an aborted request never becomes a visible error. Forwarding the signal is what makes the request really cancel; the stale-result guard stays as a second line of defense for fetchers that don't.
+- API functions used by the hook accept a trailing `{ signal }`.
+
 ## Client boundary audit (Issue #6)
 
 Audited against `main` at the time of Issue #6: 29 of 110 `src/` modules

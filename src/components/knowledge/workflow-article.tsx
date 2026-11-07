@@ -29,7 +29,7 @@ import { useApiResource } from "@/lib/api/use-api-resource";
  */
 export function WorkflowArticle({ knowledgeId }: { knowledgeId: string }) {
   const { user } = useAuth();
-  const { resource, reload } = useApiResource(() => getKnowledgeWorkflow(knowledgeId), `wf:${knowledgeId}`);
+  const { resource, reload } = useApiResource((signal) => getKnowledgeWorkflow(knowledgeId, { signal }), `wf:${knowledgeId}`);
   const [decision, setDecision] = React.useState<ReviewDecision | null>(null);
   const decisionRef = React.useRef<HTMLHeadingElement>(null);
 
