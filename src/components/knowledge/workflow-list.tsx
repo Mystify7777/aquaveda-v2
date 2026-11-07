@@ -34,7 +34,7 @@ function ListSkeleton({ label }: { label: string }) {
  */
 export function MyKnowledgeList({ page, status }: { page: number; status?: KnowledgeStatus }) {
   const { resource, reload } = useApiResource(
-    () => getMyKnowledge({ page, status }),
+    (signal) => getMyKnowledge({ page, status }, { signal }),
     `mine:${page}:${status ?? ""}`,
   );
   const base = "/learn/mine";
@@ -120,7 +120,7 @@ export function MyKnowledgeList({ page, status }: { page: number; status?: Knowl
  * is decided by the backend; a refusal is rendered, not pre-empted.
  */
 export function ReviewQueueList({ page }: { page: number }) {
-  const { resource, reload } = useApiResource(() => getReviewQueue({ page }), `queue:${page}`);
+  const { resource, reload } = useApiResource((signal) => getReviewQueue({ page }, { signal }), `queue:${page}`);
   const base = "/learn/review";
 
   return (

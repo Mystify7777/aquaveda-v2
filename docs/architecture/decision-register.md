@@ -1175,3 +1175,14 @@ Full contract: `docs/architecture/dashboard-contract.md`. **No approved metric l
 | DSH-L5 | Derived only: no new collection, model or index. Project `creator`/`contributors` indexes remain deferred (persistence design); **revisit trigger:** profiling shows Dashboard latency attributable to those counts, or the Project collection becomes large. Seven parallel queries is an implementation detail, not a requirement. |
 | DSH-L6 | `mine` confers no authority and implies no remediation/assignment view (D-3a untouched). Issues, Knowledge and Project data are read-only here; nothing is written. |
 | DSH-L7 | **Frontend (#54).** `/dashboard` lives under `(protected)` and consumes only `GET /api/v1/dashboard` via the existing `apiRequest`/`useApiResource`; no client-side aggregation, no new auth or HTTP abstraction, no charts or extra metrics. Errors render generic copy (never the server message); a 401 follows the established sign-in behavior; zero-filled data is a successful render. The navigation test's deferred-route list drops `/dashboard`. |
+
+## 🔒 Locked — Frontend API request lifetime (#128)
+
+Contract: `docs/architecture/nextjs-patterns.md` ("Request lifetime"). Frontend only; no backend, envelope, auth, cookie or CORS change.
+
+| ID | Decision |
+|---|---|
+| APIC-L1 | `apiRequest` is time-bounded (`DEFAULT_API_TIMEOUT_MS` = 15 s, per-call `timeoutMs` validated to a finite number in [1, 2^31-1] ms; invalid values reject with a `TypeError`, never coerced) across fetch **and** body read, using one internal `AbortController` composed with the caller's `signal`; the request is genuinely aborted (not `Promise.race`). No retries, backoff or request library. |
+| APIC-L2 | Timeout is `kind: "network"` with `reason: "timeout"` (`isApiTimeout`), chosen so the 11 existing sites that branch on `kind === "network"` keep their "unreachable" behavior with no edits. Caller abort is a new `kind: "aborted"` (`isApiAbort`), a cancellation rather than a failure. HTTP/response semantics and a non-abort body-read failure are unchanged. |
+| APIC-L3 | `useApiResource` passes the fetcher an `AbortSignal` aborted on unmount, key change and reload, and never turns an abort into a visible error; the stale-result guard remains. The five hook consumers (Dashboard, My Knowledge, review queue, workflow article, expert queue) forward the signal through a trailing `{ signal }` on their API functions. |
+| APIC-L4 | Known presentation limit: a timeout shows the existing "service is unreachable" copy. A dedicated "taking too long" message is a deliberate follow-up, not part of #128. 15 s is a policy default; revisit if hosting cold starts routinely exceed it. |

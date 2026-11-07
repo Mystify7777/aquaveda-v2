@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 
 import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { DEFAULT_API_TIMEOUT_MS } from "@/lib/api/client";
 
 /**
  * Contract usage (#54): the real API module is exercised end to end with a
@@ -50,5 +51,44 @@ describe("DashboardView consumes the Dashboard contract directly", () => {
     // Values come from the response, not from any computation here.
     expect(screen.getByText("Issues reported").nextElementSibling).toHaveTextContent("7");
     expect(screen.getByText("Projects you contribute to").nextElementSibling).toHaveTextContent("2");
+  });
+});
+
+describe("DashboardView with a request that never answers (#128)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("ends in the existing unreachable-service error with a working retry, instead of loading forever", async () => {
+    vi.useFakeTimers();
+    const hanging = vi.fn((_url: unknown, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      });
+    });
+    global.fetch = hanging as unknown as typeof fetch;
+
+    render(<DashboardView />);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DEFAULT_API_TIMEOUT_MS);
+    });
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("The service is unreachable right now");
+    expect(document.body.textContent).not.toMatch(/timed out|abort/i); // no low-level detail
+
+    // Try again issues a fresh request that can succeed.
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: async () => JSON.stringify(BODY),
+    } as Response) as unknown as typeof fetch;
+    await act(async () => {
+      screen.getByRole("button", { name: "Try again" }).click();
+    });
+    expect(screen.getByRole("region", { name: "Your activity" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

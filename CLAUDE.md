@@ -4,6 +4,8 @@
 
 ## Current Milestone
 
+Issue #128 — bounded timeout and cancellation in the shared API client — **implemented (pending review).** `apiRequest`: 15 s default limit over fetch + body read, composed `AbortController` with the caller's `signal`, timeout = `network`/`reason: "timeout"`, caller abort = `aborted` (APIC-L1–L4). `useApiResource` passes an `AbortSignal` aborted on unmount/key change/reload; the five hook consumers forward it. Frontend only. Tests: `client.timeout.test.ts`, `use-api-resource.test.tsx`, Dashboard timeout regression.
+
 Issue #54 — authenticated Dashboard surface — **implemented (pending review).** `/dashboard` under `(protected)`, one `GET /api/v1/dashboard` through the existing API client/`useApiResource`, platform vs. "your activity" sections, status breakdowns with text labels, loading/error/zero states; no client-side aggregation, no backend change (DSH-L7). `/dashboard` removed from the nav test's deferred list. Tests: `dashboard.test.ts`, `dashboard-view.test.tsx`, `dashboard-view.contract.test.tsx`, `(protected)/dashboard/page.test.tsx`. **Not verified locally:** real-browser rendering/responsive layout (no Chromium in the authoring sandbox).
 
 Issue #53 — Dashboard aggregation read contract — **implemented (pending review).** `GET /api/v1/dashboard` (authenticated, any role): `platform` aggregates of public data + the caller's own `mine`, zero-filled, no ids. No approved metric list existed; contract bounded to inspected evidence (DSH-L1–L6). Users-by-role excluded; no indexes/collections added (revisit trigger recorded). Tests: `dashboard.service.test.js`, `dashboard.routes.test.js`. **Next:** #54 Dashboard frontend consumes this contract.

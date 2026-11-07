@@ -34,10 +34,10 @@ export function getMyExpertApplication() {
   return apiRequest<MyExpertApplication>(buildApiUrl(`${base}/me`), { cache: "no-store" });
 }
 
-export function getPendingExpertApplications(query?: ExpertApplicationQueueQuery) {
+export function getPendingExpertApplications(query?: ExpertApplicationQueueQuery, init?: { signal?: AbortSignal }) {
   return apiRequest<PaginatedResponse<ExpertApplicationForReview>>(
     buildApiUrl(base, query as Record<string, string | number | undefined>),
-    { cache: "no-store" },
+    { cache: "no-store", signal: init?.signal },
   );
 }
 

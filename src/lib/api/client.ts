@@ -1,6 +1,18 @@
 import type { ApiResponse } from "./types";
 
-export type ApiErrorKind = "http" | "network" | "response";
+/**
+ * - `http`      the API answered with a failure (existing semantics)
+ * - `network`   no usable answer: the request could not be completed. A request
+ *               that exceeded its time limit is ALSO `network` (so every existing
+ *               "service unreachable" presentation keeps applying) but carries
+ *               `reason: "timeout"`; use `isApiTimeout()` to tell them apart.
+ * - `response`  the API answered with something unusable (existing semantics)
+ * - `aborted`   the CALLER cancelled the request through its own `signal`. This
+ *               is a cancellation, not a failure: owners that abort on purpose
+ *               (unmount, key change, a newer search) should ignore it.
+ */
+export type ApiErrorKind = "http" | "network" | "response" | "aborted";
+export type ApiErrorReason = "timeout";
 
 export class ApiError extends Error {
   constructor(
@@ -8,10 +20,62 @@ export class ApiError extends Error {
     public readonly kind: ApiErrorKind,
     public readonly status?: number,
     public readonly code?: string,
+    public readonly reason?: ApiErrorReason,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/** The request exceeded its time limit (see `DEFAULT_API_TIMEOUT_MS`). */
+export const isApiTimeout = (error: unknown): error is ApiError =>
+  error instanceof ApiError && error.reason === "timeout";
+
+/** The caller cancelled the request via its own `AbortSignal`. */
+export const isApiAbort = (error: unknown): error is ApiError =>
+  error instanceof ApiError && error.kind === "aborted";
+
+/**
+ * Default time limit for one request, covering connection, headers AND reading
+ * the body. Generous enough for a cold or busy API, bounded so authenticated UI
+ * can never wait forever. Override per call with `timeoutMs`.
+ */
+export const DEFAULT_API_TIMEOUT_MS = 15_000;
+
+/** `setTimeout` treats delays above this (2^31 - 1 ms, ~24.8 days) as ~immediate. */
+export const MAX_API_TIMEOUT_MS = 2_147_483_647;
+/** Timers have whole-millisecond resolution; anything shorter behaves as "immediately". */
+export const MIN_API_TIMEOUT_MS = 1;
+
+export type ApiRequestInit = RequestInit & {
+  /**
+   * Time limit for this request in ms. Default `DEFAULT_API_TIMEOUT_MS`; if
+   * given it must be a finite number in [`MIN_API_TIMEOUT_MS`,
+   * `MAX_API_TIMEOUT_MS`], otherwise the request rejects with a `TypeError`
+   * before anything is sent.
+   */
+  timeoutMs?: number;
+};
+
+/**
+ * Normalize the caller's time limit. A bounded lifetime is the contract, so a
+ * malformed value (0, negative, NaN, Infinity, a non-number, or one outside
+ * what a timer can represent: under 1 ms or over 2^31 - 1 ms) is a programming error and is rejected loudly: it is
+ * never coerced into an immediate timeout, an unbounded request or a default.
+ */
+function resolveTimeoutMs(timeoutMs: unknown): number {
+  if (timeoutMs === undefined) return DEFAULT_API_TIMEOUT_MS;
+  if (
+    typeof timeoutMs !== "number" ||
+    !Number.isFinite(timeoutMs) ||
+    timeoutMs < MIN_API_TIMEOUT_MS ||
+    timeoutMs > MAX_API_TIMEOUT_MS
+  ) {
+    throw new TypeError(
+      `timeoutMs must be a finite number between ${MIN_API_TIMEOUT_MS} and ${MAX_API_TIMEOUT_MS} (ms)`,
+    );
+  }
+  return timeoutMs;
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
@@ -34,34 +98,82 @@ function buildUrl(input: RequestInfo | URL) {
  *
  * Credentials are included so browser HttpOnly cookies are sent with
  * credentialed requests when the frontend connects to the backend.
+ *
+ * Lifetime: every request is cancellable and time-bounded. One internal
+ * AbortController governs the fetch AND the body read; it aborts when the
+ * time limit (`timeoutMs`, default `DEFAULT_API_TIMEOUT_MS`) elapses or when
+ * the caller's own `signal` aborts, so the underlying request is really
+ * cancelled, not merely abandoned. Outcomes are distinguishable:
+ *   - time limit      -> ApiError kind "network", reason "timeout" (isApiTimeout)
+ *   - caller abort    -> ApiError kind "aborted" (isApiAbort); never a failure
+ *   - other transport -> ApiError kind "network"
+ *   - API answers     -> unchanged http / response semantics
+ * Composition uses a plain AbortController plus a listener on the caller's
+ * signal (not AbortSignal.any/timeout), so it works in every supported
+ * browser and under fake timers in tests.
  */
 export async function apiRequest<T>(
   input: RequestInfo | URL,
-  init?: RequestInit,
+  init?: ApiRequestInit,
 ): Promise<T> {
+  const { timeoutMs: requestedTimeoutMs, signal: callerSignal, ...fetchInit } = init ?? {};
+  // Validated before any timer, listener or request exists, so a bad value leaks nothing.
+  const timeoutMs = resolveTimeoutMs(requestedTimeoutMs);
+
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const onCallerAbort = () => controller.abort();
+  if (callerSignal?.aborted) controller.abort();
+  else callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+
+  /** Timeout wins over a coincident caller abort only if it fired first. */
+  const interruption = (): ApiError | null => {
+    if (timedOut) return new ApiError("Request timed out", "network", undefined, undefined, "timeout");
+    if (callerSignal?.aborted) return new ApiError("Request was cancelled", "aborted");
+    return null;
+  };
+
   let response: Response;
+  let responseText: string;
 
   try {
-    const headers = new Headers(init?.headers);
+    try {
+      const headers = new Headers(fetchInit.headers);
 
-    if (typeof init?.body === "string" && !headers.has("Content-Type")) {
-      headers.set("Content-Type", "application/json");
+      if (typeof fetchInit.body === "string" && !headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+      }
+
+      response = await fetch(buildUrl(input), {
+        ...fetchInit,
+        headers,
+        credentials: "include",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      throw (
+        interruption() ??
+        new ApiError(error instanceof Error ? error.message : "Network request failed", "network")
+      );
     }
 
-    response = await fetch(buildUrl(input), {
-      ...init,
-      headers,
-      credentials: "include",
-    });
-  } catch (error) {
-    throw new ApiError(
-      error instanceof Error ? error.message : "Network request failed",
-      "network",
-    );
+    try {
+      responseText = await response.text();
+    } catch (error) {
+      // Only an interruption is classified here; any other body-read failure
+      // propagates unchanged (as before this boundary was time-bounded).
+      throw interruption() ?? error;
+    }
+  } finally {
+    clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
   }
 
   const contentType = response.headers.get("content-type") ?? "";
-  const responseText = await response.text();
 
   if (!responseText.trim()) {
     throw new ApiError(

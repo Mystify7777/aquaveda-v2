@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { ApiError } from "./client";
+import { ApiError, isApiAbort } from "./client";
 
 export type ApiResource<T> =
   | { status: "loading" }
@@ -14,14 +14,24 @@ type Settled<T> = { token: string; outcome: { data: T } | { error: ApiError } };
 /**
  * Minimal client-side read for authenticated endpoints, which cannot be
  * fetched in a Server Component (the session cookie belongs to the API
- * origin). Not a cache or a data library: one fetch per `key`, stale
- * responses from a superseded key are dropped, `reload` re-runs it.
- * Loading is derived (no state set synchronously inside the effect).
+ * origin). Not a cache or a data library: one fetch per `key`, `reload`
+ * re-runs it. Loading is derived (no state set synchronously inside the effect).
+ *
+ * Cancellation and staleness are two separate defenses:
+ *  - the fetcher receives an `AbortSignal` that is aborted when the component
+ *    unmounts, the `key` changes or `reload` supersedes the request. A fetcher
+ *    that forwards it to the API client (`getX({ signal })`) gets its request
+ *    genuinely cancelled; one that ignores it still works, just uncancelled.
+ *  - a response from a superseded request is dropped either way (`active`).
+ * A cancellation is never a result: an aborted request never becomes a
+ * visible error. (The hook aborts only requests it has already superseded; if
+ * a fetcher aborts itself, the resource simply stays as it was and its owner
+ * is responsible for the next request, e.g. `reload`.)
  *
  * `key` must encode everything `fetcher` closes over (e.g. id, page,
  * status), since the fetcher itself is read through a ref.
  */
-export function useApiResource<T>(fetcher: () => Promise<T>, key: string) {
+export function useApiResource<T>(fetcher: (signal: AbortSignal) => Promise<T>, key: string) {
   const fetcherRef = React.useRef(fetcher);
   React.useEffect(() => {
     fetcherRef.current = fetcher;
@@ -33,8 +43,9 @@ export function useApiResource<T>(fetcher: () => Promise<T>, key: string) {
 
   React.useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     fetcherRef
-      .current()
+      .current(controller.signal)
       .then(
         (data) => ({ data }),
         (e: unknown) => ({
@@ -42,10 +53,12 @@ export function useApiResource<T>(fetcher: () => Promise<T>, key: string) {
         }),
       )
       .then((outcome) => {
+        if ("error" in outcome && isApiAbort(outcome.error)) return;
         if (active) setSettled({ token, outcome });
       });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [token]);
 

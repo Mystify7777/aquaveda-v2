@@ -103,7 +103,7 @@ function DashboardContent({ data }: { data: Dashboard }) {
  * cookie. An all-zero response is a normal, complete render, not an error.
  */
 export function DashboardView() {
-  const { resource, reload } = useApiResource(getDashboard, "dashboard");
+  const { resource, reload } = useApiResource((signal) => getDashboard({ signal }), "dashboard");
 
   if (resource.status === "loading") return <DashboardSkeleton />;
   if (resource.status === "error") {
