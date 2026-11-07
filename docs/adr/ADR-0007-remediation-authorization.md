@@ -445,3 +445,7 @@ requirement of this ADR, recorded so the rationale survives refactoring.
 5. **Project isolation:** `createProject` reads only `Issue.status` (`.select("status")`).
 6. The expert count for self-grant is read only on the self-grant path (no supporting index is
    added; none is allowed in this slice).
+
+## Update (2026-11-07): escalation, dispute and progress decided by ADR-0008
+
+The items listed above as out of scope for escalation/dispute workflows, reporter-facing progress and the extension of the public activity log are decided by [ADR-0008](./ADR-0008-issue-progression-and-escalation.md): disputes are a stored, inert record (embedded `disputeHistory`); stall and attention are derived; accountable `progress` notes are an additive `remediationHistory` event with a public projection. Nothing in this ADR's authorization model, grant rules or histories is altered. The original text above is retained unchanged.

@@ -29,3 +29,7 @@ release that's actively looking for new scope.
 - Remediation (ADR-0007): multiple assignees (needs a grants collection ADR), grant expiry/reminders
 - Public activity log: merge comments, Project creation, and escalation/progress events with per-source public projections
 - Issue dispositions for invalid/duplicate/withdrawn reports
+- Escalation (ADR-0008): external-authority referral (needs organization accounts)
+- Escalation (ADR-0008): evidence links/attachments on disputes (needs a URL policy)
+- Escalation (ADR-0008): disputing a `verified` Issue / recurrence
+- Escalation (ADR-0008): notifications for dispute and lifecycle events (recipient identity, dedupe, rate limits, provider)
