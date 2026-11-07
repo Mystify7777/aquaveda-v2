@@ -63,7 +63,7 @@ scattered across components. It handles:
 
 Every `apiRequest` is time-bounded and cancellable; the underlying request is genuinely aborted, never just abandoned.
 
-- **Default limit:** `DEFAULT_API_TIMEOUT_MS` = 15 s, covering connection, headers **and reading the body**. Override per call with `timeoutMs`. There are no automatic retries.
+- **Default limit:** `DEFAULT_API_TIMEOUT_MS` = 15 s, covering connection, headers **and reading the body**. Override per call with `timeoutMs`, which must be a finite number from `MIN_API_TIMEOUT_MS` (1 ms) to `MAX_API_TIMEOUT_MS` (2^31 - 1 ms, the largest delay a timer can represent); anything else (0, negative, NaN, Infinity, a non-number, sub-millisecond, too large) rejects with a `TypeError` before anything is sent and is never coerced. There are no automatic retries.
 - **Caller cancellation:** pass a standard `signal`. One internal `AbortController` is composed from the time limit and the caller's signal (a listener, not `AbortSignal.any`/`timeout`, so it works in every supported browser and under fake timers).
 - **What callers receive** (all `ApiError`):
 

@@ -42,10 +42,41 @@ export const isApiAbort = (error: unknown): error is ApiError =>
  */
 export const DEFAULT_API_TIMEOUT_MS = 15_000;
 
+/** `setTimeout` treats delays above this (2^31 - 1 ms, ~24.8 days) as ~immediate. */
+export const MAX_API_TIMEOUT_MS = 2_147_483_647;
+/** Timers have whole-millisecond resolution; anything shorter behaves as "immediately". */
+export const MIN_API_TIMEOUT_MS = 1;
+
 export type ApiRequestInit = RequestInit & {
-  /** Time limit for this request in ms (default `DEFAULT_API_TIMEOUT_MS`). */
+  /**
+   * Time limit for this request in ms. Default `DEFAULT_API_TIMEOUT_MS`; if
+   * given it must be a finite number in [`MIN_API_TIMEOUT_MS`,
+   * `MAX_API_TIMEOUT_MS`], otherwise the request rejects with a `TypeError`
+   * before anything is sent.
+   */
   timeoutMs?: number;
 };
+
+/**
+ * Normalize the caller's time limit. A bounded lifetime is the contract, so a
+ * malformed value (0, negative, NaN, Infinity, a non-number, or one outside
+ * what a timer can represent: under 1 ms or over 2^31 - 1 ms) is a programming error and is rejected loudly: it is
+ * never coerced into an immediate timeout, an unbounded request or a default.
+ */
+function resolveTimeoutMs(timeoutMs: unknown): number {
+  if (timeoutMs === undefined) return DEFAULT_API_TIMEOUT_MS;
+  if (
+    typeof timeoutMs !== "number" ||
+    !Number.isFinite(timeoutMs) ||
+    timeoutMs < MIN_API_TIMEOUT_MS ||
+    timeoutMs > MAX_API_TIMEOUT_MS
+  ) {
+    throw new TypeError(
+      `timeoutMs must be a finite number between ${MIN_API_TIMEOUT_MS} and ${MAX_API_TIMEOUT_MS} (ms)`,
+    );
+  }
+  return timeoutMs;
+}
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
 
@@ -85,7 +116,9 @@ export async function apiRequest<T>(
   input: RequestInfo | URL,
   init?: ApiRequestInit,
 ): Promise<T> {
-  const { timeoutMs = DEFAULT_API_TIMEOUT_MS, signal: callerSignal, ...fetchInit } = init ?? {};
+  const { timeoutMs: requestedTimeoutMs, signal: callerSignal, ...fetchInit } = init ?? {};
+  // Validated before any timer, listener or request exists, so a bad value leaks nothing.
+  const timeoutMs = resolveTimeoutMs(requestedTimeoutMs);
 
   const controller = new AbortController();
   let timedOut = false;

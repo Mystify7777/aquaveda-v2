@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   ApiError,
   DEFAULT_API_TIMEOUT_MS,
+  MAX_API_TIMEOUT_MS,
+  MIN_API_TIMEOUT_MS,
   apiRequest,
   isApiAbort,
   isApiTimeout,
@@ -174,6 +176,70 @@ describe("apiRequest: time limit", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(isApiTimeout(outcome.error)).toBe(true);
     expect(signalOf(fetchMock).aborted).toBe(true);
+  });
+});
+
+describe("apiRequest: timeoutMs validation", () => {
+  const INVALID: Array<[string, unknown]> = [
+    ["0", 0],
+    ["a negative number", -1],
+    ["negative zero", -0],
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["-Infinity", Number.NEGATIVE_INFINITY],
+    ["below 1 ms (a timer cannot represent it; would fire immediately)", 0.5],
+    ["the smallest positive double", Number.MIN_VALUE],
+    ["above the timer limit (would fire immediately)", MAX_API_TIMEOUT_MS + 1],
+    ["a numeric string", "5000"],
+    ["null", null],
+    ["a boolean", true],
+  ];
+
+  it.each(INVALID)("rejects %s with a TypeError before sending anything", async (_label, value) => {
+    const fetchMock = okFetch();
+    await expect(apiRequest("/x", { timeoutMs: value as number })).rejects.toBeInstanceOf(TypeError);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("the rejection is a TypeError, not an ApiError (never mistaken for a service failure)", async () => {
+    okFetch();
+    const error = await apiRequest<never>("/x", { timeoutMs: Number.NaN }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(TypeError);
+    expect(error).not.toBeInstanceOf(ApiError);
+    expect((error as Error).message).toMatch(/timeoutMs/);
+  });
+
+  it("an invalid value is never silently replaced by the default", async () => {
+    hangingFetch();
+    const outcome = track(apiRequest("/x", { timeoutMs: -1 }));
+    await vi.advanceTimersByTimeAsync(DEFAULT_API_TIMEOUT_MS * 2);
+    expect(outcome.done).toBe(true);
+    expect(outcome.error).toBeInstanceOf(TypeError); // not a timeout after the default elapsed
+  });
+
+  it("accepts the smallest and the largest representable limits, and `undefined` means the default", async () => {
+    for (const timeoutMs of [MIN_API_TIMEOUT_MS, 1.5, MAX_API_TIMEOUT_MS]) {
+      const fetchMock = hangingFetch();
+      const caller = new AbortController();
+      const outcome = track(apiRequest("/x", { timeoutMs, signal: caller.signal }));
+      expect(fetchMock).toHaveBeenCalledTimes(1); // accepted: the request was sent
+      caller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(isApiAbort(outcome.error)).toBe(true);
+    }
+
+    hangingFetch();
+    const outcome = track(apiRequest("/x", { timeoutMs: undefined }));
+    await vi.advanceTimersByTimeAsync(DEFAULT_API_TIMEOUT_MS);
+    expect(isApiTimeout(outcome.error)).toBe(true);
+  });
+
+  it("the largest accepted limit really waits (it does not fire immediately)", async () => {
+    hangingFetch();
+    const outcome = track(apiRequest("/x", { timeoutMs: MAX_API_TIMEOUT_MS }));
+    await vi.advanceTimersByTimeAsync(DEFAULT_API_TIMEOUT_MS * 100);
+    expect(outcome.done).toBe(false);
   });
 });
 
