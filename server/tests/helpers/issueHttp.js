@@ -44,7 +44,7 @@ export async function startIssueHttpApp() {
           } catch {
             /* non-JSON */
           }
-          resolve({ status: res.statusCode, json, text: raw });
+          resolve({ status: res.statusCode, json, text: raw, headers: res.headers });
         });
       });
       req.on("error", reject);

@@ -4,6 +4,7 @@ import {
   ISSUE_CATEGORY_VALUES,
   ISSUE_SEVERITY_VALUES,
 } from "../domain/issue-classification.js";
+import { ATTENTION_QUEUES } from "../domain/issue-progress.js";
 import {
   bboxProblem,
   parseBbox,
@@ -138,4 +139,12 @@ export const listIssuesQuerySchema = paginationQuerySchema.extend({
   severity: z.enum(ISSUE_SEVERITY_VALUES).optional(),
   q: searchTextSchema.optional(),
   bbox: bboxSchema.optional(),
+});
+
+/**
+ * Query for the EXPERT needs-attention queues (#148). `queue` is required: a
+ * queue is chosen explicitly, never defaulted. Page/limit are the shared pair.
+ */
+export const attentionQueueQuerySchema = paginationQuerySchema.extend({
+  queue: z.enum(ATTENTION_QUEUES),
 });
