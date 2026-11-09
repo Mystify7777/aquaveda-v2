@@ -1,3 +1,5 @@
+import { deriveProgress } from "../domain/issue-progress.js";
+
 /**
  * Issue HTTP DTOs (Issue #142, ADR-0007 §7–§8).
  *
@@ -105,9 +107,14 @@ function toActivityEntryDTO(e) {
  * supplied — the detail read carries it, mutation responses do not).
  */
 export function toPublicIssueDetailDTO(plain, actors, { assignee, activity } = {}) {
+  const { nextAction, waitingSince, resolutionDisputed } = deriveProgress(plain);
   return {
     ...toPublicIssueSummaryDTO(plain, actors),
     assignee: toAssigneeDTO(assignee),
+    // Derived read model (ADR-0008 §6): identical for every viewer, never stored.
+    nextAction,
+    waitingSince,
+    resolutionDisputed,
     ...(activity ? { activity: activity.map(toActivityEntryDTO) } : {}),
   };
 }
@@ -151,4 +158,23 @@ export function toWorkflowDTO(view) {
 /** Mutation response: updated public issue (no activity) + the viewer's own workflow view. */
 export function toMutationDTO(issueDTO, workflowDTO) {
   return { issue: issueDTO, workflow: workflowDTO };
+}
+
+/**
+ * One row of an EXPERT needs-attention queue (ADR-0008 §6). Deliberately
+ * minimal: what is waiting, since when, and the responsibility state. It names
+ * no person (not the reporter, not a pending grantee): the identity of a
+ * pending grantee stays in the viewer-specific workflow view.
+ */
+export function toAttentionItemDTO(row) {
+  return {
+    _id: String(row._id),
+    title: row.title,
+    category: row.category ?? "",
+    severity: row.severity ?? "",
+    status: row.status,
+    nextAction: row.nextAction,
+    waitingSince: row.waitingSince,
+    responsibility: row.responsibility,
+  };
 }

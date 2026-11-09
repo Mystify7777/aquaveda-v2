@@ -1206,3 +1206,23 @@ Full decision: `docs/adr/ADR-0008-issue-progression-and-escalation.md`; analysis
 | PRG-L11 | **Deferred (D-9 and others):** external-authority referral, notifications, evidence attachments/links, dispute on `verified`/recurrence. Recorded in the parking lot, not implemented. |
 | PRG-L12 | **Future UI principle:** three distinct element kinds on the Issue detail (derived attention, lifecycle actions, resolution dispute); no generic "Escalate" button; the dispute action is visually subordinate to lifecycle actions and states what the resolver will see. |
 | PRG-L13 | **Execution order:** ADR/register → derived read model → timeline UI → lifecycle action UI → progress notes → dispute domain → dispute HTTP/DTO/log → dispute UI. |
+
+## 🔒 Locked — Derived Issue progress read model (ADR-0008 slice 2, #148)
+
+Implements the derived read model of ADR-0008 §6. Read-only and derived: no new status, schema, collection, index or mutation. Disputes (`resolutionDisputed` is always `false` until ADR-0008 slices 6/7) and progress notes are not part of this slice.
+
+| ID | Decision |
+|---|---|
+| PRG-148-1 | **Detail read gains three derived fields** (flat, additive): `nextAction` (stable code: `awaiting_acknowledgement`, `awaiting_responsible_party`, `awaiting_start`, `work_in_progress`, `awaiting_verification`, `verified`), `waitingSince` (the latest `statusHistory` timestamp, the report time while `open`; `createdAt` fallback), `resolutionDisputed` (boolean, `false` until ADR-0008 slice 6/7). Derived by the pure `domain/issue-progress.js`; the DTO mapper derives them itself so no detail response can omit them. Also present in the `issue` part of a lifecycle mutation response (it uses the same detail mapper). **Not** in list items and **not** in the `POST /issues` 201. |
+| PRG-148-2 | **Identical for every viewer.** A pending grant counts as "no responsible party": `nextAction` for a pending grant equals that for no grant, and only an ACCEPTED grant yields `awaiting_start` / `work_in_progress`. A grant never moves `waitingSince`; only a status change does. No threshold, SLA label or deadline (D-6). |
+| PRG-148-3 | **EXPERT needs-attention queues:** `GET /api/v1/issues/attention?queue=<unacknowledged\|unassigned\|awaiting_verification>&page&limit` (shared pagination, limit ≤ 50), registered before `GET /:issueId`. `unacknowledged` = `open`; `unassigned` = `acknowledged`/`in_progress` without an accepted grant (none or pending); `awaiting_verification` = `resolved`; `verified` is in no queue. Ordered oldest `waitingSince` first, `_id` tie-break. Response `{ queue, items, page, limit, total, totalPages }`; `Cache-Control: private, no-store`; no new index (the aggregation matches on `status`). |
+| PRG-148-4 | **Authorization: EXPERT only** (existing single-role `requireRole`, AUTH-L2; Invariant 9, so ADMIN is not included); anonymous 401, USER/ADMIN 403. A queue is required (no default). |
+| PRG-148-5 | **Row contract** `{ _id, title, category, severity, status, nextAction, waitingSince, responsibility }` where `responsibility` is `none` / `pending` / `accepted`. A row names no person (no reporter, no grantee, no grant id); the pending grantee stays only in the viewer-specific workflow view. |
+
+### Compatibility ledger (#148)
+
+| Change | Kind |
+|---|---|
+| `GET /issues/:id` and the lifecycle mutation `issue` part: `nextAction`, `waitingSince`, `resolutionDisputed` | Additive |
+| `GET /issues/attention` | New route |
+| List items, `POST /issues` 201, activity log, workflow DTO, status/history/grant semantics | Unchanged |
