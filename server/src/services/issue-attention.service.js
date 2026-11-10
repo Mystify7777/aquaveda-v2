@@ -23,11 +23,18 @@ import { DomainError, DomainErrorCode } from "./errors.js";
 const validationFailed = (message, details) =>
   new DomainError(DomainErrorCode.VALIDATION_FAILED, message, details);
 
+/** The largest BSON date: used only as a sort key so an unknown age orders after every known one. */
+const UNKNOWN_AGE_LAST = new Date(8.64e15);
+
 const QUEUE_MATCH = {
   unacknowledged: { status: "open" },
+  // "unassigned" means NO ACCEPTED grant (none, or offered but not accepted).
+  // It is the exact complement of `responsibilityOf(issue) === "accepted"`
+  // (a grant id AND an acceptance time), so the query and the derivation
+  // cannot disagree, including for malformed grants.
   unassigned: {
     status: { $in: ["acknowledged", "in_progress"] },
-    $or: [{ remediation: { $exists: false } }, { "remediation.acceptedAt": null }],
+    $nor: [{ "remediation.grantId": { $nin: [null] }, "remediation.acceptedAt": { $nin: [null] } }],
   },
   awaiting_verification: { status: "resolved" },
 };
@@ -49,30 +56,40 @@ export async function listAttentionQueue(actorContext, { queue, page = 1, limit 
   const [result] = await Issue.aggregate([
     { $match: QUEUE_MATCH[queue] },
     {
-      $addFields: {
-        // latest status change; the report time for an `open` Issue (ADR-0008 §6)
-        waitingSince: { $ifNull: [{ $arrayElemAt: ["$statusHistory.timestamp", -1] }, "$createdAt"] },
+      // Slim the documents BEFORE sorting: histories never enter the sort, so a
+      // large queue does not approach the in-memory sort limit.
+      $project: {
+        title: 1,
+        category: 1,
+        severity: 1,
+        status: 1,
+        // only what the derivation needs; the grant itself never leaves the query
+        "remediation.grantId": 1,
+        "remediation.acceptedAt": 1,
+        // Same rule as `deriveWaitingSince`: the timestamp of the LAST history
+        // entry (never "the last entry that has one"), else `createdAt`, else
+        // null. Never the current time. A non-array history counts as absent.
+        waitingSince: {
+          $cond: [
+            { $isArray: "$statusHistory" },
+            {
+              $let: {
+                vars: { last: { $arrayElemAt: ["$statusHistory", -1] } },
+                in: { $ifNull: ["$$last.timestamp", "$createdAt"] },
+              },
+            },
+            "$createdAt",
+          ],
+        },
       },
     },
-    { $sort: { waitingSince: 1, _id: 1 } },
+    // Unknown age (null) sorts LAST, never first: it must not pose as the oldest.
+    { $addFields: { waitingSortKey: { $ifNull: ["$waitingSince", UNKNOWN_AGE_LAST] } } },
+    // `_id` makes the order total: equal waitingSince values page deterministically.
+    { $sort: { waitingSortKey: 1, _id: 1 } },
     {
       $facet: {
-        rows: [
-          { $skip: skip },
-          { $limit: limit },
-          {
-            $project: {
-              title: 1,
-              category: 1,
-              severity: 1,
-              status: 1,
-              waitingSince: 1,
-              // only what the derivation needs; the grant itself never leaves the query
-              "remediation.grantId": 1,
-              "remediation.acceptedAt": 1,
-            },
-          },
-        ],
+        rows: [{ $skip: skip }, { $limit: limit }, { $project: { waitingSortKey: 0 } }],
         total: [{ $count: "n" }],
       },
     },
