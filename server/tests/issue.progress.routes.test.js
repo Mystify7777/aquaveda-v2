@@ -1,7 +1,11 @@
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
+import mongoose from "mongoose";
+
 import { Issue } from "../src/models/Issue.js";
+import { deriveWaitingSince, responsibilityOf } from "../src/domain/issue-progress.js";
+import { listAttentionQueue } from "../src/services/issue-attention.service.js";
 import { acceptRemediation, grantRemediation, releaseRemediation } from "../src/services/remediation.service.js";
 import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.js";
 import {
@@ -298,3 +302,191 @@ describe("GET /api/v1/issues/attention: contract and privacy", () => {
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// Determinism and consistency (review of #148): ties, malformed history,
+// malformed grants, and parity between the aggregation and the domain rules.
+// ---------------------------------------------------------------------------
+
+const D1 = new Date("2026-05-01T00:00:00Z");
+const D2 = new Date("2026-05-05T00:00:00Z");
+
+async function rawIssue(world, fields = {}) {
+  const doc = {
+    title: "Raw",
+    description: "Inserted below the model layer",
+    domain: "water",
+    status: "open",
+    reportedBy: new mongoose.Types.ObjectId(world.reporter.id),
+    location: { type: "Point", coordinates: [85.1, 25.6] },
+    createdAt: D1,
+    updatedAt: D1,
+    ...fields,
+  };
+  for (const k of Object.keys(doc)) if (doc[k] === undefined) delete doc[k];
+  const { insertedId } = await Issue.collection.insertOne(doc);
+  return insertedId;
+}
+
+describe("attention queue ordering: ties are broken by _id and pages never overlap", () => {
+  it("equal waitingSince values page in ascending _id order across page boundaries", async () => {
+    const tie = new Date("2026-04-10T00:00:00Z");
+    const tied = [];
+    for (let i = 0; i < 5; i += 1) {
+      const issue = await openIssue(await makeHttpWorld());
+      await setTimestamp(issue._id, tie);
+      tied.push(String(issue._id));
+    }
+    const older = await openIssue(await makeHttpWorld());
+    await setTimestamp(older._id, new Date("2026-04-01T00:00:00Z"));
+    const newer = await openIssue(await makeHttpWorld());
+    await setTimestamp(newer._id, new Date("2026-04-20T00:00:00Z"));
+
+    const expected = [String(older._id), ...[...tied].sort(), String(newer._id)];
+    const seen = [];
+    for (let page = 1; page <= 4; page += 1) {
+      const res = await queue("unacknowledged", w.expert1.token, `&limit=2&page=${page}`);
+      seen.push(...res.json.data.items.map((i) => i._id));
+    }
+    assert.deepEqual(seen, expected, "oldest first, then ties by _id ascending, then newest, no gaps or repeats");
+    assert.equal(new Set(seen).size, seen.length);
+  });
+});
+
+describe("attention queue ordering: the _id tie-break is what orders equal ages", () => {
+  it("rows inserted in NON-ascending _id order still page in ascending _id order (insertion order is not the tie-break)", async () => {
+    const tie = new Date("2026-06-01T00:00:00Z");
+    const ids = [1, 2, 3, 4, 5].map((n) => new mongoose.Types.ObjectId(`66000000000000000000000${n}`));
+    const insertionOrder = [ids[2], ids[0], ids[4], ids[1], ids[3]]; // 3,1,5,2,4
+    for (const _id of insertionOrder) {
+      await rawIssue(w, { _id, createdAt: tie, updatedAt: tie, statusHistory: [{ fromStatus: null, toStatus: "open", timestamp: tie }] });
+    }
+    const seen = [];
+    for (let page = 1; page <= 3; page += 1) {
+      const res = await queue("unacknowledged", w.expert1.token, `&limit=2&page=${page}`);
+      seen.push(...res.json.data.items.map((i) => i._id));
+    }
+    assert.deepEqual(seen, ids.map(String), "ascending _id, regardless of how the rows were stored");
+  });
+});
+
+describe("attention queue: malformed history is deterministic and matches deriveWaitingSince", () => {
+  it("uses the LAST entry's timestamp else createdAt else unknown (null, ordered last), never the clock", async () => {
+    const cases = {
+      emptyHistory: { statusHistory: [] },
+      lastEntryNoTimestamp: { statusHistory: [{ fromStatus: null, toStatus: "open", timestamp: D2 }, { toStatus: "open" }] },
+      nullLastEntry: { statusHistory: [{ toStatus: "open", timestamp: D2 }, null] },
+      nonArrayHistory: { statusHistory: "garbage" },
+      noHistoryField: { statusHistory: undefined },
+      wellFormed: { statusHistory: [{ fromStatus: null, toStatus: "open", timestamp: D2 }] },
+      noAnyTime: { statusHistory: undefined, createdAt: undefined, updatedAt: undefined },
+    };
+    const ids = {};
+    for (const [name, fields] of Object.entries(cases)) ids[name] = String(await rawIssue(w, fields));
+
+    const res = await queue("unacknowledged", w.expert1.token, "&limit=50");
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    const byId = Object.fromEntries(res.json.data.items.map((i) => [i._id, i.waitingSince]));
+
+    // explicit expectations (the rule, spelled out)
+    assert.equal(byId[ids.emptyHistory], D1.toISOString());
+    assert.equal(byId[ids.lastEntryNoTimestamp], D1.toISOString(), "NOT the earlier entry's timestamp");
+    assert.equal(byId[ids.nullLastEntry], D1.toISOString());
+    assert.equal(byId[ids.nonArrayHistory], D1.toISOString());
+    assert.equal(byId[ids.noHistoryField], D1.toISOString());
+    assert.equal(byId[ids.wellFormed], D2.toISOString());
+    assert.equal(byId[ids.noAnyTime], null, "unknown age is null, not the current time");
+
+    // parity: the aggregation and the pure derivation agree on every stored shape
+    for (const [name, id] of Object.entries(ids)) {
+      const stored = await Issue.collection.findOne({ _id: new mongoose.Types.ObjectId(id) });
+      const derived = deriveWaitingSince(stored);
+      assert.equal(byId[id], derived ? derived.toISOString() : null, `${name}: aggregation vs deriveWaitingSince`);
+    }
+
+    // ordering: known ages ascending, unknown age LAST
+    const order = res.json.data.items.map((i) => i._id);
+    assert.equal(order.at(-1), ids.noAnyTime);
+    assert.ok(order.indexOf(ids.wellFormed) > order.indexOf(ids.emptyHistory), "D2 sorts after D1");
+  });
+});
+
+describe("attention queue: `unassigned` means NO ACCEPTED grant, consistent with responsibilityOf", () => {
+  const oid = () => new mongoose.Types.ObjectId();
+
+  it("lists every status/grant shape except an accepted grant, agreeing with the derivation", async () => {
+    const shapes = {
+      absent: { remediation: undefined },
+      nullGrant: { remediation: null },
+      emptyGrant: { remediation: {} },
+      pending: { remediation: { grantId: oid(), actor: oid(), acceptedAt: null } },
+      pendingNoField: { remediation: { grantId: oid(), actor: oid() } },
+      accepted: { remediation: { grantId: oid(), actor: oid(), acceptedAt: D2 } },
+      acceptedNoGrantId: { remediation: { actor: oid(), acceptedAt: D2 } },
+      nullGrantId: { remediation: { grantId: null, acceptedAt: D2 } },
+    };
+    const ids = {};
+    for (const [name, fields] of Object.entries(shapes)) {
+      ids[name] = String(await rawIssue(w, { status: "acknowledged", statusHistory: [{ toStatus: "acknowledged", timestamp: D2 }], ...fields }));
+    }
+    const res = await queue("unassigned", w.expert1.token, "&limit=50");
+    const listed = new Set(res.json.data.items.map((i) => i._id));
+
+    // "accepted" requires a grant id AND an acceptance time: only that shape is excluded
+    assert.equal(listed.has(ids.accepted), false);
+    for (const name of Object.keys(shapes).filter((n) => n !== "accepted")) assert.ok(listed.has(ids[name]), `${name} must be listed`);
+
+    // agreement with the domain, shape by shape
+    for (const [name, id] of Object.entries(ids)) {
+      const stored = await Issue.collection.findOne({ _id: new mongoose.Types.ObjectId(id) });
+      assert.equal(listed.has(id), responsibilityOf(stored) !== "accepted", `${name}: query vs responsibilityOf`);
+    }
+
+    const row = (name) => res.json.data.items.find((i) => i._id === ids[name]);
+    assert.equal(row("pending").responsibility, "pending");
+    assert.equal(row("pendingNoField").responsibility, "pending");
+    for (const n of ["absent", "nullGrant", "emptyGrant", "acceptedNoGrantId", "nullGrantId"]) assert.equal(row(n).responsibility, "none", n);
+  });
+
+  it("`responsibility` is always one of three plain strings, never an object or an identity", async () => {
+    await issueWithPendingGrant(w);
+    await issueWithAcceptedGrant(await makeHttpWorld());
+    for (const q of ["unassigned", "awaiting_verification", "unacknowledged"]) {
+      const res = await queue(q, w.expert1.token);
+      for (const item of res.json.data.items) {
+        assert.equal(typeof item.responsibility, "string");
+        assert.ok(["none", "pending", "accepted"].includes(item.responsibility));
+      }
+    }
+  });
+});
+
+describe("attention queue authorization is enforced by the service, not only the route", () => {
+  it("a missing actor is UNAUTHORIZED; USER, ADMIN and look-alike roles are FORBIDDEN; EXPERT succeeds", async () => {
+    for (const actor of [null, undefined, {}, { role: "EXPERT" }]) {
+      await assert.rejects(() => listAttentionQueue(actor, { queue: "unacknowledged" }), (e) => e.code === "UNAUTHORIZED");
+    }
+    for (const role of ["USER", "ADMIN", "expert", "EXPERT ", "", "SUPERUSER"]) {
+      await assert.rejects(
+        () => listAttentionQueue({ id: w.other.id, role }, { queue: "unacknowledged" }),
+        (e) => e.code === "FORBIDDEN",
+        `role "${role}"`,
+      );
+    }
+    const ok = await listAttentionQueue({ id: w.expert1.id, role: "EXPERT" }, { queue: "unacknowledged" });
+    assert.deepEqual(ok.items, []);
+  });
+
+  it("authorization is checked before input: a non-EXPERT learns nothing about queue names", async () => {
+    await assert.rejects(() => listAttentionQueue({ id: w.other.id, role: "USER" }, { queue: "nonsense" }), (e) => e.code === "FORBIDDEN");
+    await assert.rejects(() => listAttentionQueue({ id: w.expert1.id, role: "EXPERT" }, { queue: "nonsense" }), (e) => e.code === "VALIDATION_FAILED");
+  });
+
+  it("the 403 over HTTP carries no role details", async () => {
+    const res = await queue("unassigned", w.admin.token);
+    assert.equal(res.status, 403);
+    assert.deepEqual(Object.keys(res.json).sort(), ["code", "data", "message", "success"]);
+    assert.ok(!/requiredRole|actualRole|EXPERT|ADMIN/.test(JSON.stringify(res.json.data)), "no role metadata in data");
+    assert.ok(!res.text.includes("actualRole") && !res.text.includes("requiredRole"));
+  });
+});

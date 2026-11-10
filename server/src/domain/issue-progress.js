@@ -59,9 +59,12 @@ export function deriveNextAction(issue) {
 }
 
 /**
- * When the Issue entered its current status: the latest `statusHistory`
- * entry (for `open` that is the report itself). Falls back to `createdAt` for
- * a document with no history. Returned as the stored Date, or `null`.
+ * When the Issue entered its current status: the timestamp of the LAST
+ * `statusHistory` entry (for `open` that is the report itself), else
+ * `createdAt`, else `null` (unknown). Never the current time. The same rule is
+ * implemented in the attention-queue aggregation; the tests assert parity on
+ * malformed shapes (empty/non-array history, a last entry without a
+ * timestamp, no `createdAt`).
  */
 export function deriveWaitingSince(issue) {
   const history = Array.isArray(issue?.statusHistory) ? issue.statusHistory : [];
@@ -70,11 +73,14 @@ export function deriveWaitingSince(issue) {
 }
 
 /**
- * Whether a dispute of the current resolution is open. Disputes do not exist
- * yet (ADR-0008 slice 6/7 adds `disputeHistory`), so this is `false` for every
- * Issue until that slice replaces it. It is a function, not a literal in the
- * DTO, so that slice changes one derivation and the contract field is
- * already in place.
+ * Whether a dispute of the current resolution is open.
+ *
+ * CURRENT IMPLEMENTATION LIMITATION: dispute storage does not exist yet
+ * (ADR-0008 slices 6-7 add `disputeHistory`), so this is `false` for every
+ * Issue today. That is NOT a claim that disputes cannot exist, and a consumer
+ * must not read `false` as "no dispute is possible". It is a function, not a
+ * literal in the DTO, so the dispute slice replaces one derivation and the
+ * contract field is already in place.
  */
 export function deriveResolutionDisputed() {
   return false;

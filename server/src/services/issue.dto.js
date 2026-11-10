@@ -174,7 +174,8 @@ export function toAttentionItemDTO(row) {
     severity: row.severity ?? "",
     status: row.status,
     nextAction: row.nextAction,
-    waitingSince: row.waitingSince,
+    // An unknown age is an explicit null (never an omitted key, never the clock).
+    waitingSince: row.waitingSince ?? null,
     responsibility: row.responsibility,
   };
 }
