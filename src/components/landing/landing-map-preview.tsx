@@ -3,9 +3,11 @@
 import * as React from "react";
 
 import { IssueMapLoader } from "@/components/issues/issue-map-loader";
+import { WakeUpState } from "@/components/ui/wake-up-state";
 import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { getIssues } from "@/lib/api/issues";
 import { ApiError } from "@/lib/api/client";
+import { useApiWakeUpState } from "@/lib/api/wake-up";
 import type { Issue } from "@/lib/api/types/issue";
 
 const PREVIEW_LIMIT = 8;
@@ -13,6 +15,8 @@ const PREVIEW_LIMIT = 8;
 export function LandingMapPreview() {
   const [issues, setIssues] = React.useState<Issue[] | null>(null);
   const [error, setError] = React.useState<ApiError | null>(null);
+  const isLoading = issues === null && !error;
+  const isWakingUp = useApiWakeUpState(isLoading);
 
   React.useEffect(() => {
     let active = true;
