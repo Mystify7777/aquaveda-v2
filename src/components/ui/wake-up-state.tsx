@@ -1,8 +1,6 @@
-import Link from "next/link";
+import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
-
-export function WakeUpState() {
+export function WakeUpState({ action }: { action?: ReactNode }) {
   return (
     <div
       role="status"
@@ -22,11 +20,7 @@ export function WakeUpState() {
         </p>
       </div>
 
-      <div>
-        <Button asChild size="sm" variant="outline">
-          <Link href="/explore">Open the public issue view</Link>
-        </Button>
-      </div>
+      {action ? <div>{action}</div> : null}
     </div>
   );
 }
