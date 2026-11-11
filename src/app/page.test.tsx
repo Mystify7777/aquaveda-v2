@@ -44,7 +44,7 @@ describe("/", () => {
     expect(screen.getByText("AI assists")).toBeInTheDocument();
   });
 
-  it("keeps the contribution entry point behind the existing auth boundary", () => {
+  it("keeps the contribution entry point visible", () => {
     render(<HomePage />);
 
     expect(screen.getByRole("button", { name: "Report an issue" })).toBeInTheDocument();
