@@ -69,11 +69,23 @@ describe("LandingMapPreview", () => {
   });
 
   it("keeps the landing page usable when the issue service fails", async () => {
-    mockGetIssues.mockRejectedValue(new Error("offline"));
+    let rejectRequest!: (reason: unknown) => void;
+
+    mockGetIssues.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRequest = reject;
+        }),
+    );
 
     render(<LandingMapPreview />);
 
-    await waitFor(() => expect(screen.getByText("The public map is taking a moment.")).toBeInTheDocument());
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    rejectRequest(new Error("offline"));
+
+    await waitFor(() => {
+      expect(screen.getByText("The public map is taking a moment.")).toBeInTheDocument();
+    });
     expect(screen.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "/explore");
   });
 });
