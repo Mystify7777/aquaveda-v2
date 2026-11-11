@@ -5,6 +5,9 @@ import { ApiError, isApiTimeout } from "@/lib/api/client";
 
 /** Accessible copy for a failed read. `noun` is plural, e.g. "projects". */
 export function loadErrorMessage(error: ApiError, noun: string): string {
+  if (isApiTimeout(error)) {
+    return "The service is taking longer than usual to respond. Please try again.";
+  }
   if (error.kind === "network") {
     return "The service is unreachable right now. Check your connection and try again.";
   }
