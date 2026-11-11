@@ -17,15 +17,18 @@ export function LandingMapPreview() {
   React.useEffect(() => {
     let active = true;
 
-    void getIssues({ page: 1, limit: PREVIEW_LIMIT })
-      .then((result) => {
+    async function loadIssues() {
+      try {
+        const result = await getIssues({ page: 1, limit: PREVIEW_LIMIT });
         if (active) setIssues(result.items);
-      })
-      .catch((reason: unknown) => {
+      } catch (reason: unknown) {
         if (active) {
           setError(reason instanceof ApiError ? reason : new ApiError("Could not load issues", "network"));
         }
-      });
+      }
+    }
+
+    void loadIssues();
 
     return () => {
       active = false;
