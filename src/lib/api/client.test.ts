@@ -78,15 +78,15 @@ describe("apiRequest", () => {
     );
 
     const request = apiRequest("/x", { timeoutMs: 100 });
-
-    await vi.advanceTimersByTimeAsync(100);
-
-    await expect(request).rejects.toMatchObject({
+    const rejection = expect(request).rejects.toMatchObject({
       name: "ApiError",
       kind: "network",
       reason: "timeout",
       message: "Request timed out",
     });
+
+    await vi.advanceTimersByTimeAsync(100);
+    await rejection;
 
   });
 
