@@ -41,7 +41,7 @@ export function LandingMapPreview() {
 
   let mapContent: React.ReactNode;
   if (issues === null && !error) {
-    mapContent = <MapLoading />;
+    mapContent = isWakingUp ? <WakeUpState /> : <MapLoading />;
   } else if (error) {
     mapContent = (
       <div className="flex min-h-72 flex-col justify-between p-5">
