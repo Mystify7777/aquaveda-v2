@@ -86,5 +86,4 @@ describe("LandingMapPreview", () => {
 
     expect(screen.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "/explore");
   });
-  });
 });
