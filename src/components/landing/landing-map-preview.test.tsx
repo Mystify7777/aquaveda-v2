@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { Issue } from "@/lib/api/types/issue";
 
@@ -71,7 +71,9 @@ describe("LandingMapPreview", () => {
   });
 
   it("keeps the landing page usable when the issue service fails", async () => {
-    mockGetIssues.mockRejectedValue(new Error("offline"));
+    mockGetIssues.mockImplementation(async () => {
+      throw new Error("offline");
+    });
 
     render(<LandingMapPreview />);
 
