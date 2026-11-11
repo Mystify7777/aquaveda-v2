@@ -15,6 +15,7 @@ function mockFetchOnce(response: Partial<Response> & { jsonBody?: unknown; text?
 
 describe("apiRequest", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -87,7 +88,6 @@ describe("apiRequest", () => {
       message: "Request timed out",
     });
 
-    vi.useRealTimers();
   });
 
   it("throws an ApiError with kind 'network' when fetch itself rejects", async () => {
