@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { ApiError } from "@/lib/api/client";
+import { ApiError, isApiTimeout } from "@/lib/api/client";
 
 /** Accessible copy for a failed read. `noun` is plural, e.g. "projects". */
 export function loadErrorMessage(error: ApiError, noun: string): string {
