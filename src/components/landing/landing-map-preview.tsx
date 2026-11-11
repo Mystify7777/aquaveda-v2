@@ -7,7 +7,7 @@ import { WakeUpState } from "@/components/ui/wake-up-state";
 import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { getIssues } from "@/lib/api/issues";
 import { ApiError } from "@/lib/api/client";
-import { useApiWakeUpState } from "@/lib/api/wake-up";
+import { useApiWakeUpState } from "@/hooks/use-api-wake-up-state";
 import type { Issue } from "@/lib/api/types/issue";
 
 const PREVIEW_LIMIT = 8;
