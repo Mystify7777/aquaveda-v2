@@ -71,7 +71,7 @@ export function LandingMapPreview() {
             See what is happening
           </h2>
         </div>
-        <span className="text-muted-foreground font-mono text-[10px]">LIVE PUBLIC DATA</span>
+        <span className="text-muted-foreground font-mono text-[10px]">PUBLIC ISSUE DATA</span>
       </div>
 
       <div className="min-h-72">{mapContent}</div>
