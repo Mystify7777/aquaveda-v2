@@ -71,10 +71,16 @@ describe("LandingMapPreview", () => {
   });
 
   it("keeps the landing page usable when the issue service fails", async () => {
-    mockGetIssues.mockReturnValue({
-      then: (_resolve: unknown, reject: (reason: unknown) => void) => {
-        reject(new Error("offline"));
+    const failure = new Error("offline");
+
+    mockGetIssues.mockResolvedValue({
+      get items(): Issue[] {
+        throw failure;
       },
+      page: 1,
+      limit: 8,
+      total: 0,
+      totalPages: 0,
     });
 
     render(<LandingMapPreview />);
