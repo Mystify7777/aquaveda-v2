@@ -85,17 +85,14 @@ describe("LandingMapPreview", () => {
 
     mockGetIssues.mockReturnValue(request);
 
-    render(<LandingMapPreview />);
+    await act(async () => {
+      render(<LandingMapPreview />);
+    });
 
     expect(screen.getByRole("status")).toHaveTextContent("Loading public issue locations");
 
-    // Flush the mount effect so the wake-up timer is registered before advancing fake time.
     await act(async () => {
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3_000);
+      vi.advanceTimersByTime(3_000);
     });
 
     expect(screen.getByRole("status")).toHaveTextContent("The service is taking a little longer to start.");
