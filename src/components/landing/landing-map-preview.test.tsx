@@ -77,8 +77,6 @@ describe("LandingMapPreview", () => {
       rejectRequest = reject;
     });
 
-    // The component will also await this promise. This handler makes the
-    // test-owned rejection explicitly handled before we trigger it.
     request.catch(() => {});
 
     mockGetIssues.mockReturnValue(request);
@@ -88,7 +86,10 @@ describe("LandingMapPreview", () => {
     expect(mockGetIssues).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("status")).toBeInTheDocument();
 
+    debugger;
+
     await act(async () => {
+      debugger;
       rejectRequest(new Error("offline"));
     });
 
