@@ -24,6 +24,7 @@ describe("/", () => {
     expect(screen.queryByText(/foundation slice/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/being rebuilt/i)).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Public map preview" })).toBeInTheDocument();
+    expect(screen.getByText("AquaVeda · Civic intelligence for environmental action")).toBeInTheDocument();
     expect(screen.queryByText(/reconstruction in progress/i)).not.toBeInTheDocument();
   });
 
