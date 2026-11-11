@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { Issue } from "@/lib/api/types/issue";
 
@@ -71,17 +71,26 @@ describe("LandingMapPreview", () => {
   });
 
   it("keeps the landing page usable when the issue service fails", async () => {
-    mockGetIssues.mockImplementation(async () => {
-      throw new Error("offline");
+    let rejectRequest!: (reason: unknown) => void;
+
+    const request = new Promise<never>((_, reject) => {
+      rejectRequest = reject;
     });
+
+    mockGetIssues.mockReturnValue(request);
 
     render(<LandingMapPreview />);
 
     expect(screen.getByRole("status")).toBeInTheDocument();
 
+    await act(async () => {
+      rejectRequest(new Error("offline"));
+    });
+
     await waitFor(() => {
       expect(screen.getByText("The public map is taking a moment.")).toBeInTheDocument();
     });
+
     expect(screen.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "/explore");
   });
 });
