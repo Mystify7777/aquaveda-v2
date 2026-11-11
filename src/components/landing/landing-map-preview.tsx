@@ -32,6 +32,34 @@ export function LandingMapPreview() {
     };
   }, []);
 
+  let mapContent: React.ReactNode;
+  if (issues === null && !error) {
+    mapContent = <MapLoading />;
+  } else if (error) {
+    mapContent = (
+      <div className="flex min-h-72 flex-col justify-between p-5">
+        <div className="space-y-2">
+          <p className="font-display text-base font-semibold">The public map is taking a moment.</p>
+          <p className="text-muted-foreground max-w-md text-sm leading-relaxed">
+            The landing page stays usable even when the issue service is unavailable. Explore remains the source
+            of truth for the full public view.
+          </p>
+        </div>
+        <LoadError message={loadErrorMessage(error, "issues")} retryHref="/explore" />
+      </div>
+    );
+  } else if (issues === null || issues.length === 0) {
+    mapContent = <MapEmpty />;
+  } else {
+    mapContent = (
+      <IssueMapLoader
+        issues={issues}
+        label="Public map preview showing reported issues"
+        heightClassName="h-72 sm:h-[24rem]"
+      />
+    );
+  }
+
   return (
     <section aria-labelledby="map-preview-heading" className="relative overflow-hidden rounded-2xl border bg-card shadow-sm">
       <div className="flex items-center justify-between gap-4 border-b px-4 py-3 sm:px-5">
@@ -46,30 +74,7 @@ export function LandingMapPreview() {
         <span className="text-muted-foreground font-mono text-[10px]">LIVE PUBLIC DATA</span>
       </div>
 
-      <div className="min-h-72">
-        {issues === null && !error ? (
-          <MapLoading />
-        ) : error ? (
-          <div className="flex min-h-72 flex-col justify-between p-5">
-            <div className="space-y-2">
-              <p className="font-display text-base font-semibold">The public map is taking a moment.</p>
-              <p className="text-muted-foreground max-w-md text-sm leading-relaxed">
-                The landing page stays usable even when the issue service is unavailable. Explore remains the
-                source of truth for the full public view.
-              </p>
-            </div>
-            <LoadError message={loadErrorMessage(error, "issues")} retryHref="/explore" />
-          </div>
-        ) : issues.length === 0 ? (
-          <MapEmpty />
-        ) : (
-          <IssueMapLoader
-            issues={issues}
-            label="Public map preview showing reported issues"
-            heightClassName="h-72 sm:h-[24rem]"
-          />
-        )}
-      </div>
+      <div className="min-h-72">{mapContent}</div>
 
       <div className="border-t px-4 py-3 sm:px-5">
         <p className="text-muted-foreground text-xs">
