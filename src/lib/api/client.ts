@@ -28,7 +28,7 @@ export class ApiError extends Error {
 }
 
 /** The request exceeded its time limit (see `DEFAULT_API_TIMEOUT_MS`). */
-export const isApiTimeout = (error: unknown): error is ApiError =>
+export const isApiTimeout = (error: unknown): boolean =>
   error instanceof ApiError && error.reason === "timeout";
 
 /** The caller cancelled the request via its own `AbortSignal`. */
