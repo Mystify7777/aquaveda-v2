@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     template: "%s | AquaVeda",
   },
   description:
-    "A geo-intelligent civic reporting and knowledge platform. Water is the flagship domain.",
+    "Explore environmental issues, trusted knowledge, and community action with AquaVeda, a civic intelligence platform focused on water and the environment.",
 };
 
 export default function RootLayout({
