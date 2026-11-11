@@ -89,6 +89,11 @@ describe("LandingMapPreview", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("Loading public issue locations");
 
+    // Flush the mount effect so the wake-up timer is registered before advancing fake time.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3_000);
     });
