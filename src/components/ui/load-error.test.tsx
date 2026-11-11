@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api/client";
 
 describe("loadErrorMessage", () => {
   it("distinguishes network, session, permission and generic failures", () => {
-    expect(loadErrorMessage(new ApiError("x", "network"), "things")).toMatch(/unreachable/);
+    expect(loadErrorMessage(new ApiError("x", "network"), "things")).toMatch(/unreachable/);\n    expect(loadErrorMessage(new ApiError("x", "network", undefined, undefined, "timeout"), "things")).toMatch(/taking longer than usual/);
     expect(loadErrorMessage(new ApiError("x", "http", 401), "things")).toMatch(/session is no longer valid/);
     expect(loadErrorMessage(new ApiError("x", "http", 403), "things")).toBe("Your account is not permitted to view things.");
     expect(loadErrorMessage(new ApiError("x", "http", 500), "things")).toBe("We could not load things. Try again.");
