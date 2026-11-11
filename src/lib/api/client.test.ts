@@ -70,8 +70,8 @@ describe("apiRequest", () => {
   it("classifies an expired request as a timeout", async () => {
     vi.useFakeTimers();
 
-    global.fetch = vi.fn((_input, init) =>
-      new Promise((_, reject) => {
+    global.fetch = vi.fn((_input, init): Promise<Response> =>
+      new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
       }),
     );
