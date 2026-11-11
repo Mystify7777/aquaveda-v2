@@ -34,7 +34,9 @@ function issue(id = "i1"): Issue {
 }
 
 describe("LandingMapPreview", () => {
-  beforeEach(() => mockGetIssues.mockReset());\n\n  afterEach(() => vi.useRealTimers());
+  beforeEach(() => mockGetIssues.mockReset());
+
+  afterEach(() => vi.useRealTimers());
 
   it("requests a small public preview without blocking the initial page render", async () => {
     mockGetIssues.mockResolvedValue({
