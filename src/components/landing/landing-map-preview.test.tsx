@@ -81,23 +81,25 @@ describe("LandingMapPreview", () => {
     }>((resolve) => {
       resolveRequest = resolve;
     });
-    request.catch(() => {});
 
     mockGetIssues.mockReturnValue(request);
 
-    await act(async () => {
+    // Render synchronously and flush React effects before advancing fake time.
+    act(() => {
       render(<LandingMapPreview />);
     });
 
     expect(screen.getByRole("status")).toHaveTextContent("Loading public issue locations");
 
+    // The hook's useEffect has now registered its timer.
     await act(async () => {
-      vi.advanceTimersByTime(3_000);
+      await vi.advanceTimersByTimeAsync(3_000);
     });
 
     expect(screen.getByRole("status")).toHaveTextContent("The service is taking a little longer to start.");
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
 
+    // Resolve the original request and verify recovery.
     await act(async () => {
       resolveRequest({
         items: [issue()],
@@ -106,12 +108,14 @@ describe("LandingMapPreview", () => {
         total: 1,
         totalPages: 1,
       });
-      await Promise.resolve();
     });
 
-    await waitFor(() =>
-      expect(screen.getByRole("region", { name: "Public map preview showing reported issues" })).toHaveTextContent("i1"),
-    );
+    expect(
+      screen.getByRole("region", {
+        name: "Public map preview showing reported issues",
+      }),
+    ).toHaveTextContent("i1");
+
     expect(screen.queryByText("The service is taking a little longer to start.")).not.toBeInTheDocument();
   });
 
