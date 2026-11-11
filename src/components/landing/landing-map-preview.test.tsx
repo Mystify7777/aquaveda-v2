@@ -1,5 +1,5 @@
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
 import type { Issue } from "@/lib/api/types/issue";
 
 const mockGetIssues = vi.fn();
@@ -80,8 +80,10 @@ describe("LandingMapPreview", () => {
     render(<LandingMapPreview />);
 
     expect(screen.getByRole("status")).toBeInTheDocument();
-    await Promise.resolve();
-    rejectRequest(new Error("offline"));
+
+    await act(async () => {
+      rejectRequest(new Error("offline"));
+    });
 
     await waitFor(() => {
       expect(screen.getByText("The public map is taking a moment.")).toBeInTheDocument();
