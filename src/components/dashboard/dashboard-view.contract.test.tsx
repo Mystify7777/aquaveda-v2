@@ -75,7 +75,7 @@ describe("DashboardView with a request that never answers (#128)", () => {
       await vi.advanceTimersByTimeAsync(DEFAULT_API_TIMEOUT_MS);
     });
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("The service is unreachable right now");
+    expect(alert).toHaveTextContent("The service is taking longer than usual to respond. Please try again.");
     expect(document.body.textContent).not.toMatch(/timed out|abort/i); // no low-level detail
 
     // Try again issues a fresh request that can succeed.
