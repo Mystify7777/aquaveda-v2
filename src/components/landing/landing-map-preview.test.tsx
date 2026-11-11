@@ -50,7 +50,9 @@ describe("LandingMapPreview", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading public issue locations");
     expect(screen.getByText("PUBLIC ISSUE DATA")).toBeInTheDocument();
     expect(screen.queryByText("LIVE PUBLIC DATA")).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("region", { name: "Public map preview showing reported issues" })).toHaveTextContent("i1,i2"));
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Public map preview showing reported issues" })).toHaveTextContent("i1,i2"),
+    );
     expect(mockGetIssues).toHaveBeenCalledWith({ page: 1, limit: 8 });
   });
 
@@ -70,17 +72,15 @@ describe("LandingMapPreview", () => {
 
   it("keeps the landing page usable when the issue service fails", async () => {
     let rejectRequest!: (reason: unknown) => void;
-
-    mockGetIssues.mockImplementation(
-      () =>
-        new Promise((_resolve, reject) => {
-          rejectRequest = reject;
-        }),
-    );
+    const request = new Promise<never>((_resolve, reject) => {
+      rejectRequest = reject;
+    });
+    mockGetIssues.mockReturnValue(request);
 
     render(<LandingMapPreview />);
 
     expect(screen.getByRole("status")).toBeInTheDocument();
+    await Promise.resolve();
     rejectRequest(new Error("offline"));
 
     await waitFor(() => {
