@@ -48,6 +48,8 @@ describe("LandingMapPreview", () => {
     render(<LandingMapPreview />);
 
     expect(screen.getByRole("status")).toHaveTextContent("Loading public issue locations");
+    expect(screen.getByText("PUBLIC ISSUE DATA")).toBeInTheDocument();
+    expect(screen.queryByText("LIVE PUBLIC DATA")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("region", { name: "Public map preview showing reported issues" })).toHaveTextContent("i1,i2"));
     expect(mockGetIssues).toHaveBeenCalledWith({ page: 1, limit: 8 });
   });
