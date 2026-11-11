@@ -67,6 +67,29 @@ describe("apiRequest", () => {
     expect(init?.headers).toEqual(new Headers());
   });
 
+  it("classifies an expired request as a timeout", async () => {
+    vi.useFakeTimers();
+
+    global.fetch = vi.fn((_input, init) =>
+      new Promise((_, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      }),
+    );
+
+    const request = apiRequest("/x", { timeoutMs: 100 });
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(request).rejects.toMatchObject({
+      name: "ApiError",
+      kind: "network",
+      reason: "timeout",
+      message: "Request timed out",
+    });
+
+    vi.useRealTimers();
+  });
+
   it("throws an ApiError with kind 'network' when fetch itself rejects", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("connection refused"));
     await expect(apiRequest("/x")).rejects.toMatchObject({
