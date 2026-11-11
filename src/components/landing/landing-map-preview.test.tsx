@@ -71,19 +71,11 @@ describe("LandingMapPreview", () => {
   });
 
   it("keeps the landing page usable when the issue service fails", async () => {
-    let rejectRequest!: (reason: unknown) => void;
-    const request = new Promise<never>((_resolve, reject) => {
-      rejectRequest = reject;
-    });
-    mockGetIssues.mockReturnValue(request);
+    mockGetIssues.mockRejectedValue(new Error("offline"));
 
     render(<LandingMapPreview />);
 
     expect(screen.getByRole("status")).toBeInTheDocument();
-
-    await act(async () => {
-      rejectRequest(new Error("offline"));
-    });
 
     await waitFor(() => {
       expect(screen.getByText("The public map is taking a moment.")).toBeInTheDocument();
