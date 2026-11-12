@@ -50,5 +50,18 @@ describe("useApiWakeUpState", () => {
       vi.advanceTimersByTime(DEFAULT_API_WAKE_UP_THRESHOLD_MS);
     });
     expect(result.current).toBe(false);
+
+    rerender({ loading: true });
+    expect(result.current).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(DEFAULT_API_WAKE_UP_THRESHOLD_MS - 1);
+    });
+    expect(result.current).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(result.current).toBe(true);
   });
 });
