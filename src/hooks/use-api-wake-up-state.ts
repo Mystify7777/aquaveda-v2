@@ -18,11 +18,9 @@ export function useApiWakeUpState(
 
   React.useEffect(() => {
     if (!loading) {
-      setIsWakingUp(false);
       return;
     }
 
-    setIsWakingUp(false);
     const timer = window.setTimeout(() => setIsWakingUp(true), thresholdMs);
 
     return () => window.clearTimeout(timer);
