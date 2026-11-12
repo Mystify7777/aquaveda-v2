@@ -117,6 +117,7 @@ describe("EXPERT", () => {
     status({ scope: "none", status: "idle" });
     render(<RoleNavLinks className="x" />);
     expect(screen.getByRole("link", { name: "Review queue" })).toHaveAttribute("href", "/learn/review");
+    expect(screen.getByRole("link", { name: "Needs attention" })).toHaveAttribute("href", "/dashboard/attention");
     expect(screen.queryByText(/pending|approved/i)).not.toBeInTheDocument();
   });
 });
