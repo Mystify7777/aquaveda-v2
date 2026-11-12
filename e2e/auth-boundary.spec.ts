@@ -92,8 +92,9 @@ test.describe("authenticated route boundary", () => {
 
     await page.goto("/learn/new");
     await expect(
-      page.getByText("Sign in to continue with this contribution."),
+      page.getByText("There's a problem with your session. Please sign in again."),
     ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
     await expect(
       page.getByRole("heading", { level: 1, name: "New knowledge draft" }),
     ).toHaveCount(0);
