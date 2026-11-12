@@ -88,8 +88,15 @@ test.describe("authenticated route boundary", () => {
     await expect(page).toHaveURL(/\/$/);
 
     await page.getByRole("button", { name: "Sign out" }).first().click();
+    await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+
     await page.goto("/learn/new");
-    await expect(page.getByText("Sign in to continue")).toBeVisible();
+    await expect(
+      page.getByText("Sign in to continue with this contribution."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "New knowledge draft" }),
+    ).toHaveCount(0);
 
     const cookiesAfterLogout = await context.cookies(API_ORIGIN);
     const authPathCookiesAfterLogout = await context.cookies(`${API_ORIGIN}/api/v1/auth/refresh`);
