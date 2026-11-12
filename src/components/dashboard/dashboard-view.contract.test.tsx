@@ -38,7 +38,10 @@ beforeEach(() => {
     text: async () => JSON.stringify(BODY),
   } as Response);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("DashboardView consumes the Dashboard contract directly", () => {
   it("makes exactly one request, to /api/v1/dashboard, and renders the returned values verbatim", async () => {
@@ -55,10 +58,6 @@ describe("DashboardView consumes the Dashboard contract directly", () => {
 });
 
 describe("DashboardView with a request that never answers (#128)", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("ends in the existing unreachable-service error with a working retry, instead of loading forever", async () => {
     vi.useFakeTimers();
     const hanging = vi.fn((_url: unknown, init?: RequestInit) => {
@@ -75,7 +74,7 @@ describe("DashboardView with a request that never answers (#128)", () => {
       await vi.advanceTimersByTimeAsync(DEFAULT_API_TIMEOUT_MS);
     });
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("The service is unreachable right now");
+    expect(alert).toHaveTextContent("The service is taking longer than usual to respond. Please try again.");
     expect(document.body.textContent).not.toMatch(/timed out|abort/i); // no low-level detail
 
     // Try again issues a fresh request that can succeed.

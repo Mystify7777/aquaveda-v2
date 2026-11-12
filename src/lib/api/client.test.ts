@@ -15,6 +15,7 @@ function mockFetchOnce(response: Partial<Response> & { jsonBody?: unknown; text?
 
 describe("apiRequest", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -65,6 +66,28 @@ describe("apiRequest", () => {
 
     const [, init] = vi.mocked(global.fetch).mock.calls[0];
     expect(init?.headers).toEqual(new Headers());
+  });
+
+  it("classifies an expired request as a timeout", async () => {
+    vi.useFakeTimers();
+
+    global.fetch = vi.fn((_input, init): Promise<Response> =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      }),
+    );
+
+    const request = apiRequest("/x", { timeoutMs: 100 });
+    const rejection = expect(request).rejects.toMatchObject({
+      name: "ApiError",
+      kind: "network",
+      reason: "timeout",
+      message: "Request timed out",
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    await rejection;
+
   });
 
   it("throws an ApiError with kind 'network' when fetch itself rejects", async () => {

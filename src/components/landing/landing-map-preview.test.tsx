@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import type { Issue } from "@/lib/api/types/issue";
 
 const mockGetIssues = vi.fn();
@@ -36,6 +36,11 @@ function issue(id = "i1"): Issue {
 describe("LandingMapPreview", () => {
   beforeEach(() => mockGetIssues.mockReset());
 
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it("requests a small public preview without blocking the initial page render", async () => {
     mockGetIssues.mockResolvedValue({
       items: [issue(), issue("i2")],
@@ -54,6 +59,64 @@ describe("LandingMapPreview", () => {
       expect(screen.getByRole("region", { name: "Public map preview showing reported issues" })).toHaveTextContent("i1,i2"),
     );
     expect(mockGetIssues).toHaveBeenCalledWith({ page: 1, limit: 8 });
+  });
+
+  it("enters wake-up state after the documented threshold and recovers when the request succeeds", async () => {
+    vi.useFakeTimers();
+
+    let resolveRequest!: (value: {
+      items: Issue[];
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    }) => void;
+
+    const request = new Promise<{
+      items: Issue[];
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    }>((resolve) => {
+      resolveRequest = resolve;
+    });
+
+    mockGetIssues.mockReturnValue(request);
+
+    // Render synchronously and flush React effects before advancing fake time.
+    act(() => {
+      render(<LandingMapPreview />);
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading public issue locations");
+
+    // The hook's useEffect has now registered its timer.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("The service is taking a little longer to start.");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+
+    // Resolve the original request and verify recovery.
+    await act(async () => {
+      resolveRequest({
+        items: [issue()],
+        page: 1,
+        limit: 8,
+        total: 1,
+        totalPages: 1,
+      });
+    });
+
+    expect(
+      screen.getByRole("region", {
+        name: "Public map preview showing reported issues",
+      }),
+    ).toHaveTextContent("i1");
+
+    expect(screen.queryByText("The service is taking a little longer to start.")).not.toBeInTheDocument();
   });
 
   it("renders an honest empty state when no public issues exist", async () => {

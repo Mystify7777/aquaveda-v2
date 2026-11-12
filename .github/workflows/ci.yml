@@ -1,7 +1,7 @@
 name: CI
 
 # Runs the repo's own verification scripts; no logic is duplicated here.
-#   frontend -> npm run verify:frontend  (test, lint, typecheck, build)
+#   frontend -> frontend tests, lint, typecheck, build (separate steps)
 #   backend  -> npm --prefix server run verify  (needs real MongoDB)
 #   e2e      -> npm run test:e2e  (Playwright smoke; real backend + MongoDB, #85)
 # frontend + backend cover the verification commands invoked by root
@@ -35,8 +35,16 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      # Keep verification sequential while exposing each stage in CI.
       # next/font/google fetches fonts at build time; hosted runners have network access.
-      - run: npm run verify:frontend
+      - name: Frontend tests (Vitest and Node)
+        run: npm run test
+      - name: ESLint
+        run: npm run lint
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build
 
   backend:
     name: Backend (tests, verify scripts; MongoDB)
