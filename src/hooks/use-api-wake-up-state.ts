@@ -15,6 +15,15 @@ export function useApiWakeUpState(
   thresholdMs = DEFAULT_API_WAKE_UP_THRESHOLD_MS,
 ): boolean {
   const [isWakingUp, setIsWakingUp] = React.useState(false);
+  const [previousLoading, setPreviousLoading] = React.useState(loading);
+
+  // Reset derived state during render when the loading lifecycle changes.
+  // React documents this as preferable to synchronously resetting state in an
+  // effect because it avoids an extra stale render.
+  if (previousLoading !== loading) {
+    setPreviousLoading(loading);
+    setIsWakingUp(false);
+  }
 
   React.useEffect(() => {
     if (!loading) {
