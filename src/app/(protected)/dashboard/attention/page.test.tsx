@@ -29,7 +29,7 @@ describe("/dashboard/attention", () => {
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
   });
 
-  it("USER and ADMIN sessions reach the route shell but cannot receive queue data without backend authorization", () => {
+  it("authenticated USER and ADMIN sessions can render the shared protected route shell", () => {
     for (const role of ["USER", "ADMIN"]) {
       mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role } });
       const { unmount } = render(<ProtectedLayout><AttentionPage /></ProtectedLayout>);
