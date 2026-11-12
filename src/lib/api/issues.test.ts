@@ -120,6 +120,21 @@ describe("getIssue", () => {
     expect(result._id).toBe("issue-1");
   });
 
+  it("returns the detail fields (#142 activity/assignee, #148 progress) exactly as the API sent them", async () => {
+    const detail = {
+      ...SAMPLE_ISSUE,
+      assignee: null,
+      activity: [{ id: "h:0", type: "report_submitted", timestamp: "2026-01-01T00:00:00.000Z", actor: null, note: null }],
+      nextAction: "awaiting_acknowledgement",
+      waitingSince: "2026-01-01T00:00:00.000Z",
+      resolutionDisputed: false,
+    };
+    mockFetchOnce({ success: true, data: detail, message: "ok" });
+    const result = await getIssue("issue-1");
+    expect(result).toEqual(detail); // no client-side derivation or reshaping
+    expect(global.fetch).toHaveBeenCalledTimes(1); // one request: nothing is reconstructed from other endpoints
+  });
+
   it("throws a 404 ApiError for a nonexistent Issue", async () => {
     mockFetchOnce({ success: false, data: null, message: "Issue x not found", code: "NOT_FOUND" }, false, 404);
     await expect(getIssue("x")).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });

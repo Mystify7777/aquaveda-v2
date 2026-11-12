@@ -1,0 +1,155 @@
+{
+  "_id": "6af45eae24c74c58ecd0c2d8",
+  "title": "Burst pipe",
+  "description": "Water everywhere",
+  "location": {
+    "type": "Point",
+    "coordinates": [
+      77.5,
+      12.9
+    ]
+  },
+  "severity": "",
+  "category": "",
+  "domain": "water",
+  "status": "resolved",
+  "createdAt": "2026-11-11T12:25:18.885Z",
+  "updatedAt": "2026-11-11T12:25:18.925Z",
+  "reportedBy": {
+    "_id": "6af45eae24c74c58ecd0c2b8",
+    "name": "reporter1",
+    "role": "USER"
+  },
+  "statusHistory": [
+    {
+      "_id": "6af45eae24c74c58ecd0c2d9",
+      "fromStatus": null,
+      "toStatus": "open",
+      "actor": "6af45eae24c74c58ecd0c2b8",
+      "timestamp": "2026-11-11T12:25:18.880Z",
+      "actorProfile": {
+        "_id": "6af45eae24c74c58ecd0c2b8",
+        "name": "reporter1",
+        "role": "USER"
+      }
+    },
+    {
+      "_id": "6af45eae24c74c58ecd0c2dd",
+      "fromStatus": "open",
+      "toStatus": "acknowledged",
+      "actor": "6af45eae24c74c58ecd0c2bd",
+      "timestamp": "2026-11-11T12:25:18.896Z",
+      "actorProfile": {
+        "_id": "6af45eae24c74c58ecd0c2bd",
+        "name": "expert2",
+        "role": "EXPERT"
+      }
+    },
+    {
+      "_id": "6af45eae24c74c58ecd0c2f2",
+      "fromStatus": "acknowledged",
+      "toStatus": "in_progress",
+      "actor": "6af45eae24c74c58ecd0c2c9",
+      "timestamp": "2026-11-11T12:25:18.917Z",
+      "actorProfile": {
+        "_id": "6af45eae24c74c58ecd0c2c9",
+        "name": "grantee4",
+        "role": "USER"
+      }
+    },
+    {
+      "_id": "6af45eae24c74c58ecd0c2fb",
+      "fromStatus": "in_progress",
+      "toStatus": "resolved",
+      "actor": "6af45eae24c74c58ecd0c2c9",
+      "timestamp": "2026-11-11T12:25:18.925Z",
+      "note": "Replaced the cracked section.",
+      "actorProfile": {
+        "_id": "6af45eae24c74c58ecd0c2c9",
+        "name": "grantee4",
+        "role": "USER"
+      }
+    }
+  ],
+  "assignee": {
+    "actor": {
+      "_id": "6af45eae24c74c58ecd0c2c9",
+      "name": "grantee4",
+      "role": "USER"
+    },
+    "acceptedAt": "2026-11-11T12:25:18.910Z"
+  },
+  "nextAction": "awaiting_verification",
+  "waitingSince": "2026-11-11T12:25:18.925Z",
+  "resolutionDisputed": false,
+  "activity": [
+    {
+      "id": "h:0",
+      "type": "report_submitted",
+      "timestamp": "2026-11-11T12:25:18.880Z",
+      "actor": {
+        "_id": "6af45eae24c74c58ecd0c2b8",
+        "name": "reporter1",
+        "role": "USER"
+      },
+      "note": null
+    },
+    {
+      "id": "h:1",
+      "type": "status_changed",
+      "timestamp": "2026-11-11T12:25:18.896Z",
+      "actor": {
+        "_id": "6af45eae24c74c58ecd0c2bd",
+        "name": "expert2",
+        "role": "EXPERT"
+      },
+      "note": null,
+      "fromStatus": "open",
+      "toStatus": "acknowledged"
+    },
+    {
+      "id": "r:0",
+      "type": "responsibility_offered",
+      "timestamp": "2026-11-11T12:25:18.905Z",
+      "actor": null,
+      "note": null
+    },
+    {
+      "id": "r:1",
+      "type": "responsibility_accepted",
+      "timestamp": "2026-11-11T12:25:18.910Z",
+      "actor": {
+        "_id": "6af45eae24c74c58ecd0c2c9",
+        "name": "grantee4",
+        "role": "USER"
+      },
+      "note": null
+    },
+    {
+      "id": "h:2",
+      "type": "status_changed",
+      "timestamp": "2026-11-11T12:25:18.917Z",
+      "actor": {
+        "_id": "6af45eae24c74c58ecd0c2c9",
+        "name": "grantee4",
+        "role": "USER"
+      },
+      "note": null,
+      "fromStatus": "acknowledged",
+      "toStatus": "in_progress"
+    },
+    {
+      "id": "h:3",
+      "type": "status_changed",
+      "timestamp": "2026-11-11T12:25:18.925Z",
+      "actor": {
+        "_id": "6af45eae24c74c58ecd0c2c9",
+        "name": "grantee4",
+        "role": "USER"
+      },
+      "note": "Replaced the cracked section.",
+      "fromStatus": "in_progress",
+      "toStatus": "resolved"
+    }
+  ]
+}

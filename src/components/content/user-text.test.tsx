@@ -7,8 +7,9 @@ import { IssueDetail } from "@/components/issues/issue-detail";
 import { KnowledgeArticleView } from "@/components/knowledge/knowledge-article";
 import { KnowledgeCard } from "@/components/knowledge/knowledge-card";
 import { WorkflowArticleView } from "@/components/knowledge/workflow-article-view";
-import type { Issue } from "@/lib/api/types/issue";
+import type { IssueDetailData } from "@/lib/api/types/issue";
 import type { KnowledgeArticle, WorkflowKnowledge } from "@/lib/api/types/knowledge";
+import { makeIssueDetail } from "@/test-utils/issue-detail";
 
 vi.mock("@/components/issues/issue-map-loader", () => ({
   IssueMapLoader: ({ label }: { label: string }) => <div role="region" aria-label={label} />,
@@ -17,21 +18,8 @@ vi.mock("@/components/issues/issue-map-loader", () => ({
 const ACTOR = { _id: "u1", name: "Asha", role: "USER" as const };
 const TS = "2026-03-05T10:00:00.000Z";
 
-function issue(description: string): Issue {
-  return {
-    _id: "i1",
-    title: "Burst pipe",
-    description,
-    location: { type: "Point", coordinates: [77.5, 12.9] },
-    severity: "",
-    category: "",
-    domain: "water",
-    status: "open",
-    reportedBy: ACTOR,
-    statusHistory: [],
-    createdAt: TS,
-    updatedAt: TS,
-  } as Issue;
+function issue(description: string): IssueDetailData {
+  return makeIssueDetail({ description, severity: "", category: "", statusHistory: [], activity: [] });
 }
 function article(body: string): KnowledgeArticle {
   return {

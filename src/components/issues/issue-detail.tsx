@@ -2,20 +2,24 @@ import { UserText } from "@/components/content/user-text";
 import { CopyIssueId } from "@/components/issues/copy-issue-id";
 import { LOCATION_FALLBACK_TEXT, readableLocation } from "@/components/issues/issue-location";
 import { IssueMapLoader } from "@/components/issues/issue-map-loader";
+import { IssueProgress } from "@/components/issues/issue-progress";
 import { IssueStatusBadge } from "@/components/issues/issue-status-badge";
+import { IssueTimeline } from "@/components/issues/issue-timeline";
 import { formatDate } from "@/lib/format-date";
-import type { Issue } from "@/lib/api/types/issue";
+import type { IssueDetailData } from "@/lib/api/types/issue";
 import { toLatLng } from "@/lib/issues/geo";
 import { categoryLabel, severityLabel } from "@/lib/issues/labels";
-import { ISSUE_STATUS_LABELS, isProjectEligible } from "@/lib/issues/status";
+import { isProjectEligible } from "@/lib/issues/status";
 
 /**
- * Read-only public Issue detail. Status history is displayed as recorded
- * (from → to, timestamp); `actor` is an unpopulated id in the public DTO
- * and is not shown. No transition controls exist here — the lifecycle
- * write path and its unresolved authority (D-3a) are out of this surface.
+ * Read-only public Issue detail. It presents the server's progression read
+ * model (#148): a "Progress" summary (what the issue is waiting on, since
+ * when, who is responsible, whether the resolution is disputed) and the
+ * public activity "Timeline". Everything shown is supplied by the backend
+ * DTO; nothing is derived or authorized here. No transition, progress-note or
+ * dispute controls exist on this surface (ADR-0008 later slices).
  */
-export function IssueDetail({ issue }: { issue: Issue }) {
+export function IssueDetail({ issue }: { issue: IssueDetailData }) {
   const position = toLatLng(issue.location);
   const locationName = readableLocation(issue);
   const category = categoryLabel(issue.category);
@@ -35,6 +39,8 @@ export function IssueDetail({ issue }: { issue: Issue }) {
       </header>
 
       <UserText text={issue.description} />
+
+      <IssueProgress issue={issue} />
 
       <dl className="grid gap-4 border-t pt-4 text-sm sm:grid-cols-2">
         {category && (
@@ -84,26 +90,7 @@ export function IssueDetail({ issue }: { issue: Issue }) {
 
       <IssueMapLoader issues={[issue]} label="Map showing this issue's location" heightClassName="h-64" />
 
-      <section aria-labelledby="status-history-heading" className="space-y-3 border-t pt-4">
-        <h2 id="status-history-heading" className="font-display text-lg font-semibold">
-          Status history
-        </h2>
-        {issue.statusHistory.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No status changes recorded.</p>
-        ) : (
-          <ol className="space-y-2 text-sm">
-            {issue.statusHistory.map((entry, i) => (
-              <li key={i}>
-                {entry.fromStatus
-                  ? `${ISSUE_STATUS_LABELS[entry.fromStatus]} → ${ISSUE_STATUS_LABELS[entry.toStatus]}`
-                  : `Reported as ${ISSUE_STATUS_LABELS[entry.toStatus]}`}
-                {" · "}
-                <time dateTime={entry.timestamp}>{formatDate(entry.timestamp)}</time>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      <IssueTimeline activity={issue.activity} />
     </article>
   );
 }

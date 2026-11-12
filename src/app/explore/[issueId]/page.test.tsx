@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import IssuePage from "@/app/explore/[issueId]/page";
 import IssueNotFound from "@/app/explore/[issueId]/not-found";
 import { ApiError } from "@/lib/api/client";
-import type { Issue } from "@/lib/api/types/issue";
+import { makeIssueDetail, reportedEntry } from "@/test-utils/issue-detail";
 
 const mockGetIssue = vi.fn();
 vi.mock("@/lib/api/issues", () => ({ getIssue: (id: string) => mockGetIssue(id) }));
@@ -27,20 +27,7 @@ vi.mock("@/components/comments/discussion-actions", () => ({
   ),
 }));
 
-const ISSUE: Issue = {
-  _id: "i1",
-  title: "Burst pipe",
-  description: "Water everywhere",
-  location: { type: "Point", coordinates: [77.5, 12.9] },
-  severity: "",
-  category: "",
-  domain: "water",
-  status: "acknowledged",
-  reportedBy: { _id: "u1", name: "Asha", role: "USER" },
-  statusHistory: [],
-  createdAt: "2026-03-05T10:00:00.000Z",
-  updatedAt: "2026-03-05T10:00:00.000Z",
-};
+const ISSUE = makeIssueDetail({ title: "Burst pipe", description: "Water everywhere", severity: "", category: "", status: "acknowledged", statusHistory: [], activity: [] });
 const call = (id = "i1") => IssuePage({ params: Promise.resolve({ issueId: id }) });
 
 describe("/explore/[issueId]", () => {
@@ -55,6 +42,26 @@ describe("/explore/[issueId]", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Burst pipe" })).toBeInTheDocument();
     expect(screen.getByText("Acknowledged")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /All issues/ })).toHaveAttribute("href", "/explore");
+  });
+
+  it("anonymous: the public route shows the API's progress and timeline from one getIssue call", async () => {
+    mockGetIssue.mockResolvedValue(
+      makeIssueDetail({
+        status: "resolved",
+        nextAction: "awaiting_verification",
+        waitingSince: "2026-04-18T09:30:00.000Z",
+        resolutionDisputed: true,
+        activity: [reportedEntry()],
+      }),
+    );
+    render(await call());
+    expect(mockGetIssue).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("region", { name: "Progress" })).toHaveTextContent("Awaiting verification");
+    expect(screen.getByRole("region", { name: "Progress" })).toHaveTextContent("Apr 18, 2026");
+    expect(screen.getByText("Resolution disputed")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Timeline" })).toHaveTextContent("Issue reported");
+    // still public: no sign-in gate was added by the timeline slice
+    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
   });
 
   it("mounts the ISSUE discussion: thread and composer", async () => {
