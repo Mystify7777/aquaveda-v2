@@ -13,6 +13,7 @@ import { toCreatedIssueDTO } from "../services/issue.dto.js";
 import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
 import { attentionQueueQuerySchema, createIssueSchema, listIssuesQuerySchema } from "../validation/issue.validation.js";
 import { listAttentionQueue } from "../services/issue-attention.service.js";
+import { getRecommendationsForIssue } from "../services/recommendation.service.js";
 import { grantRemediationSchema, noteBodySchema } from "../validation/remediation.validation.js";
 
 /**
@@ -25,8 +26,9 @@ import { grantRemediationSchema, noteBodySchema } from "../validation/remediatio
  * route checks a role or a grant. Every Issue payload leaves through an
  * explicit-allowlist mapper (issue.dto.js) — never a raw document.
  *
- * Public reads (GET /, GET /:issueId) require no actor. GET /:issueId/workflow
- * and every POST need an actor; the services enforce it (requireActor).
+ * Public reads (GET /, GET /:issueId, GET /:issueId/recommendations) require
+ * no actor. GET /:issueId/workflow and every POST need an actor; the services
+ * enforce it (requireActor).
  *
  * Registration order: GET /:issueId/workflow is a distinct two-segment path, so
  * it cannot shadow or be shadowed by GET /:issueId; GET /attention (EXPERT
@@ -65,6 +67,18 @@ issueRouter.get("/attention", async (req, res) => {
     const page = await listAttentionQueue(req.actorContext, parsed.data);
     res.set("Cache-Control", "private, no-store");
     sendSuccess(res, page, "Attention queue retrieved");
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+issueRouter.get("/:issueId/recommendations", async (req, res) => {
+  try {
+    sendSuccess(
+      res,
+      await getRecommendationsForIssue(req.params.issueId),
+      "Recommendations retrieved",
+    );
   } catch (err) {
     sendError(res, err);
   }
