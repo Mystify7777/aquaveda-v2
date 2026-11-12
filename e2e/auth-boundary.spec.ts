@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { expect, test } from "@playwright/test";
+import { API_ORIGIN } from "./env";
 
 const PROTECTED_PAGES = [
   ["/learn/new", "New knowledge draft"],
@@ -60,5 +61,47 @@ test.describe("authenticated route boundary", () => {
 
     await page.goto("/learn/new");
     await expect(page.getByRole("heading", { level: 1, name: "New knowledge draft" })).toBeVisible();
+  });
+
+  test("cross-origin cookie session is accepted on login and cleared on logout", async ({ page, context }) => {
+    const email = `e2e-cookie-${randomUUID()}@example.test`;
+    const password = "e2e-Passw0rd!-long-enough";
+
+    await page.goto("/auth/register");
+    await page.getByLabel("Name").fill("E2E Cookie User");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Create account" }).click();
+    await expect(page).toHaveURL(/\/$/);
+
+    const cookiesAfterRegister = await context.cookies(API_ORIGIN);
+    const authPathCookiesAfterRegister = await context.cookies(`${API_ORIGIN}/api/v1/auth/refresh`);
+    expect(cookiesAfterRegister.some((cookie) => cookie.name === "access_token")).toBeTruthy();
+    expect(authPathCookiesAfterRegister.some((cookie) => cookie.name === "refresh_token")).toBeTruthy();
+
+    await page.getByRole("button", { name: "Sign out" }).first().click();
+
+    await page.goto("/auth/login");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page).toHaveURL(/\/$/);
+
+    await page.getByRole("button", { name: "Sign out" }).first().click();
+    await expect(page.getByRole("link", { name: "Sign in" }).first()).toBeVisible();
+
+    await page.goto("/learn/new");
+    await expect(
+      page.getByText("There's a problem with your session. Please sign in again."),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "New knowledge draft" }),
+    ).toHaveCount(0);
+
+    const cookiesAfterLogout = await context.cookies(API_ORIGIN);
+    const authPathCookiesAfterLogout = await context.cookies(`${API_ORIGIN}/api/v1/auth/refresh`);
+    expect(cookiesAfterLogout.some((cookie) => cookie.name === "access_token")).toBeFalsy();
+    expect(authPathCookiesAfterLogout.some((cookie) => cookie.name === "refresh_token")).toBeFalsy();
   });
 });
