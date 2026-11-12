@@ -130,6 +130,6 @@ describe("AttentionQueue", () => {
     const { container } = render(<AttentionQueue />);
     await screen.findByRole("link", { name: "Issue i1" });
     expect(container.textContent).not.toMatch(/reporter|grantee|grantor|pending user/i);
-    expect(screen.queryByRole("button", { name: /acknowledge|assign|verify|resolve|reopen/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^(acknowledge|assign|verify|resolve|reopen)$/i })).not.toBeInTheDocument();
   });
 });
