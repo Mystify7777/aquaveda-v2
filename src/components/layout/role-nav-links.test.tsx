@@ -72,6 +72,7 @@ describe("mobile navigation adapts to the role", () => {
   for (const [role, label, href] of [
     ["USER", "Become an Expert", "/learn/expert-application"],
     ["EXPERT", "Review queue", "/learn/review"],
+    ["EXPERT", "Needs attention", "/dashboard/attention"],
     ["ADMIN", "Expert applications", "/admin/expert-applications"],
   ] as const) {
     it(`${role} drawer includes "${label}" and none of the other roles' entries`, async () => {
