@@ -8,6 +8,7 @@ import { IssueDetail } from "@/components/issues/issue-detail";
 import { IssueStatusFilter } from "@/components/issues/issue-status-filter";
 import { ISSUE_CATEGORIES, ISSUE_SEVERITIES } from "@/lib/issues/classification";
 import type { Issue } from "@/lib/api/types/issue";
+import { makeIssueDetail, reportedEntry } from "@/test-utils/issue-detail";
 
 vi.mock("@/components/issues/issue-map-loader", () => ({
   IssueMapLoader: ({ label }: { label: string }) => <div role="region" aria-label={label} />,
@@ -50,7 +51,7 @@ describe("IssueCard", () => {
 
 describe("IssueDetail", () => {
   it("renders the public Issue DTO read-only: title, status, reporter, description, classification, location, map region", () => {
-    render(<IssueDetail issue={makeIssue({ status: "in_progress" })} />);
+    render(<IssueDetail issue={makeIssueDetail({ status: "in_progress" })} />);
     expect(screen.getByRole("heading", { level: 1, name: "Burst pipe" })).toBeInTheDocument();
     expect(screen.getByText("In progress")).toBeInTheDocument();
     expect(screen.getByText(/Line one/)).toBeInTheDocument();
@@ -60,27 +61,42 @@ describe("IssueDetail", () => {
     expect(screen.getByRole("region", { name: "Map showing this issue's location" })).toBeInTheDocument();
   });
 
-  it("status history lists recorded transitions; the creation entry reads 'Reported as'", () => {
+  it("the timeline lists the server's recorded events: the report, then each transition, with date and time", () => {
     render(
       <IssueDetail
-        issue={makeIssue({
+        issue={makeIssueDetail({
           status: "acknowledged",
-          statusHistory: [
-            { fromStatus: null, toStatus: "open", actor: "u1", timestamp: "2026-03-05T10:00:00.000Z" },
-            { fromStatus: "open", toStatus: "acknowledged", actor: "u2", timestamp: "2026-03-06T10:00:00.000Z" },
+          activity: [
+            reportedEntry(),
+            {
+              id: "h:1",
+              type: "status_changed",
+              timestamp: "2026-03-06T10:00:00.000Z",
+              actor: { _id: "u2", name: "Ed", role: "EXPERT" },
+              note: "Looked at it",
+              fromStatus: "open",
+              toStatus: "acknowledged",
+            },
           ],
         })}
       />,
     );
-    const items = within(screen.getByRole("region", { name: "Status history" })).getAllByRole("listitem");
-    expect(items[0]).toHaveTextContent("Reported as Open · Mar 5, 2026");
-    expect(items[1]).toHaveTextContent("Open → Acknowledged · Mar 6, 2026");
-    // The actor id is not rendered.
+    const items = within(screen.getByRole("region", { name: "Timeline" })).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("Issue reported");
+    expect(items[0]).toHaveTextContent("Mar 5, 2026, 10:00 AM UTC");
+    expect(items[1]).toHaveTextContent("Open → Acknowledged");
+    expect(items[1]).toHaveTextContent("Mar 6, 2026, 10:00 AM UTC");
+    expect(items[1]).toHaveTextContent("by Ed (Expert)");
+    expect(items[1]).toHaveTextContent("Looked at it");
+    // Only the public actor name is shown; ids never are.
     expect(screen.queryByText("u2")).not.toBeInTheDocument();
+    // The old duplicate list is gone: one history surface, not two.
+    expect(screen.queryByRole("region", { name: "Status history" })).not.toBeInTheDocument();
   });
 
   it("offers no lifecycle/transition controls (D-3a stays out of this surface)", () => {
-    render(<IssueDetail issue={makeIssue({ status: "acknowledged" })} />);
+    render(<IssueDetail issue={makeIssueDetail({ status: "acknowledged" })} />);
     // The only control is the Issue ID copy action (#87) — not a lifecycle write.
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Copy ID"]);
     for (const name of [/acknowledge/i, /resolve/i, /verify/i, /progress/i]) {
@@ -91,10 +107,11 @@ describe("IssueDetail", () => {
   it("omits unclassified fields and an unusable location instead of rendering blanks", () => {
     render(
       <IssueDetail
-        issue={makeIssue({
+        issue={makeIssueDetail({
           category: "",
           severity: "",
           statusHistory: [],
+          activity: [],
           location: { type: "Point", coordinates: [999, 0] },
         })}
       />,
@@ -102,7 +119,7 @@ describe("IssueDetail", () => {
     expect(screen.queryByText("Category")).not.toBeInTheDocument();
     expect(screen.queryByText("Severity")).not.toBeInTheDocument();
     expect(screen.queryByText("Location")).not.toBeInTheDocument();
-    expect(screen.getByText("No status changes recorded.")).toBeInTheDocument();
+    expect(screen.getByText("No activity recorded.")).toBeInTheDocument();
   });
 });
 
@@ -145,17 +162,17 @@ const ALL_STATUSES: Issue["status"][] = ["open", "acknowledged", "in_progress", 
 
 describe("Issue ID copy surfaces (#87, #134)", () => {
   it.each(ALL_STATUSES)("detail shows the ID + copy for a %s issue and preserves content", (status) => {
-    render(<IssueDetail issue={makeIssue({ _id: ID, status })} />);
+    render(<IssueDetail issue={makeIssueDetail({ _id: ID, status })} />);
     expect(screen.getByText(ID)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /copy id/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "Burst pipe" })).toBeInTheDocument();
   });
 
   it("detail only mentions project creation for project-eligible statuses", () => {
-    const { unmount } = render(<IssueDetail issue={makeIssue({ _id: ID, status: "open" })} />);
+    const { unmount } = render(<IssueDetail issue={makeIssueDetail({ _id: ID, status: "open" })} />);
     expect(screen.queryByText(/for creating a project/i)).not.toBeInTheDocument();
     unmount();
-    render(<IssueDetail issue={makeIssue({ _id: ID, status: "acknowledged" })} />);
+    render(<IssueDetail issue={makeIssueDetail({ _id: ID, status: "acknowledged" })} />);
     expect(screen.getByText(/for creating a project/i)).toBeInTheDocument();
   });
 
@@ -200,14 +217,14 @@ describe("Human-readable location display (#134)", () => {
   });
 
   it("detail shows the name with an unverified caption AND the canonical coordinates", () => {
-    render(<IssueDetail issue={makeIssue({ locationLabel: "Kankarbagh, Patna" })} />);
+    render(<IssueDetail issue={makeIssueDetail({ locationLabel: "Kankarbagh, Patna" })} />);
     expect(screen.getByText("Kankarbagh, Patna")).toBeInTheDocument();
     expect(screen.getByText(/not a verified address/i)).toBeInTheDocument();
     expect(screen.getByText("12.90000, 77.50000")).toBeInTheDocument();
   });
 
   it("detail without a label shows the fallback and the coordinates, no verification caption", () => {
-    render(<IssueDetail issue={makeIssue()} />);
+    render(<IssueDetail issue={makeIssueDetail()} />);
     expect(screen.getByText("Location not named")).toBeInTheDocument();
     expect(screen.getByText("12.90000, 77.50000")).toBeInTheDocument();
     expect(screen.queryByText(/not a verified address/i)).not.toBeInTheDocument();

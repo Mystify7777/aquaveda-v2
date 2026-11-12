@@ -1228,3 +1228,19 @@ Implements the derived read model of ADR-0008 §6. Read-only and derived: no new
 | `GET /issues/:id` and the lifecycle mutation `issue` part: `nextAction`, `waitingSince`, `resolutionDisputed` | Additive |
 | `GET /issues/attention` | New route |
 | List items, `POST /issues` 201, activity log, workflow DTO, status/history/grant semantics | Unchanged |
+
+## Implemented — Issue-detail progression timeline (ADR-0008 slice 3, frontend)
+
+Read-only frontend slice: `/explore/[issueId]` presents the backend's progression read model (#148) and public activity log (#142). **No backend, schema, route, mutation, progress-note, dispute or escalation change.** Tags: `[ADR-0008]` = decided by the ADR; `[impl]` = a choice made in this slice, pending review.
+
+| ID | Decision |
+|---|---|
+| TL-1 | `[ADR-0008 §6/§11]` The backend owns every derivation. The frontend renders `nextAction` (a code), `waitingSince` and `resolutionDisputed` as received and owns only the wording (`lib/issues/progress.ts`): Awaiting acknowledgement / responsible party / start, Work in progress, Awaiting verification, Verified. `waitingSince` is shown as the server's date; **no clock arithmetic and no relative durations** (so output is deterministic). An unknown or unusable `waitingSince`/`nextAction` omits that line instead of guessing. The "Responsible party" row is shown exactly when the contract supplies `assignee`, never inferred from `status`; absence is stated by `nextAction`, not by a row. |
+| TL-2 | `[ADR-0008 §8]` The timeline renders the server-provided public `activity` log **as received**: server order (never re-sorted), already redacted, never merged with `statusHistory` or any other source (no second client-side history model). Entries carry a **text** kind label ("Status" or "Responsibility"), not color. Unknown future event types render a neutral line instead of disappearing. |
+| TL-3 | `[ADR-0008 §8]` `resolutionDisputed` is a read-only notice ("Resolution disputed. An expert review is pending."). No dispute button, reason, disputant or history. `false` is not an assertion that disputes cannot exist (PRG-148-4). |
+| TL-4 | `[impl]` The previous "Status history" list (derived from `statusHistory`) is **replaced** by the Timeline: the activity log carries the same transitions plus actors and public notes, so keeping both would duplicate history. Its assertions were ported to the timeline, not dropped. |
+| TL-5 | `[impl]` Transition notes are public, user-controlled text rendered as plain React text (`whitespace-pre-line`), never interpreted as markup and never able to add headings to the page outline (the shared `UserText` renderer emits headings, so it is not used here). The actor is shown by public name, with an Expert/Admin label; ids are never shown. |
+| TL-9 | `[impl]` **Layout order** (found by inspecting the real page at 375 px): header, description, **Progress**, details, **Timeline**. The first version put Progress before the description, which made the description read as part of Progress. |
+| TL-6 | `[impl]` Timestamps in the timeline use a new deterministic UTC `formatDateTime`; the summary uses the existing `formatDate`. |
+| TL-7 | `[impl]` The route stays **public** (anonymous read), with one `getIssue` request; no new endpoint. A detail-shaped `loading.tsx` replaces the list-shaped skeleton inherited from `explore/loading.tsx`. |
+| TL-8 | `[impl]` Types: `IssueDetailData extends Issue` (assignee, activity, `nextAction`, `waitingSince`, `resolutionDisputed`); list items and the create response keep the `Issue` type. The UI is also tested against a payload recorded from the real backend (`src/test-utils/fixtures/issue-detail.resolved.json`): validated at runtime (enums, required keys, shapes) with the enumerations bound at compile time to the frontend unions; not a generated schema check. |
