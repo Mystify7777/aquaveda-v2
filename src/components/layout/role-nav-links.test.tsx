@@ -14,7 +14,7 @@ vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => mockUseA
 const as = (role: string | null, status = "authenticated") =>
   mockUseAuth.mockReturnValue({ status, user: role ? { id: "u1", role } : null });
 
-const LABELS = ["Become an Expert", "Review queue", "Expert applications"] as const;
+const LABELS = ["Become an Expert", "Review queue", "Needs attention", "Expert applications"] as const;
 const present = (container: HTMLElement) =>
   LABELS.filter((label) => container.querySelector(`a`) && screen.queryAllByRole("link", { name: label }).length > 0);
 
@@ -45,11 +45,12 @@ describe("primary navigation adapts to the role (desktop)", () => {
     expect(present(container)).toEqual(["Become an Expert"]);
   });
 
-  it("EXPERT sees the Knowledge review queue only", () => {
+  it("EXPERT sees both Knowledge review and Issue attention queues", () => {
     as("EXPERT");
     const { container } = render(<Navbar />);
     expect(screen.getByRole("link", { name: "Review queue" })).toHaveAttribute("href", "/learn/review");
-    expect(present(container)).toEqual(["Review queue"]);
+    expect(screen.getByRole("link", { name: "Needs attention" })).toHaveAttribute("href", "/dashboard/attention");
+    expect(present(container)).toEqual(["Review queue", "Needs attention"]);
   });
 
   it("ADMIN sees Expert-application governance, and NOT the Knowledge review queue", () => {
