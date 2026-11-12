@@ -88,7 +88,7 @@ test.describe("authenticated route boundary", () => {
     await expect(page).toHaveURL(/\/$/);
 
     await page.getByRole("button", { name: "Sign out" }).first().click();
-    await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Sign in" }).first()).toBeVisible();
 
     await page.goto("/learn/new");
     await expect(
