@@ -25,11 +25,13 @@ const app = (status: MyExpertApplication["status"]): MyExpertApplication => ({ s
 
 type Value = ReturnType<typeof useExpertStatus>;
 let latest: Value;
+let publishLatest: ((value: Value) => void) | null = null;
 function Probe() {
   const value = useExpertStatus();
-  // Publish from an effect, not during render (react-hooks/globals).
-  React.useEffect(() => {
+  // Publish the committed value before waitFor observes the updated DOM.
+  React.useLayoutEffect(() => {
     latest = value;
+    publishLatest?.(value);
   });
   return (
     <p data-testid="s">
@@ -195,9 +197,18 @@ describe("ExpertStatusProvider: failure semantics", () => {
   it("no prior data: error (never presented as a status)", async () => {
     as("USER");
     mockMine.mockRejectedValue(new ApiError("x", "http", 500));
+    const observed = vi.fn();
+    publishLatest = observed;
     render(ui());
     await waitFor(() => expect(text()).toBe("user|error|-|-|fresh"));
+    expect(observed).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: "error",
+        error: expect.objectContaining({ status: 500 }),
+      }),
+    );
     expect(latest.error?.status).toBe(500);
+    publishLatest = null;
   });
 
   it("prior data + failed refresh: kept but flagged stale; a later success clears it", async () => {
