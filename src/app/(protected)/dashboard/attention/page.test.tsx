@@ -29,7 +29,7 @@ describe("/dashboard/attention", () => {
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
   });
 
-  it("authenticated USER and ADMIN sessions can render the shared protected route shell", () => {
+  it("authenticated USER and ADMIN sessions can render the shared protected route shell without frontend role gating", () => {
     for (const role of ["USER", "ADMIN"]) {
       mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role } });
       const { unmount } = render(<ProtectedLayout><AttentionPage /></ProtectedLayout>);
