@@ -196,20 +196,12 @@ describe("ExpertStatusProvider: failure semantics", () => {
   it("no prior data: error (never presented as a status)", async () => {
     as("USER");
     mockMine.mockRejectedValue(new ApiError("x", "http", 500));
-    const observed = vi.fn();
-    publishLatest = observed;
     render(ui());
     await waitFor(() => expect(text()).toBe("user|error|-|-|fresh"));
-    expect(observed).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        status: "error",
-        error: expect.objectContaining({ status: 500 }),
-      }),
-    );
+    expect(latest.status).toBe("error");
+    expect(latest.error).toBeInstanceOf(ApiError);
     expect(latest.error?.status).toBe(500);
-    publishLatest = null;
   });
-
   it("prior data + failed refresh: kept but flagged stale; a later success clears it", async () => {
     as("USER");
     mockMine.mockResolvedValueOnce(app("pending"));
