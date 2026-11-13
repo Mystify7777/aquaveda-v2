@@ -25,7 +25,6 @@ const app = (status: MyExpertApplication["status"]): MyExpertApplication => ({ s
 
 type Value = ReturnType<typeof useExpertStatus>;
 let latest: Value;
-let publishLatest: ((value: Value) => void) | null = null;
 function Probe() {
   const value = useExpertStatus();
   // Publish the committed value before waitFor observes the updated DOM.
