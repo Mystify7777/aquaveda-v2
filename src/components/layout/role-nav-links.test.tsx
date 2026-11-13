@@ -69,18 +69,18 @@ describe("primary navigation adapts to the role (desktop)", () => {
 });
 
 describe("mobile navigation adapts to the role", () => {
-  for (const [role, label, href] of [
-    ["USER", "Become an Expert", "/learn/expert-application"],
-    ["EXPERT", "Review queue", "/learn/review"],
-    ["EXPERT", "Needs attention", "/dashboard/attention"],
-    ["ADMIN", "Expert applications", "/admin/expert-applications"],
+  for (const [role, label, href, expectedLabels] of [
+    ["USER", "Become an Expert", "/learn/expert-application", ["Become an Expert"]],
+    ["EXPERT", "Review queue", "/learn/review", ["Review queue", "Needs attention"]],
+    ["EXPERT", "Needs attention", "/dashboard/attention", ["Review queue", "Needs attention"]],
+    ["ADMIN", "Expert applications", "/admin/expert-applications", ["Expert applications"]],
   ] as const) {
     it(`${role} drawer includes "${label}" and none of the other roles' entries`, async () => {
       as(role);
       const { container } = render(<MobileNav />);
       await userEvent.setup().click(screen.getByRole("button", { name: "Open navigation menu" }));
       expect(screen.getByRole("link", { name: label })).toHaveAttribute("href", href);
-      expect(present(container.ownerDocument.body)).toEqual([label]);
+      expect(present(container.ownerDocument.body)).toEqual(expectedLabels);
     });
   }
 });
