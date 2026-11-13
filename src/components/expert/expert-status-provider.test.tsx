@@ -31,7 +31,6 @@ function Probe() {
   // Publish the committed value before waitFor observes the updated DOM.
   React.useLayoutEffect(() => {
     latest = value;
-    publishLatest?.(value);
   });
   return (
     <p data-testid="s">
