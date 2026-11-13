@@ -9,7 +9,11 @@ import type { AttentionQueuePage, AttentionQueueQuery } from "./types/issue-atte
  */
 export function getIssueAttentionQueue(query: AttentionQueueQuery, init?: { signal?: AbortSignal }) {
   return apiRequest<AttentionQueuePage>(
-    buildApiUrl("/api/v1/issues/attention", query as Record<string, string | number | undefined>),
+    buildApiUrl("/api/v1/issues/attention", {
+      queue: query.queue,
+      page: query.page,
+      limit: query.limit,
+    }),
     { cache: "no-store", signal: init?.signal },
   );
 }
