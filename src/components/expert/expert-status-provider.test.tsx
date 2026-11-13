@@ -197,7 +197,7 @@ describe("ExpertStatusProvider: failure semantics", () => {
     mockMine.mockRejectedValue(new ApiError("x", "http", 500));
     render(ui());
     await waitFor(() => expect(text()).toBe("user|error|-|-|fresh"));
-    expect(latest.error?.status).toBe(500);
+    await waitFor(() => expect(latest.error?.status).toBe(500));
   });
 
   it("prior data + failed refresh: kept but flagged stale; a later success clears it", async () => {
