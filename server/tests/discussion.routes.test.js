@@ -244,7 +244,7 @@ describe("POST /api/v1/discussions", () => {
     assert.equal(res.status, 201);
     assert.equal(res.json.success, true);
     assert.equal(res.json.data.status, "ACTIVE");
-    assert.equal(res.json.data.author._id, user.id);
+    assert.equal(res.json.data.author._id, String(user.id));
     assert.equal(
       Object.keys(res.json.data).sort().join(","),
       "_id,author,body,category,createdAt,status,title,updatedAt",
