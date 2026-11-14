@@ -9,7 +9,7 @@ import { issueRouter } from "../src/routes/issue.routes.js";
 import { User } from "../src/models/User.js";
 import { register } from "../src/services/auth.service.js";
 import { Issue } from "../src/models/Issue.js";
-import { changeStatus } from "../src/services/issue.service.js";
+import { changeStatus, createIssue } from "../src/services/issue.service.js";
 import { acceptRemediation, grantRemediation, withdrawRemediation } from "../src/services/remediation.service.js";
 import { setupTestDb, teardownTestDb, clearCollections, fakeActor, validPoint } from "./helpers/testDb.js";
 
@@ -434,6 +434,104 @@ describe("GET /api/v1/issues/:issueId (Issue #48 — public read, no auth requir
     const res = await request("GET", "/api/v1/issues/not-a-valid-object-id");
     assert.equal(res.status, 400);
     assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+});
+
+describe("GET /api/v1/issues/:issueId/recommendations (Issue #55 — public read)", () => {
+  async function makeRecommendationIssue(classification = {}) {
+    return createIssue(fakeActor(), {
+      title: "Recommendation test issue",
+      description: "Reported near the market",
+      location: validPoint(),
+      ...classification,
+    });
+  }
+
+  it("returns the complete success envelope and recommendation fields anonymously", async () => {
+    const issue = await makeRecommendationIssue({
+      category: "leakage_wastage",
+      severity: "high",
+    });
+
+    const res = await request("GET", `/api/v1/issues/${issue._id}/recommendations`);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(Object.keys(res.json).sort(), ["data", "message", "success"]);
+    assert.equal(res.json.success, true);
+    assert.equal(typeof res.json.message, "string");
+    assert.equal(res.json.data.issueId, String(issue._id));
+    assert.equal(res.json.data.contextStatus, "classified");
+    assert.deepEqual(
+      res.json.data.recommendations.map(({ id }) => id),
+      ["leakage-wastage", "high-severity-escalation"],
+    );
+    for (const recommendation of res.json.data.recommendations) {
+      assert.deepEqual(Object.keys(recommendation).sort(), ["id", "reason", "suggestion"]);
+      assert.ok(recommendation.suggestion.length > 0);
+      assert.ok(recommendation.reason.length > 0);
+    }
+  });
+
+  it("preserves insufficient context without inventing recommendations", async () => {
+    const issue = await makeRecommendationIssue();
+
+    const res = await request("GET", `/api/v1/issues/${issue._id}/recommendations`);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json.data, {
+      issueId: String(issue._id),
+      contextStatus: "insufficient_context",
+      recommendations: [],
+    });
+  });
+
+  it("returns an empty successful result for classified context with no matching rule", async () => {
+    const issue = await makeRecommendationIssue({ category: "other", severity: "low" });
+
+    const res = await request("GET", `/api/v1/issues/${issue._id}/recommendations`);
+
+    assert.equal(res.status, 200);
+    assert.equal(res.json.success, true);
+    assert.equal(res.json.data.contextStatus, "classified");
+    assert.deepEqual(res.json.data.recommendations, []);
+  });
+
+  it("does not persist recommendations or mutate the Issue", async () => {
+    const issue = await makeRecommendationIssue({ category: "water_quality" });
+    const before = await Issue.findById(issue._id).lean();
+
+    const res = await request("GET", `/api/v1/issues/${issue._id}/recommendations`);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await Issue.findById(issue._id).lean(), before);
+    assert.equal((await Issue.findById(issue._id).lean()).recommendations, undefined);
+  });
+
+  it("returns VALIDATION_FAILED for a malformed Issue ID", async () => {
+    const res = await request("GET", "/api/v1/issues/not-a-valid-object-id/recommendations");
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(Object.keys(res.json).sort(), ["code", "data", "message", "success"]);
+    assert.equal(res.json.success, false);
+    assert.equal(res.json.data, null);
+    assert.equal(typeof res.json.message, "string");
+    assert.ok(res.json.message.length > 0);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("returns NOT_FOUND for a well-formed but missing Issue", async () => {
+    const res = await request(
+      "GET",
+      "/api/v1/issues/507f1f77bcf86cd799439011/recommendations",
+    );
+
+    assert.equal(res.status, 404);
+    assert.deepEqual(Object.keys(res.json).sort(), ["code", "data", "message", "success"]);
+    assert.equal(res.json.success, false);
+    assert.equal(res.json.data, null);
+    assert.equal(typeof res.json.message, "string");
+    assert.ok(res.json.message.length > 0);
+    assert.equal(res.json.code, "NOT_FOUND");
   });
 });
 
