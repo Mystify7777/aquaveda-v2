@@ -1,6 +1,6 @@
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import request from "supertest";
+import http from "node:http";
 
 import { createApp } from "../src/app.js";
 import { Discussion } from "../src/models/Discussion.js";
@@ -20,8 +20,40 @@ beforeEach(async () => {
   await Discussion.deleteMany({});
 });
 
+let server;
+let baseUrl;
+
+before(async () => {
+  await setupTestDb();
+  server = http.createServer(createApp());
+  await new Promise((resolve) => server.listen(0, resolve));
+  baseUrl = "http://127.0.0.1:" + server.address().port;
+});
+
+after(async () => {
+  await new Promise((resolve) => server.close(resolve));
+  await teardownTestDb();
+});
+
 function requestWithQuery(query = {}) {
-  return request(createApp()).get("/api/v1/community/activity").query(query);
+  const search = new URLSearchParams(query);
+  const path = "/api/v1/community/activity" + (search.size ? "?" + search : "");
+  return new Promise((resolve, reject) => {
+    http.get(baseUrl + path, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        let json = null;
+        try {
+          json = raw ? JSON.parse(raw) : null;
+        } catch {
+          // Non-JSON response is retained as null for a clear assertion failure.
+        }
+        resolve({ status: res.statusCode, json, text: raw });
+      });
+    }).on("error", reject);
+  });
 }
 
 async function makeUser() {
@@ -53,7 +85,7 @@ describe("GET /api/v1/community/activity", () => {
     const response = await requestWithQuery({ page: 1, limit: 20 });
 
     assert.equal(response.status, 200);
-    assert.equal(response.body.success, true);
+    assert.equal(response.json.success, true);
     assert.equal(response.body.data.page, 1);
     assert.equal(response.body.data.limit, 20);
     assert.equal(response.body.data.total, 1);
