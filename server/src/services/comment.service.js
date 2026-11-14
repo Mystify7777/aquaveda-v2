@@ -18,7 +18,7 @@ import { requireActor } from "./authorization.js";
  * Comment domain service.
  *
  * Implements createComment. Comment is a shared primitive attached to
- * either an Issue or a Knowledge article via the `refType`/`refId`
+ * an Issue, Knowledge article, or independent Discussion via the `refType`/`refId`
  * discriminator (persistence-design.md §3).
  *
  * D-COMMENT-1 (now locked, per the Phase D contract): a reply must target
