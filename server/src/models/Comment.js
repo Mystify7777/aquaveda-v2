@@ -5,7 +5,7 @@ const { Schema } = mongoose;
 /**
  * Comment
  *
- * Attaches to either an Issue or a Knowledge article via the `refType`
+ * Attaches to an Issue, Knowledge article, or independent Discussion via the `refType`
  * discriminator — a shared primitive, not a per-target collection.
  *
  * Schema-enforceable constraints (this file):
@@ -23,7 +23,7 @@ const { Schema } = mongoose;
  *   validate from this document's own fields. No recursive/depth
  *   validator is implemented here; deliberately left to the service
  *   layer's `createComment`/`replyToComment` operation.
- * - that `refId` actually points to an existing Issue or Knowledge
+ * - that `refId` actually points to an existing Issue, Knowledge, or Discussion
  *   document of the type named by `refType` (refId is intentionally
  *   untyped/polymorphic — no `ref` option is set, since it can't point
  *   to one fixed collection)
@@ -37,7 +37,7 @@ const commentSchema = new Schema(
   {
     refType: {
       type: String,
-      enum: ["ISSUE", "WIKI"],
+      enum: ["ISSUE", "WIKI", "DISCUSSION"],
       // "WIKI" (not "KNOWLEDGE") is the correct value here — verified
       // against persistence-design.md §3/§10 and v1's proven API shape
       // (`GET /api/v1/comments?refType=ISSUE|WIKI&refId=...`), both of
