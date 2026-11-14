@@ -190,7 +190,13 @@ describe("listCommunityActivity", () => {
 
   it("uses deterministic sourceType/resourceObjectId tie-breakers", async () => {
     const author = await makeUser();
-    const discussion = await makeDiscussion(author._id, "Discussion");
+    const discussion = await Discussion.create({
+      title: "Discussion",
+      body: "body",
+      category: "DISCUSSION",
+      status: "ACTIVE",
+      author: author._id,
+    });
     const issue = await makeIssue(author._id, "Issue");
 
     await addComment("DISCUSSION", discussion._id, author._id);
