@@ -13,13 +13,6 @@ import {
   teardownTestDb,
 } from "./helpers/testDb.js";
 
-before(setupTestDb);
-after(teardownTestDb);
-beforeEach(async () => {
-  await clearCollections();
-  await Discussion.deleteMany({});
-});
-
 let server;
 let baseUrl;
 
@@ -33,6 +26,11 @@ before(async () => {
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
   await teardownTestDb();
+});
+
+beforeEach(async () => {
+  await clearCollections();
+  await Discussion.deleteMany({});
 });
 
 function requestWithQuery(query = {}) {
@@ -86,12 +84,12 @@ describe("GET /api/v1/community/activity", () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.json.success, true);
-    assert.equal(response.body.data.page, 1);
-    assert.equal(response.body.data.limit, 20);
-    assert.equal(response.body.data.total, 1);
-    assert.equal(response.body.data.items[0].type, "DISCUSSION");
+    assert.equal(response.json.data.page, 1);
+    assert.equal(response.json.data.limit, 20);
+    assert.equal(response.json.data.total, 1);
+    assert.equal(response.json.data.items[0].type, "DISCUSSION");
     assert.equal(
-      response.body.data.items[0].resource.id,
+      response.json.data.items[0].resource.id,
       String(discussion._id),
     );
   });
@@ -100,7 +98,7 @@ describe("GET /api/v1/community/activity", () => {
     const response = await requestWithQuery({ page: "nope" });
 
     assert.equal(response.status, 400);
-    assert.equal(response.body.code, "VALIDATION_FAILED");
+    assert.equal(response.json.code, "VALIDATION_FAILED");
   });
 
   it("does not expose hidden Discussions", async () => {
@@ -118,7 +116,7 @@ describe("GET /api/v1/community/activity", () => {
     const response = await requestWithQuery();
 
     assert.equal(response.status, 200);
-    assert.equal(response.body.data.total, 0);
-    assert.deepEqual(response.body.data.items, []);
+    assert.equal(response.json.data.total, 0);
+    assert.deepEqual(response.json.data.items, []);
   });
 });
