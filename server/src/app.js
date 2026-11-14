@@ -10,6 +10,7 @@ import { issueRouter } from "./routes/issue.routes.js";
 import { geocodeRouter } from "./routes/geocode.routes.js";
 import { knowledgeRouter } from "./routes/knowledge.routes.js";
 import { commentRouter } from "./routes/comment.routes.js";
+import { discussionRouter } from "./routes/discussion.routes.js";
 import { projectRouter } from "./routes/project.routes.js";
 import { expertApplicationRouter } from "./routes/expert-application.routes.js";
 import { healthRouter } from "./routes/health.routes.js";
@@ -161,6 +162,7 @@ export function createApp() {
   app.use("/api/v1/geocode", geocodeRouter);
   app.use("/api/v1/knowledge", knowledgeRouter);
   app.use("/api/v1/comments", commentRouter);
+  app.use("/api/v1/discussions", discussionRouter);
   app.use("/api/v1/projects", projectRouter);
   // Authenticated, derived Dashboard read (Issue #53).
   app.use("/api/v1/dashboard", dashboardRouter);
