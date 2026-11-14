@@ -38,13 +38,16 @@ than introducing a second conversation implementation.
 Comment creation remains authenticated through the existing requireActor()
 service boundary.
 
-The target must exist before a Comment can be created.
+The target must exist before a Comment can be created. For Discussion targets,
+creation additionally requires status ACTIVE; new comments on HIDDEN
+Discussions are rejected with TARGET_NOT_FOUND.
 
 For public Comment reads:
 
 - ISSUE remains publicly readable under its existing public-read contract.
 - WIKI remains publicly readable only when the Knowledge article is approved.
 - DISCUSSION is publicly readable only while the Discussion is ACTIVE.
+- New DISCUSSION comments may be created only while the target is ACTIVE.
 
 A hidden Discussion and a nonexistent Discussion share the same public
 TARGET_NOT_FOUND boundary. This prevents GET /api/v1/comments from becoming a
@@ -64,6 +67,7 @@ Focused tests cover:
 - reply-to-reply rejection;
 - public ACTIVE Discussion threads;
 - hidden Discussion thread suppression;
+- creation rejection for HIDDEN Discussion targets;
 - nonexistent Discussion target behavior;
 - HTTP POST/GET support for DISCUSSION;
 - preservation of the existing validation boundary for unsupported refType.
