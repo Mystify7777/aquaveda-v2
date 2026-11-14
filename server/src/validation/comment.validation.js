@@ -4,7 +4,7 @@ import { objectIdString } from "./shared/objectId.js";
 /**
  * Comment request-shape validation.
  *
- * Zod validates that `refType` is one of the two recognized values and
+ * Zod validates that `refType` is one of the three recognized values and
  * that `refId`/`parentComment` are shaped like ObjectIds. It does NOT
  * validate that `refId` actually points to an existing document of the
  * type named by `refType`, and it does NOT validate the one-level
