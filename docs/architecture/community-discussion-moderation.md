@@ -195,3 +195,15 @@ reports.
 
 Every public visibility check continues to derive from the Discussion's
 server-owned status. The frontend cannot override or infer this authority.
+
+## 9. Rate-limit deployment boundary
+
+The report endpoint reuses the existing V2 in-memory sliding-window limiter.
+Its counters are local to one Node.js process and are not shared between
+backend instances. The 10 requests/hour/IP rule is therefore enforced per
+process, not globally, when multiple backend instances are running.
+
+This is acceptable for the current single-instance deployment arrangement.
+Before scaling the API horizontally, replace the default store with a shared
+store (for example Redis/Upstash) while retaining the same limiter interface.
+Do not treat the current threshold as a distributed abuse-control guarantee.
