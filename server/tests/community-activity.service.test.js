@@ -182,6 +182,10 @@ describe("listCommunityActivity", () => {
       new Date(result.items[0].activityAt).getTime(),
       latestTime.getTime(),
     );
+    assert.equal(
+      new Date(result.items[1].activityAt).getTime(),
+      newerTime.getTime(),
+    );
   });
 
   it("uses deterministic sourceType/resourceObjectId tie-breakers", async () => {
@@ -193,16 +197,28 @@ describe("listCommunityActivity", () => {
     await addComment("ISSUE", issue._id, author._id);
 
     const timestamp = new Date("2026-01-01T00:00:00.000Z");
+    await Discussion.updateOne(
+      { _id: discussion._id },
+      { $set: { createdAt: timestamp } },
+    );
+    await Issue.updateOne(
+      { _id: issue._id },
+      { $set: { createdAt: timestamp } },
+    );
     await Comment.updateMany(
       { refId: { $in: [discussion._id, issue._id] } },
       { $set: { createdAt: timestamp, updatedAt: timestamp } },
     );
 
+    // The source-type key must win before the ObjectId key, even when the
+    // Issue has a deliberately lower resource ObjectId.
     const result = await listCommunityActivity();
 
     assert.equal(result.total, 2);
     assert.equal(result.items[0].type, "DISCUSSION");
     assert.equal(result.items[1].type, "ISSUE");
+    assert.equal(result.items[0].activityAt, timestamp.toISOString());
+    assert.equal(result.items[1].activityAt, timestamp.toISOString());
   });
 
   it("paginates the globally sorted projection instead of fixed per-source slices", async () => {
