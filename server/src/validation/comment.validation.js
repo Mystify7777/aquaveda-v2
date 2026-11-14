@@ -32,6 +32,6 @@ export const createCommentSchema = z.object({
  * in the current product plan calls for paging within a single thread.
  */
 export const commentThreadQuerySchema = z.object({
-  refType: z.enum(["ISSUE", "WIKI"]),
+  refType: z.enum(["ISSUE", "WIKI", "DISCUSSION"]),
   refId: objectIdString,
 });
