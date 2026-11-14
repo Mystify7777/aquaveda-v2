@@ -178,13 +178,18 @@ describe("public Discussion Comment reads", () => {
     assert.equal(thread[0].body, "public discussion comment");
   });
 
-  it("hides comments when the target Discussion is HIDDEN", async () => {
-    const discussion = await makeDiscussion("HIDDEN");
+  it("hides an existing Discussion thread after the target becomes HIDDEN", async () => {
+    const discussion = await makeDiscussion("ACTIVE");
     await createComment(fakeActor("USER"), {
       refType: "DISCUSSION",
       refId: discussion._id,
-      body: "comment on hidden discussion",
+      body: "comment while the Discussion is public",
     });
+
+    await Discussion.updateOne(
+      { _id: discussion._id },
+      { $set: { status: "HIDDEN" } },
+    );
 
     await assert.rejects(
       () => getCommentThread("DISCUSSION", discussion._id),
