@@ -54,7 +54,8 @@ TARGET_NOT_FOUND boundary. This prevents GET /api/v1/comments from becoming a
 visibility side channel.
 
 The concrete moderation rules for who may hide/unhide a Discussion and what
-happens to comments when that occurs remain owned by #167.
+happens to comments when that occurs are finalized by #167 in
+`docs/architecture/community-discussion-moderation.md`.
 
 ## Verification
 
