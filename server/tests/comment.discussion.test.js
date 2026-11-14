@@ -53,6 +53,20 @@ describe("Comment DISCUSSION target support", () => {
     assert.equal(comment.parentComment, null);
   });
 
+  it("rejects creation when the target Discussion is HIDDEN", async () => {
+    const discussion = await makeDiscussion("HIDDEN");
+
+    await assert.rejects(
+      () =>
+        createComment(fakeActor("USER"), {
+          refType: "DISCUSSION",
+          refId: discussion._id,
+          body: "this must not be added to a hidden Discussion",
+        }),
+      (err) => err.code === DomainErrorCode.TARGET_NOT_FOUND,
+    );
+  });
+
   it("accepts a reply on the same Discussion target", async () => {
     const discussion = await makeDiscussion();
     const parent = await createComment(fakeActor("USER"), {
