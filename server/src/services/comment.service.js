@@ -54,7 +54,7 @@ async function targetExists(refType, refId) {
       return Boolean(await Knowledge.exists({ _id: refId }));
     }
     if (refType === "DISCUSSION") {
-      return Boolean(await Discussion.exists({ _id: refId }));
+      return Boolean(await Discussion.exists({ _id: refId, status: "ACTIVE" }));
     }
     return false;
   } catch (err) {
