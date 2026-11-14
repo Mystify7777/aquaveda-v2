@@ -23,7 +23,7 @@ import { createCommentSchema, commentThreadQuerySchema } from "../validation/com
 export const commentRouter = Router();
 
 /**
- * GET /?refType=ISSUE|WIKI&refId=... — public Comment thread read.
+ * GET /?refType=ISSUE|WIKI|DISCUSSION&refId=... — public Comment thread read.
  */
 commentRouter.get("/", async (req, res) => {
   const parsed = commentThreadQuerySchema.safeParse(req.query ?? {});

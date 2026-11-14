@@ -4,7 +4,7 @@ import { objectIdString } from "./shared/objectId.js";
 /**
  * Comment request-shape validation.
  *
- * Zod validates that `refType` is one of the two recognized values and
+ * Zod validates that `refType` is one of the three recognized values and
  * that `refId`/`parentComment` are shaped like ObjectIds. It does NOT
  * validate that `refId` actually points to an existing document of the
  * type named by `refType`, and it does NOT validate the one-level
@@ -13,7 +13,7 @@ import { objectIdString } from "./shared/objectId.js";
  * responsibilities (persistence-design.md §3).
  */
 export const createCommentSchema = z.object({
-  refType: z.enum(["ISSUE", "WIKI"]),
+  refType: z.enum(["ISSUE", "WIKI", "DISCUSSION"]),
   refId: objectIdString,
   body: z.string().trim().min(1, "body is required"),
   parentComment: objectIdString.optional().nullable(),
@@ -32,6 +32,6 @@ export const createCommentSchema = z.object({
  * in the current product plan calls for paging within a single thread.
  */
 export const commentThreadQuerySchema = z.object({
-  refType: z.enum(["ISSUE", "WIKI"]),
+  refType: z.enum(["ISSUE", "WIKI", "DISCUSSION"]),
   refId: objectIdString,
 });
