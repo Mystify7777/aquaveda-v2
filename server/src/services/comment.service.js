@@ -1,6 +1,7 @@
 import { Comment } from "../models/Comment.js";
 import { Issue } from "../models/Issue.js";
 import { Knowledge } from "../models/Knowledge.js";
+import { Discussion } from "../models/Discussion.js";
 // Model-registration side effect only — see issue.service.js's
 // identical import for the full explanation.
 import "../models/User.js";
@@ -25,7 +26,7 @@ import { requireActor } from "./authorization.js";
  * is also rejected (one level of nesting only).
  */
 
-const SUPPORTED_REF_TYPES = ["ISSUE", "WIKI"];
+const SUPPORTED_REF_TYPES = ["ISSUE", "WIKI", "DISCUSSION"];
 
 // Public-read attribution: name/role only. See issue.service.js's
 // identical constant for the full rationale.
@@ -51,6 +52,9 @@ async function targetExists(refType, refId) {
     }
     if (refType === "WIKI") {
       return Boolean(await Knowledge.exists({ _id: refId }));
+    }
+    if (refType === "DISCUSSION") {
+      return Boolean(await Discussion.exists({ _id: refId }));
     }
     return false;
   } catch (err) {
@@ -205,6 +209,19 @@ export async function getCommentThread(refType, refId) {
       // here (e.g. FORBIDDEN) would confirm to an anonymous caller
       // that a specific draft/pending_review/rejected article exists,
       // exactly the disclosure Issue #48's own constraints forbid.
+      throw targetNotFound(
+        `no ${refType} document found for refId ${refId}`,
+        { refType, refId },
+      );
+    }
+  }
+
+  if (refType === "DISCUSSION") {
+    const discussion = await Discussion.findById(refId).select("status").lean();
+    if (!discussion || discussion.status !== "ACTIVE") {
+      // Hidden Discussions intentionally collapse to the same public
+      // TARGET_NOT_FOUND boundary as nonexistent Discussions. This prevents
+      // the shared Comment endpoint from becoming a visibility side channel.
       throw targetNotFound(
         `no ${refType} document found for refId ${refId}`,
         { refType, refId },
