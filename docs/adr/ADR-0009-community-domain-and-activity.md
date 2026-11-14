@@ -29,7 +29,7 @@ with the current target vocabulary `ISSUE | WIKI`, and one-level replies.
 Issue #165 is explicitly responsible for determining whether `DISCUSSION`
 can be added without weakening those invariants.
 
-The backend already uses offset pagination with `page`/\`limit`, a maximum
+The backend already uses offset pagination with `page`/`limit`, a maximum
 limit of 50, and deterministic `createdAt DESC, _id DESC` ordering for public
 lists. Community should use the same pagination model rather than introducing
 a cursor framework solely for this feature.
@@ -273,7 +273,8 @@ interface CommunityActivityItem {
 Rules:
 
 - `id` is a deterministic projection identity, not a new persisted id.
-  Recommended form: `<type-lowercase>:<resourceId>`.
+  It uses the form `<type-lowercase>:<resourceId>`. The public id is not
+  used as the internal pagination tie-breaker.
 - `resource.type + resource.id` is the canonical destination identity.
 - The frontend owns presentation and route construction from the established
   resource route contract; the backend does not invent arbitrary UI URLs.
@@ -292,15 +293,26 @@ and Comment representations remain owned by their existing endpoints.
 The canonical ordering is:
 
 ```text
-activityAt DESC, id DESC
+activityAt DESC
+sourceType ASC
+resourceObjectId DESC
 ```
 
-The second key is mandatory because equal timestamps are possible and an
-unordered tie would make page boundaries nondeterministic.
+This is the internal total-order comparator used for pagination. `sourceType`
+uses the canonical source vocabulary (`DISCUSSION`, `ISSUE`, `KNOWLEDGE`).
+`resourceObjectId` is the underlying MongoDB ObjectId, compared as an ObjectId,
+not as part of the public projection string. Equal timestamps therefore remain
+deterministically ordered without relying on lexicographical ordering of the
+public `id`.
+
+The public projection `id` remains a deterministic identity in the form
+`<type-lowercase>:<resourceId>`. It is not the pagination sort key. Every page
+boundary must use the same internal comparator as the total-count/source-set
+calculation.
 
 Pagination is ordinary V2 offset pagination:
 
-``text
+```text
 ?page=1&limit=20
 ```
 
@@ -342,6 +354,12 @@ The implementation must explicitly test for N+1 behavior. A loop that performs
 one target/comment/actor query per feed item is not an acceptable implementation
 of this contract.
 
+The implementation must also avoid loading the full eligible source population
+into application memory. Pagination and total-count calculation must use
+bounded database-side aggregation or another demonstrably bounded strategy.
+An implementation that materializes all eligible Discussions, Issues, or
+Knowledge resources merely to merge, sort, or count the feed is not acceptable.
+
 No materialized Activity collection, background projector, event bus, or
 real-time update mechanism is introduced in MVP.
 
@@ -351,8 +369,10 @@ Discussion must have indexes supporting its established access patterns:
 
 - public status + creation ordering:
   `{ status: 1, createdAt: -1, _id: -1 }`
-- author lookup, where required by the authenticated workflow:
-  `{ author: 1, createdAt: -1 }`
+- an author-oriented index is **conditional**, not required by this ADR. If
+  #164 establishes a real author-specific query such as a future
+  `GET /api/v1/discussions/mine`, it may add the smallest evidence-backed
+  index at that point. No speculative author index is required by MVP.
 
 The existing Comment index:
 
@@ -389,6 +409,13 @@ Backend errors continue through the existing shared response/error mapping.
 ### 14. Privacy and visibility boundary
 
 Community Activity must never become a side channel for private content.
+
+The following is a cross-endpoint invariant: when a Discussion is `HIDDEN`,
+every anonymous public read path must treat it as unavailable. That includes
+Discussion list/detail, Discussion-targeted Comment reads, and Community
+Activity. No public endpoint may expose its title, body, comment count,
+activity timestamp, author, existence, or moderation state. The same
+hidden/nonexistent boundary applies to the Discussion detail route.
 
 A resource is eligible only when its existing public-read contract permits it.
 
@@ -476,11 +503,13 @@ preserves resource ownership.
                     #12  Community frontend
 ```
 
-#164 and #165 may proceed in parallel after this ADR. #167 depends on the
-Discussion visibility model established here and implemented by #164.
-#166 consumes the finalized Discussion and Comment contracts. #12 starts its
-backend-dependent implementation slices only after the API contracts are
-stable.
+#164 and #165 may proceed in parallel after this ADR. #167 owns the concrete
+reporting and moderation authorization/lifecycle contract and depends on the
+Discussion visibility model from this ADR and the Discussion implementation
+in #164. #166 requires finalized Discussion, Comment, and public-visibility
+contracts; it does not need to wait for unrelated #167 work once those
+contracts are settled. #12 starts its backend-dependent implementation slices
+only after the API contracts are stable.
 
 ## Verification requirements for downstream issues
 
@@ -501,12 +530,17 @@ stable.
 - reply-to-reply remains rejected;
 - public visibility follows the target Discussion status.
 
-#167 must prove:
+#167 must define and prove:
 
-- hidden Discussions disappear from public reads/activity;
-- reporting cannot be abused as an unauthenticated mutation;
-- moderation authority is server-side;
-- moderation-sensitive operations are auditable where required.
+- who may report a Discussion;
+- duplicate-report and report-abuse controls;
+- self-report behavior;
+- who may hide/unhide a Discussion;
+- whether authors may hide their own Discussions;
+- what happens to existing comments when a Discussion becomes hidden;
+- moderation authority and audit semantics;
+- hidden Discussions disappear from every anonymous public read path,
+  including Discussion detail, Comment threads, and Activity.
 
 #166 must prove:
 
