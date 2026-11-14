@@ -136,8 +136,7 @@ discussionRouter.post("/:discussionId/reports", requireAuthenticated, reportLimi
     sendSuccess(
       res,
       {
-        _id: String(report._id),
-        discussion: String(report.discussion),
+        submitted: true,
         reason: report.reason,
         createdAt: report.createdAt,
       },
