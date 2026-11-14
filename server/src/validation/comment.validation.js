@@ -13,7 +13,7 @@ import { objectIdString } from "./shared/objectId.js";
  * responsibilities (persistence-design.md §3).
  */
 export const createCommentSchema = z.object({
-  refType: z.enum(["ISSUE", "WIKI"]),
+  refType: z.enum(["ISSUE", "WIKI", "DISCUSSION"]),
   refId: objectIdString,
   body: z.string().trim().min(1, "body is required"),
   parentComment: objectIdString.optional().nullable(),
