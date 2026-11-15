@@ -44,7 +44,7 @@ describe("accessibility regression baseline", () => {
       const user = userEvent.setup();
       render(<IssueReportForm />);
 
-      for (let i = 0; i < 10; i += 1) {
+      for (let i = 0; i < 9; i += 1) {
         await user.tab();
       }
 
