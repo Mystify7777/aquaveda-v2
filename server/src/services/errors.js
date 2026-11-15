@@ -46,6 +46,7 @@ export const DomainErrorCode = Object.freeze({
   // distinguish these cases from its result without a second, non-atomic
   // diagnostic read this project has deliberately declined to add — see
   // authentication-implementation-plan.md's Phase C correction
+  PASSWORD_RESET_INVALID: "PASSWORD_RESET_INVALID",
 
   // --- Rate-limiting addition (Issue #42) ---
   TOO_MANY_REQUESTS: "TOO_MANY_REQUESTS", // the client has exceeded the

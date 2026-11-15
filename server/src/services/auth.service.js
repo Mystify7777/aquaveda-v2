@@ -1,5 +1,8 @@
+import { createHash, randomBytes } from "node:crypto";
 import { User } from "../models/User.js";
 import { Session } from "../models/Session.js";
+import { PasswordResetCredential } from "../models/PasswordResetCredential.js";
+import { sendPasswordResetEmail } from "./password-reset-email.js";
 import {
   invalidCredentials,
   emailAlreadyRegistered,
@@ -409,5 +412,77 @@ export async function logout(rawRefreshToken) {
     // `sid` values, but defended anyway) throws a CastError here —
     // still a no-op success, same reasoning as above.
   }
+  return { success: true };
+}
+
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+const PASSWORD_RESET_RESPONSE_FLOOR_MS = 250;
+const PASSWORD_RESET_INVALID_MESSAGE = "This password reset link is invalid or has expired. Request a new link and try again.";
+
+/**
+ * Always returns the same result for known and unknown email addresses.
+ * The raw credential is only passed to the mail transport and is never
+ * persisted or included in a response or log.
+ */
+export async function requestPasswordReset(emailInput, deliverEmail = sendPasswordResetEmail) {
+  const startedAt = Date.now();
+  const email = canonicalizeEmail(emailInput);
+  const user = await User.findOne({ email });
+
+  if (user) {
+    const rawToken = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+    await PasswordResetCredential.deleteMany({ userId: user._id });
+    await PasswordResetCredential.create({
+      userId: user._id,
+      tokenHash,
+      expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+    });
+
+    try {
+      // Do not make the HTTP response wait on SMTP: delivery latency is
+      // outside the requester's control and would distinguish known from
+      // unknown addresses. The running API process owns this promise.
+      Promise.resolve(deliverEmail(user.email, rawToken)).catch(() => {
+        // Deliberately do not log the error object: transport errors can
+        // contain message content or other sensitive delivery metadata.
+        console.warn("[auth.password-reset] Reset email delivery failed.");
+      });
+    } catch {
+      console.warn("[auth.password-reset] Reset email delivery failed.");
+    }
+  }
+
+  const remainingDelay = PASSWORD_RESET_RESPONSE_FLOOR_MS - (Date.now() - startedAt);
+  if (remainingDelay > 0) {
+    await new Promise((resolve) => setTimeout(resolve, remainingDelay));
+  }
+
+  return { success: true };
+}
+
+/** Atomically consumes a valid token, updates the password, and revokes refresh sessions. */
+export async function resetPassword({ token, password }) {
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const credential = await PasswordResetCredential.findOneAndDelete({
+    tokenHash,
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (!credential) {
+    throw new DomainError(DomainErrorCode.PASSWORD_RESET_INVALID, PASSWORD_RESET_INVALID_MESSAGE);
+  }
+
+  const passwordHash = await hashPassword(password);
+  const update = await User.updateOne(
+    { _id: credential.userId },
+    { $set: { passwordHash } },
+  );
+  if (update.matchedCount !== 1) {
+    throw new DomainError(DomainErrorCode.PASSWORD_RESET_INVALID, PASSWORD_RESET_INVALID_MESSAGE);
+  }
+
+  await Session.deleteMany({ userId: credential.userId });
+  await PasswordResetCredential.deleteMany({ userId: credential.userId });
   return { success: true };
 }

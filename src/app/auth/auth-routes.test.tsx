@@ -118,7 +118,7 @@ describe("every auth link in shared UI uses the canonical URL and resolves to a 
     login.unmount();
     const register = render(<RegisterPage />);
     const toLogin = internalHrefs(register.container);
-    expect(toRegister).toEqual([CANONICAL.register]);
+    expect(toRegister.sort()).toEqual(["/auth/forgot-password", CANONICAL.register].sort());
     expect(toLogin).toEqual([CANONICAL.login]);
     for (const href of [...toRegister, ...toLogin]) expect(routeHasPage(href), href).toBe(true);
   });

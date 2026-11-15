@@ -39,7 +39,7 @@ test.describe("authenticated route boundary", () => {
     await page.goto("/auth/register");
     await page.getByLabel("Name").fill("E2E Browser User");
     await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
+    await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Create account" }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByLabel("Signed-in role").first()).toHaveText("USER");
@@ -55,7 +55,7 @@ test.describe("authenticated route boundary", () => {
 
     await page.goto("/auth/login");
     await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
+    await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/$/);
 

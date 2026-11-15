@@ -73,3 +73,17 @@ export function refreshSession() {
         return user;
     });
 }
+
+export function requestPasswordReset(email: string) {
+    return apiRequest<null>(`${AUTH_PATH}/password-reset/request`, {
+        method: "POST",
+        body: JSON.stringify({ email }),
+    });
+}
+
+export function resetPassword(payload: { token: string; password: string }) {
+    return apiRequest<null>(`${AUTH_PATH}/password-reset/confirm`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}

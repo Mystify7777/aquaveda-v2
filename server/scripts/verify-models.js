@@ -30,6 +30,7 @@ import { Knowledge } from "../src/models/Knowledge.js";
 import { Comment } from "../src/models/Comment.js";
 import { Project } from "../src/models/Project.js";
 import { Session } from "../src/models/Session.js";
+import { PasswordResetCredential } from "../src/models/PasswordResetCredential.js";
 
 const results = [];
 let failures = 0;
@@ -66,6 +67,9 @@ check("1e. Project model compiles", () => {
 });
 check("1f. Session model compiles (Authentication milestone)", () => {
   assert.equal(Session.modelName, "Session");
+});
+check("1g. Password reset credential model compiles", () => {
+  assert.equal(PasswordResetCredential.modelName, "PasswordResetCredential");
 });
 
 // ---------------------------------------------------------------------
@@ -135,6 +139,16 @@ check("2g. Session has a real MongoDB TTL index on expiresAt (expireAfterSeconds
       "(deletes at the stored absolute timestamp itself), not just a " +
       "regular lookup index"
   );
+});
+
+check("2h. Password reset credentials have a real TTL index on expiresAt", () => {
+  const expiresEntry = PasswordResetCredential.schema.indexes().find(([f]) => f.expiresAt === 1);
+  assert.ok(expiresEntry, "missing password reset expiresAt index");
+  assert.equal(expiresEntry[1].expireAfterSeconds, 0);
+});
+check("2i. Password reset token hashes are excluded by default and no raw token field exists", () => {
+  assert.equal(PasswordResetCredential.schema.path("tokenHash").options.select, false);
+  assert.equal(PasswordResetCredential.schema.path("token"), undefined);
 });
 
 // ---------------------------------------------------------------------
@@ -552,7 +566,7 @@ check("8i. Issue has no resolvedBy/verifiedBy top-level fields", () => {
   assert.equal(Issue.schema.path("verifiedBy"), undefined);
 });
 
-check("8j. Exactly the expected six models are registered (five domain models plus Session; Recommendation is never persisted)", () => {
+check("8j. Exactly the expected seven models are registered", () => {
   const names = mongoose.modelNames();
   assert.ok(
     !names.includes("Recommendation"),
@@ -560,7 +574,7 @@ check("8j. Exactly the expected six models are registered (five domain models pl
   );
   assert.deepEqual(
     [...names].sort(),
-    ["Comment", "Issue", "Knowledge", "Project", "Session", "User"].sort()
+    ["Comment", "Issue", "Knowledge", "PasswordResetCredential", "Project", "Session", "User"].sort()
   );
 });
 

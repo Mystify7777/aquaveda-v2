@@ -54,6 +54,7 @@ const ERROR_STATUS_MAP = Object.freeze({
   [DomainErrorCode.INVALID_CREDENTIALS]: 401,
   [DomainErrorCode.EMAIL_ALREADY_REGISTERED]: 409,
   [DomainErrorCode.REFRESH_FAILED]: 401,
+  [DomainErrorCode.PASSWORD_RESET_INVALID]: 400,
 
   // Rate-limiting (Issue #42): 429 Too Many Requests.
   [DomainErrorCode.TOO_MANY_REQUESTS]: 429,

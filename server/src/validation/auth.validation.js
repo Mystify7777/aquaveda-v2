@@ -80,3 +80,15 @@ export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email("must be a valid email address"),
   password: z.string().min(1, "password is required"),
 });
+
+export const passwordResetRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email("must be a valid email address"),
+});
+
+export const passwordResetSchema = z.object({
+  token: z.string().min(1, "reset token is required").max(256, "reset token is invalid"),
+  password: z
+    .string()
+    .min(MIN_PASSWORD_LENGTH, `password must be at least ${MIN_PASSWORD_LENGTH} characters`)
+    .max(MAX_PASSWORD_LENGTH, `password must be at most ${MAX_PASSWORD_LENGTH} characters`),
+});

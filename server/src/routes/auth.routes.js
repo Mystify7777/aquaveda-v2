@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import { register, login, refresh, logout } from "../services/auth.service.js";
+import { register, login, refresh, logout, requestPasswordReset, resetPassword } from "../services/auth.service.js";
 import {
   getAccessTokenLifetimeMs,
   getRefreshTokenLifetimeMs,
@@ -8,7 +8,7 @@ import {
 import { ACCESS_TOKEN_COOKIE_NAME } from "../middleware/auth.js";
 import { createRateLimiter } from "../middleware/rate-limiter.js";
 import { resolveCookieSameSite, resolveCookieDomain } from "../config/env.js";
-import { registerSchema, loginSchema } from "../validation/auth.validation.js";
+import { registerSchema, loginSchema, passwordResetRequestSchema, passwordResetSchema } from "../validation/auth.validation.js";
 import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
 
 /**
@@ -156,7 +156,47 @@ const refreshLimiter = createRateLimiter({
   keyPrefix: "auth:refresh:",
 });
 
+const passwordResetRequestLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 5,
+  keyPrefix: "auth:password-reset-request:",
+});
+
+const passwordResetLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 5,
+  keyPrefix: "auth:password-reset:",
+});
+
 export const authRouter = Router();
+
+authRouter.post("/password-reset/request", passwordResetRequestLimiter, async (req, res) => {
+  const parsed = passwordResetRequestSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+  try {
+    await requestPasswordReset(parsed.data.email);
+    sendSuccess(res, null, "If an account exists for that email, a reset link will be sent.");
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+authRouter.post("/password-reset/confirm", passwordResetLimiter, async (req, res) => {
+  const parsed = passwordResetSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+  try {
+    await resetPassword(parsed.data);
+    sendSuccess(res, null, "Password updated. Sign in with your new password.");
+  } catch (err) {
+    sendError(res, err);
+  }
+});
 
 authRouter.post("/register", registerLimiter, async (req, res) => {
   const parsed = registerSchema.safeParse(req.body ?? {});
