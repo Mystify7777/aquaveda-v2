@@ -374,29 +374,36 @@ export async function refresh(rawRefreshToken) {
     await rejectBlockedState(state);
   }
 
-  // Atomically reserve refresh issuance on the User document. Governance
-  // transitions out of ACTIVE/MUTED must also increment accountStateVersion
-  // in the same User update. This gives both operations one serialization
-  // point: either the refresh reservation precedes the transition, or the
-  // transition wins and this predicate no longer matches.
-  const version = user.accountStateVersion ?? 0;
+  // Re-read account state immediately before token issuance. This catches
+  // a state transition that committed after the previous read.
+  const latestUser = await User.findById(sub);
+  if (!latestUser) {
+    await Session.deleteMany({ userId: sub });
+    throw refreshFailed("Refresh failed");
+  }
+  await rejectBlockedState(latestUser.accountState ?? ACCOUNT_STATES.ACTIVE);
+
+  // Atomic state/version reservation coordinates refresh issuance with
+  // governance transitions. Every transition that changes accountState
+  // must increment accountStateVersion in the same User update.
+  const version = latestUser.accountStateVersion ?? 0;
   const reservation = await User.findOneAndUpdate(
     {
-      _id: user._id,
+      _id: latestUser._id,
       accountState: { $in: [ACCOUNT_STATES.ACTIVE, ACCOUNT_STATES.MUTED] },
       accountStateVersion: version,
     },
     { $inc: { accountStateVersion: 1 } },
     { new: true },
   );
-
   if (!reservation) {
-    const latest = await User.findById(sub).select("accountState");
-    if (!latest) {
+    const current = await User.findById(sub).select("accountState");
+    if (!current) {
       await Session.deleteMany({ userId: sub });
       throw refreshFailed("Refresh failed");
     }
-    await rejectBlockedState(latest.accountState ?? ACCOUNT_STATES.ACTIVE);
+    await rejectBlockedState(current.accountState ?? ACCOUNT_STATES.ACTIVE);
+    throw refreshFailed("Refresh failed");
   }
 
   const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(sub);
