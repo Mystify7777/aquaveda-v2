@@ -1,4 +1,5 @@
 import { User } from "../models/User.js";
+import { ACCOUNT_STATES } from "../domain/account-state.js";
 import { Session } from "../models/Session.js";
 import {
   invalidCredentials,
@@ -312,6 +313,54 @@ export async function refresh(rawRefreshToken) {
   const { sub, sid } = decoded;
   const tokenHash = hashRefreshToken(rawRefreshToken);
 
+  // Account state is authoritative over the refresh JWT. Before rotating
+  // any session, resolve the current User state from persistence. Blocked
+  // states invalidate every refresh session for the account, not merely
+  // the token presented on this request.
+  let currentUser;
+  try {
+    currentUser = await User.findById(sub);
+  } catch {
+    throw refreshFailed("Refresh failed");
+  }
+
+  if (!currentUser) {
+    // The account has already disappeared. Best-effort cleanup preserves
+    // the session invariant without turning a missing User into a new
+    // externally visible error category.
+    try {
+      await Session.deleteMany({ userId: sub });
+    } catch {
+      // Cleanup is defensive here; the refresh must still fail safely.
+    }
+    throw refreshFailed("Refresh failed");
+  }
+
+  const accountState = currentUser.accountState ?? ACCOUNT_STATES.ACTIVE;
+  if (accountState === ACCOUNT_STATES.HARD_SUSPENDED) {
+    await Session.deleteMany({ userId: sub });
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_SUSPENDED,
+      "Account access is suspended",
+    );
+  }
+
+  if (accountState === ACCOUNT_STATES.DELETION_PENDING) {
+    await Session.deleteMany({ userId: sub });
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_DELETION_PENDING,
+      "Account deletion is pending",
+    );
+  }
+
+  if (accountState === ACCOUNT_STATES.PERMANENTLY_DELETED) {
+    await Session.deleteMany({ userId: sub });
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED,
+      "Account is permanently deleted",
+    );
+  }
+
   let consumed;
   try {
     consumed = await Session.findOneAndDelete({
@@ -337,10 +386,11 @@ export async function refresh(rawRefreshToken) {
     throw refreshFailed("Refresh failed");
   }
 
-  // The consumed Session is proof `sub` was a real, valid user at the
-  // time this refresh token was issued — but per L11's fresh-role
-  // principle applied consistently, the User is still read fresh here
-  // rather than trusting anything cached from token issuance.
+  // Re-read the User after consuming the session. The first read above
+  // protected the rotation boundary from already-blocked accounts; this
+  // second read preserves the existing fresh-identity principle and
+  // closes the obvious state-change window before issuing replacement
+  // credentials.
   const user = await User.findById(sub);
   if (!user) {
     // The user was deleted between issuing this refresh token and using
