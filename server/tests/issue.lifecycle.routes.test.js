@@ -39,7 +39,7 @@ beforeEach(async () => {
 const post = (id, path, token, body = {}) => app.request("POST", `/api/v1/issues/${id}${path}`, { token, body });
 const ENVELOPE = ["data", "message", "success"];
 const MUTATION_KEYS = ["issue", "workflow"];
-const WORKFLOW_KEYS = ["assignee", "events", "pending", "state"];
+const WORKFLOW_KEYS = ["actions", "assignee", "events", "pending", "state"];
 
 function assertMutationShape(res) {
   assert.deepEqual(Object.keys(res.json).sort(), ENVELOPE);

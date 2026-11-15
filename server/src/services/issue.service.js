@@ -1,3 +1,5 @@
+import { isGrantee } from "../domain/remediation.js";
+import { resolverOf } from "../domain/issue-lifecycle.js";
 import { Issue } from "../models/Issue.js";
 // Imported for its model-registration side effect only — not called
 // directly by this file. Mongoose's .populate("reportedBy", ...) below
@@ -173,7 +175,7 @@ function authorizeTransition(fromStatus, targetStatus, actorContext, issueDoc) {
   ) {
     const transition = `${fromStatus}->${targetStatus}`;
     const grant = issueDoc.remediation;
-    if (!grant || String(grant.actor) !== String(actorContext.id)) {
+    if (!isGrantee(grant, actorContext.id)) {
       throw forbidden(
         "only the accepted remediation grantee may perform this transition",
         { transition },
@@ -196,8 +198,8 @@ function authorizeTransition(fromStatus, targetStatus, actorContext, issueDoc) {
     // that produced the current `resolved` status. No top-level
     // resolverId/verifierId field exists anywhere; this is read from the
     // statusHistory array itself, at the moment it's needed.
-    const lastEntry = issueDoc.statusHistory[issueDoc.statusHistory.length - 1];
-    if (!lastEntry || lastEntry.toStatus !== "resolved") {
+    const resolver = resolverOf(issueDoc);
+    if (resolver === null) {
       // Defensive: should be unreachable if statusHistory is always
       // correctly appended, but this is exactly the kind of assumption
       // worth checking rather than trusting silently.
@@ -206,7 +208,7 @@ function authorizeTransition(fromStatus, targetStatus, actorContext, issueDoc) {
         { statusHistory: issueDoc.statusHistory },
       );
     }
-    if (String(lastEntry.actor) === String(actorContext.id)) {
+    if (resolver === String(actorContext.id)) {
       throw forbidden(
         "the actor who resolved an Issue may not also verify it",
         { transition: "resolved->verified" },

@@ -240,7 +240,7 @@ describe("workflow visibility (role-based vs participation-based)", () => {
 
   it("legacy issues (no fields) produce an unassigned, empty view", () => {
     const view = projectWorkflowView({ statusHistory: [] }, { id: "z", role: "EXPERT" }, actors);
-    assert.deepEqual(view, { state: "unassigned", assignee: null, pending: null, events: [] });
+    assert.deepEqual(view, { state: "unassigned", assignee: null, pending: null, events: [], actions: [] });
   });
 });
 
