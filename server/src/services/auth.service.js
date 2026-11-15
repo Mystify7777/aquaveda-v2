@@ -381,7 +381,10 @@ export async function refresh(rawRefreshToken) {
     await Session.deleteMany({ userId: sub });
     throw refreshFailed("Refresh failed");
   }
-  await rejectBlockedState(latestUser.accountState ?? ACCOUNT_STATES.ACTIVE);
+  const latestState = latestUser.accountState ?? ACCOUNT_STATES.ACTIVE;
+  if (latestState !== ACCOUNT_STATES.ACTIVE && latestState !== ACCOUNT_STATES.MUTED) {
+    await rejectBlockedState(latestState);
+  }
 
   // Atomic state/version reservation coordinates refresh issuance with
   // governance transitions. Every transition that changes accountState
