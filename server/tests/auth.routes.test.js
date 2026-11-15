@@ -566,7 +566,7 @@ describe("Issue #173 — current account-state enforcement", () => {
     }
   });
 
-  it("a suspension that wins between refresh state reads prevents replacement-session issuance", async () => {
+  it("a concurrent suspension before the refresh reservation prevents replacement-session issuance", async () => {
     const registerRes = await request("POST", "/api/v1/auth/register", {
       body: registerBody(),
     });
@@ -574,23 +574,27 @@ describe("Issue #173 — current account-state enforcement", () => {
     const user = await User.findOne({ email: "test@example.com" });
     assert.ok(user);
 
-    const originalFindById = User.findById.bind(User);
-    let reads = 0;
-    User.findById = function (...args) {
-      reads += 1;
-      if (reads === 1) {
-        return originalFindById(...args);
+    const originalFindOneAndUpdate = User.findOneAndUpdate.bind(User);
+    let injected = false;
+    User.findOneAndUpdate = function (filter, update, options) {
+      if (
+        !injected &&
+        filter?._id?.toString() === user._id.toString() &&
+        filter?.accountStateVersion === 0
+      ) {
+        injected = true;
+        return Promise.resolve().then(async () => {
+          await User.updateOne(
+            { _id: user._id },
+            {
+              $set: { accountState: "HARD_SUSPENDED" },
+              $inc: { accountStateVersion: 1 },
+            },
+          );
+          return originalFindOneAndUpdate(filter, update, options);
+        });
       }
-      return Promise.resolve().then(async () => {
-        await User.updateOne(
-          { _id: user._id },
-          {
-            $set: { accountState: "HARD_SUSPENDED" },
-            $inc: { accountStateVersion: 1 },
-          },
-        );
-        return originalFindById(...args);
-      });
+      return originalFindOneAndUpdate(filter, update, options);
     };
 
     try {
@@ -598,11 +602,12 @@ describe("Issue #173 — current account-state enforcement", () => {
         cookies: { refresh_token: cookies.refresh_token.value },
       });
 
+      assert.equal(injected, true, "the refresh issuance reservation must be reached");
       assert.equal(refreshRes.status, 403);
       assert.equal(refreshRes.json.code, "ACCOUNT_SUSPENDED");
       assert.equal(await Session.countDocuments({ userId: user._id }), 0);
     } finally {
-      User.findById = originalFindById;
+      User.findOneAndUpdate = originalFindOneAndUpdate;
     }
   });
 
