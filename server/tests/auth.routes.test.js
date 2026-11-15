@@ -429,6 +429,44 @@ describe("Issue #173 — current account-state enforcement", () => {
     assert.equal(dashboardRes.status, 200);
   });
 
+  it("blocked account states cannot establish a new login session", async () => {
+    for (const [accountState, code] of [
+      ["HARD_SUSPENDED", "ACCOUNT_SUSPENDED"],
+      ["DELETION_PENDING", "ACCOUNT_DELETION_PENDING"],
+      ["PERMANENTLY_DELETED", "ACCOUNT_PERMANENTLY_DELETED"],
+    ]) {
+      await clearCollections();
+      defaultStore.reset();
+
+      const email = `blocked-${accountState.toLowerCase()}@example.com`;
+      await request("POST", "/api/v1/auth/register", {
+        body: registerBody({ email }),
+      });
+
+      await User.updateOne(
+        { email },
+        { $set: { accountState } },
+      );
+
+      const loginRes = await request("POST", "/api/v1/auth/login", {
+        body: {
+          email,
+          password: "correcthorsebatterystaple",
+        },
+      });
+
+      assert.equal(loginRes.status, 403);
+      assert.equal(loginRes.json.code, code);
+      const blockedUser = await User.findOne({ email });
+      assert.ok(blockedUser);
+      assert.equal(
+        await Session.countDocuments({ userId: blockedUser._id }),
+        0,
+        "blocked login must not create a refresh session",
+      );
+    }
+  });
+
   it("HARD_SUSPENDED invalidates all refresh sessions and does not allow an old refresh token after recovery", async () => {
     const registerRes = await request("POST", "/api/v1/auth/register", {
       body: registerBody(),
@@ -461,10 +499,6 @@ describe("Issue #173 — current account-state enforcement", () => {
       "all active refresh sessions must be invalidated when suspension becomes effective",
     );
 
-    // Recovery in this test is represented by restoring ACTIVE directly.
-    // The old refresh credential must still be unusable because recovery
-    // requires a fresh session; the dedicated recovery workflow owns the
-    // state transition and fresh-session issuance.
     await User.updateOne(
       { _id: user._id },
       { $set: { accountState: "ACTIVE" } },
