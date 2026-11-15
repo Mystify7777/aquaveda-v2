@@ -149,7 +149,12 @@ const userSchema = new Schema(
       enum: Object.values(ACCOUNT_STATES),
       required: true,
       default: ACCOUNT_STATES.ACTIVE,
-      index: true,
+    },
+    accountStateVersion: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
     },
     bio: {
       type: String,
