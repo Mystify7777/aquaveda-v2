@@ -54,6 +54,9 @@ const ERROR_STATUS_MAP = Object.freeze({
   [DomainErrorCode.INVALID_CREDENTIALS]: 401,
   [DomainErrorCode.EMAIL_ALREADY_REGISTERED]: 409,
   [DomainErrorCode.REFRESH_FAILED]: 401,
+  [DomainErrorCode.ACCOUNT_SUSPENDED]: 403,
+  [DomainErrorCode.ACCOUNT_DELETION_PENDING]: 403,
+  [DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED]: 403,
 
   // Rate-limiting (Issue #42): 429 Too Many Requests.
   [DomainErrorCode.TOO_MANY_REQUESTS]: 429,
