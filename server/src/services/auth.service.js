@@ -255,6 +255,30 @@ export async function login(payload) {
     throw invalidCredentials("Invalid email or password");
   }
 
+  // Account state is checked after credential verification so the login
+  // path never becomes an account-enumeration oracle. MUTED remains
+  // login/read-capable; blocked lifecycle states cannot establish a new
+  // authenticated session.
+  const accountState = user.accountState ?? ACCOUNT_STATES.ACTIVE;
+  if (accountState === ACCOUNT_STATES.HARD_SUSPENDED) {
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_SUSPENDED,
+      "Account access is suspended",
+    );
+  }
+  if (accountState === ACCOUNT_STATES.DELETION_PENDING) {
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_DELETION_PENDING,
+      "Account deletion is pending",
+    );
+  }
+  if (accountState === ACCOUNT_STATES.PERMANENTLY_DELETED) {
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED,
+      "Account is permanently deleted",
+    );
+  }
+
   const { accessToken, refreshToken } = await issueTokenPair(user._id);
 
   return {
