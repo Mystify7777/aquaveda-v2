@@ -85,7 +85,6 @@ storage fields are public.
 ## Non-goals
 
 - Discussion edits/deletion
-- Discussion moderation/reporting implementation (#167)
-- Discussion comments (#165)
 - Community Activity (#166)
+- Discussion comments (#165)
 - social-network features

@@ -327,6 +327,366 @@ describe("GET /api/v1/auth/me", () => {
   });
 });
 
+describe("Issue #173 — current account-state enforcement", () => {
+  it("new accounts default to ACTIVE and /me exposes the current server-authoritative state", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+
+    const meRes = await request("GET", "/api/v1/auth/me", {
+      cookies: { access_token: cookies.access_token.value },
+    });
+
+    assert.equal(meRes.status, 200);
+    assert.equal(meRes.json.data.user.role, "USER");
+    assert.equal(meRes.json.data.accountState, "ACTIVE");
+  });
+
+  it("HARD_SUSPENDED blocks authenticated application routes while preserving /me for the suspension boundary", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { accountState: "HARD_SUSPENDED" } },
+    );
+
+    const meRes = await request("GET", "/api/v1/auth/me", {
+      cookies: { access_token: cookies.access_token.value },
+    });
+    assert.equal(meRes.status, 200);
+    assert.equal(meRes.json.data.accountState, "HARD_SUSPENDED");
+
+    const dashboardRes = await request("GET", "/api/v1/dashboard", {
+      cookies: { access_token: cookies.access_token.value },
+    });
+    assert.equal(dashboardRes.status, 403);
+    assert.equal(dashboardRes.json.code, "ACCOUNT_SUSPENDED");
+    assert.equal(dashboardRes.json.data, null);
+  });
+
+  it("DELETION_PENDING blocks authenticated application routes", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { accountState: "DELETION_PENDING" } },
+    );
+
+    const dashboardRes = await request("GET", "/api/v1/dashboard", {
+      cookies: { access_token: cookies.access_token.value },
+    });
+    assert.equal(dashboardRes.status, 403);
+    assert.equal(dashboardRes.json.code, "ACCOUNT_DELETION_PENDING");
+  });
+
+  it("PERMANENTLY_DELETED blocks authenticated application routes", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { accountState: "PERMANENTLY_DELETED" } },
+    );
+
+    const dashboardRes = await request("GET", "/api/v1/dashboard", {
+      cookies: { access_token: cookies.access_token.value },
+    });
+    assert.equal(dashboardRes.status, 403);
+    assert.equal(dashboardRes.json.code, "ACCOUNT_PERMANENTLY_DELETED");
+  });
+
+  it("blocked account can still log out and the auth cookies are cleared", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { accountState: "HARD_SUSPENDED" } },
+    );
+
+    const logoutRes = await request("POST", "/api/v1/auth/logout", {
+      cookies: { refresh_token: cookies.refresh_token.value },
+    });
+    assert.equal(logoutRes.status, 200);
+    assert.equal(logoutRes.json.success, true);
+
+    const cleared = parseSetCookies(logoutRes.setCookieHeaders);
+    assert.equal(cleared.access_token.value, "");
+    assert.equal(cleared.refresh_token.value, "");
+    assert.equal(await Session.countDocuments({ userId: user._id }), 0);
+  });
+
+  it("legacy User documents without accountState remain ACTIVE", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+
+    // Simulate a pre-#173 document at the raw collection boundary so
+    // Mongoose schema defaults cannot silently fill the field back in.
+    await User.collection.updateOne(
+      { _id: user._id },
+      { $unset: { accountState: "" } },
+    );
+
+    const meRes = await request("GET", "/api/v1/auth/me", {
+      cookies: { access_token: cookies.access_token.value },
+    });
+    assert.equal(meRes.status, 200);
+    assert.equal(meRes.json.data.accountState, "ACTIVE");
+
+    const dashboardRes = await request("GET", "/api/v1/dashboard", {
+      cookies: { access_token: cookies.access_token.value },
+    });
+    assert.equal(dashboardRes.status, 200);
+  });
+
+  it("unknown persisted account state fails closed", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+
+    await User.collection.updateOne(
+      { _id: user._id },
+      { $set: { accountState: "UNRECOGNIZED_STATE" } },
+    );
+
+    const dashboardRes = await request("GET", "/api/v1/dashboard", {
+      cookies: { access_token: cookies.access_token.value },
+    });
+    assert.equal(dashboardRes.status, 403);
+    assert.equal(dashboardRes.json.code, "FORBIDDEN");
+  });
+
+  it("anonymous public issue reads remain available through account-state middleware", async () => {
+    const res = await request("GET", "/api/v1/issues");
+    assert.equal(res.status, 200);
+  });
+
+  it("PERMANENTLY_DELETED refresh removes all persisted sessions", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+    assert.equal(await Session.countDocuments({ userId: user._id }), 1);
+
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { accountState: "PERMANENTLY_DELETED" } },
+    );
+
+    const refreshRes = await request("POST", "/api/v1/auth/refresh", {
+      cookies: { refresh_token: cookies.refresh_token.value },
+    });
+    assert.equal(refreshRes.status, 403);
+    assert.equal(refreshRes.json.code, "ACCOUNT_PERMANENTLY_DELETED");
+    assert.equal(await Session.countDocuments({ userId: user._id }), 0);
+  });
+
+  it("MUTED remains authenticated/read-capable and is not treated as a blocked account state", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { accountState: "MUTED" } },
+    );
+
+    const dashboardRes = await request("GET", "/api/v1/dashboard", {
+      cookies: { access_token: cookies.access_token.value },
+    });
+    assert.equal(dashboardRes.status, 200);
+  });
+
+  it("blocked account states cannot establish a new login session", async () => {
+    for (const [accountState, code] of [
+      ["HARD_SUSPENDED", "ACCOUNT_SUSPENDED"],
+      ["DELETION_PENDING", "ACCOUNT_DELETION_PENDING"],
+      ["PERMANENTLY_DELETED", "ACCOUNT_PERMANENTLY_DELETED"],
+    ]) {
+      await clearCollections();
+      defaultStore.reset();
+
+      const email = `blocked-${accountState.toLowerCase()}@example.com`;
+      await request("POST", "/api/v1/auth/register", {
+        body: registerBody({ email }),
+      });
+
+      await User.updateOne(
+        { email },
+        { $set: { accountState } },
+      );
+
+      const loginRes = await request("POST", "/api/v1/auth/login", {
+        body: {
+          email,
+          password: "correcthorsebatterystaple",
+        },
+      });
+
+      assert.equal(loginRes.status, 403);
+      assert.equal(loginRes.json.code, code);
+      const blockedUser = await User.findOne({ email });
+      assert.ok(blockedUser);
+      assert.equal(
+        await Session.countDocuments({ userId: blockedUser._id }),
+        1,
+        "rejected login must not create an additional refresh session (the original registration session remains)",
+      );
+    }
+  });
+
+  it("a concurrent suspension before the refresh reservation prevents replacement-session issuance", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+
+    const originalFindOneAndUpdate = User.findOneAndUpdate.bind(User);
+    let injected = false;
+    User.findOneAndUpdate = function (filter, update, options) {
+      if (
+        !injected &&
+        filter?._id?.toString() === user._id.toString() &&
+        filter?.accountStateVersion === 0
+      ) {
+        injected = true;
+        return Promise.resolve().then(async () => {
+          await User.updateOne(
+            { _id: user._id },
+            {
+              $set: { accountState: "HARD_SUSPENDED" },
+              $inc: { accountStateVersion: 1 },
+            },
+          );
+          return originalFindOneAndUpdate(filter, update, options);
+        });
+      }
+      return originalFindOneAndUpdate(filter, update, options);
+    };
+
+    try {
+      const refreshRes = await request("POST", "/api/v1/auth/refresh", {
+        cookies: { refresh_token: cookies.refresh_token.value },
+      });
+
+      assert.equal(injected, true, "the refresh issuance reservation must be reached");
+      assert.equal(refreshRes.status, 403);
+      assert.equal(refreshRes.json.code, "ACCOUNT_SUSPENDED");
+      assert.equal(await Session.countDocuments({ userId: user._id }), 0);
+    } finally {
+      User.findOneAndUpdate = originalFindOneAndUpdate;
+    }
+  });
+
+  it("HARD_SUSPENDED invalidates all refresh sessions and does not allow an old refresh token after recovery", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const firstCookies = parseSetCookies(registerRes.setCookieHeaders);
+
+    const refreshRes = await request("POST", "/api/v1/auth/refresh", {
+      cookies: { refresh_token: firstCookies.refresh_token.value },
+    });
+    assert.equal(refreshRes.status, 200);
+    const secondCookies = parseSetCookies(refreshRes.setCookieHeaders);
+
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+    assert.equal(await Session.countDocuments({ userId: user._id }), 1);
+
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { accountState: "HARD_SUSPENDED" } },
+    );
+
+    const blockedRefresh = await request("POST", "/api/v1/auth/refresh", {
+      cookies: { refresh_token: secondCookies.refresh_token.value },
+    });
+    assert.equal(blockedRefresh.status, 403);
+    assert.equal(blockedRefresh.json.code, "ACCOUNT_SUSPENDED");
+    assert.equal(
+      await Session.countDocuments({ userId: user._id }),
+      0,
+      "all active refresh sessions must be invalidated when suspension becomes effective",
+    );
+
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { accountState: "ACTIVE" } },
+    );
+
+    const staleRefresh = await request("POST", "/api/v1/auth/refresh", {
+      cookies: { refresh_token: secondCookies.refresh_token.value },
+    });
+    assert.equal(staleRefresh.status, 401);
+    assert.equal(staleRefresh.json.code, "REFRESH_FAILED");
+  });
+
+  it("DELETION_PENDING invalidates the presented and remaining refresh sessions", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const firstCookies = parseSetCookies(registerRes.setCookieHeaders);
+
+    const refreshRes = await request("POST", "/api/v1/auth/refresh", {
+      cookies: { refresh_token: firstCookies.refresh_token.value },
+    });
+    assert.equal(refreshRes.status, 200);
+    const secondCookies = parseSetCookies(refreshRes.setCookieHeaders);
+
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { accountState: "DELETION_PENDING" } },
+    );
+
+    const blockedRefresh = await request("POST", "/api/v1/auth/refresh", {
+      cookies: { refresh_token: secondCookies.refresh_token.value },
+    });
+    assert.equal(blockedRefresh.status, 403);
+    assert.equal(blockedRefresh.json.code, "ACCOUNT_DELETION_PENDING");
+    assert.equal(
+      await Session.countDocuments({ userId: user._id }),
+      0,
+    );
+  });
+});
+
 describe("POST /api/v1/auth/refresh", () => {
   it("rotates tokens: 200s, sets new cookies, and old refresh cookie no longer works afterward", async () => {
     const registerRes = await request("POST", "/api/v1/auth/register", { body: registerBody() });

@@ -47,6 +47,10 @@ export const DomainErrorCode = Object.freeze({
   // diagnostic read this project has deliberately declined to add — see
   // authentication-implementation-plan.md's Phase C correction
 
+  ACCOUNT_SUSPENDED: "ACCOUNT_SUSPENDED", // current account state blocks authenticated access
+  ACCOUNT_DELETION_PENDING: "ACCOUNT_DELETION_PENDING", // recoverable deletion state blocks normal authenticated access
+  ACCOUNT_PERMANENTLY_DELETED: "ACCOUNT_PERMANENTLY_DELETED", // terminal account state blocks authenticated access
+
   // --- Rate-limiting addition (Issue #42) ---
   TOO_MANY_REQUESTS: "TOO_MANY_REQUESTS", // the client has exceeded the
   // allowed number of requests within a time window. Identified strictly

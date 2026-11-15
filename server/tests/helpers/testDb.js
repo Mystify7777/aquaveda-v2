@@ -7,6 +7,7 @@ import { Comment } from "../../src/models/Comment.js";
 import { Project } from "../../src/models/Project.js";
 import { User } from "../../src/models/User.js";
 import { Session } from "../../src/models/Session.js";
+import { DiscussionReport } from "../../src/models/DiscussionReport.js";
 
 /**
  * Test helper for service-layer tests.
@@ -71,6 +72,7 @@ export async function clearCollections() {
     Project.deleteMany({}),
     User.deleteMany({}),
     Session.deleteMany({}),
+    DiscussionReport.deleteMany({}),
   ]);
 }
 
