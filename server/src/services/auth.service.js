@@ -334,9 +334,8 @@ export async function refresh(rawRefreshToken) {
   const { sub, sid } = decoded;
   const tokenHash = hashRefreshToken(rawRefreshToken);
 
-  // Consume exactly the presented session first. The User read below is
-  // deliberately after consumption so a concurrent state transition that
-  // wins before this point is observed before a replacement is issued.
+  // Consume the presented session atomically before doing any further
+  // work. All outcomes for absent/expired/consumed sessions stay generic.
   let consumed;
   try {
     consumed = await Session.findOneAndDelete({
@@ -348,10 +347,7 @@ export async function refresh(rawRefreshToken) {
   } catch {
     throw refreshFailed("Refresh failed");
   }
-
-  if (!consumed) {
-    throw refreshFailed("Refresh failed");
-  }
+  if (!consumed) throw refreshFailed("Refresh failed");
 
   const user = await User.findById(sub);
   if (!user) {
@@ -359,99 +355,58 @@ export async function refresh(rawRefreshToken) {
     throw refreshFailed("Refresh failed");
   }
 
-  const accountState = user.accountState ?? ACCOUNT_STATES.ACTIVE;
-  if (accountState === ACCOUNT_STATES.HARD_SUSPENDED) {
+  const state = user.accountState ?? ACCOUNT_STATES.ACTIVE;
+  const rejectBlockedState = async (currentState) => {
     await Session.deleteMany({ userId: sub });
-    throw new DomainError(
-      DomainErrorCode.ACCOUNT_SUSPENDED,
-      "Account access is suspended",
-    );
-  }
-  if (accountState === ACCOUNT_STATES.DELETION_PENDING) {
-    await Session.deleteMany({ userId: sub });
-    throw new DomainError(
-      DomainErrorCode.ACCOUNT_DELETION_PENDING,
-      "Account deletion is pending",
-    );
-  }
-  if (accountState === ACCOUNT_STATES.PERMANENTLY_DELETED) {
-    await Session.deleteMany({ userId: sub });
-    throw new DomainError(
-      DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED,
-      "Account is permanently deleted",
-    );
-  }
-
-  // Re-check immediately before issuing replacement credentials. This
-  // catches a state transition that won after the post-consumption read.
-  const latestUser = await User.findById(sub);
-  if (!latestUser) {
-    await Session.deleteMany({ userId: sub });
+    if (currentState === ACCOUNT_STATES.HARD_SUSPENDED) {
+      throw new DomainError(DomainErrorCode.ACCOUNT_SUSPENDED, "Account access is suspended");
+    }
+    if (currentState === ACCOUNT_STATES.DELETION_PENDING) {
+      throw new DomainError(DomainErrorCode.ACCOUNT_DELETION_PENDING, "Account deletion is pending");
+    }
+    if (currentState === ACCOUNT_STATES.PERMANENTLY_DELETED) {
+      throw new DomainError(DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED, "Account is permanently deleted");
+    }
     throw refreshFailed("Refresh failed");
+  };
+
+  if (state !== ACCOUNT_STATES.ACTIVE && state !== ACCOUNT_STATES.MUTED) {
+    await rejectBlockedState(state);
   }
 
-  const latestState = latestUser.accountState ?? ACCOUNT_STATES.ACTIVE;
-  if (latestState === ACCOUNT_STATES.HARD_SUSPENDED) {
-    await Session.deleteMany({ userId: sub });
-    throw new DomainError(
-      DomainErrorCode.ACCOUNT_SUSPENDED,
-      "Account access is suspended",
-    );
-  }
-  if (latestState === ACCOUNT_STATES.DELETION_PENDING) {
-    await Session.deleteMany({ userId: sub });
-    throw new DomainError(
-      DomainErrorCode.ACCOUNT_DELETION_PENDING,
-      "Account deletion is pending",
-    );
-  }
-  if (latestState === ACCOUNT_STATES.PERMANENTLY_DELETED) {
-    await Session.deleteMany({ userId: sub });
-    throw new DomainError(
-      DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED,
-      "Account is permanently deleted",
-    );
-  }
-  if (![ACCOUNT_STATES.ACTIVE, ACCOUNT_STATES.MUTED].includes(latestState)) {
-    throw refreshFailed("Refresh failed");
-  }
-
-  // Reserve the issuance against a concurrent governance state change.
-  // Governance transitions that move accountState out of ACTIVE/MUTED
-  // must update this same User document and increment accountStateVersion.
-  const accountStateVersion = latestUser.accountStateVersion ?? 0;
-  const eligible = await User.findOneAndUpdate(
+  // Atomically reserve refresh issuance on the User document. Governance
+  // transitions out of ACTIVE/MUTED must also increment accountStateVersion
+  // in the same User update. This gives both operations one serialization
+  // point: either the refresh reservation precedes the transition, or the
+  // transition wins and this predicate no longer matches.
+  const version = user.accountStateVersion ?? 0;
+  const reservation = await User.findOneAndUpdate(
     {
-      _id: latestUser._id,
+      _id: user._id,
       accountState: { $in: [ACCOUNT_STATES.ACTIVE, ACCOUNT_STATES.MUTED] },
-      accountStateVersion,
+      accountStateVersion: version,
     },
     { $inc: { accountStateVersion: 1 } },
     { new: true },
   );
 
-  if (!eligible) {
-    const current = await User.findById(sub).select("accountState");
-    const state = current?.accountState ?? ACCOUNT_STATES.ACTIVE;
-    if (state === ACCOUNT_STATES.HARD_SUSPENDED) {
+  if (!reservation) {
+    const latest = await User.findById(sub).select("accountState");
+    if (!latest) {
       await Session.deleteMany({ userId: sub });
-      throw new DomainError(DomainErrorCode.ACCOUNT_SUSPENDED, "Account access is suspended");
+      throw refreshFailed("Refresh failed");
     }
-    if (state === ACCOUNT_STATES.DELETION_PENDING) {
-      await Session.deleteMany({ userId: sub });
-      throw new DomainError(DomainErrorCode.ACCOUNT_DELETION_PENDING, "Account deletion is pending");
-    }
-    if (state === ACCOUNT_STATES.PERMANENTLY_DELETED || !current) {
-      await Session.deleteMany({ userId: sub });
-      throw new DomainError(DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED, "Account is permanently deleted");
-    }
-    throw refreshFailed("Refresh failed");
+    await rejectBlockedState(latest.accountState ?? ACCOUNT_STATES.ACTIVE);
   }
 
   const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(sub);
-
   return {
-    user: { id: eligible._id, name: eligible.name, email: eligible.email, role: eligible.role },
+    user: {
+      id: reservation._id,
+      name: reservation.name,
+      email: reservation.email,
+      role: reservation.role,
+    },
     accessToken,
     refreshToken: newRefreshToken,
   };
