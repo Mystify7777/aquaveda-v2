@@ -2,6 +2,7 @@ import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { Comment } from "../src/models/Comment.js";
+import { Issue } from "../src/models/Issue.js";
 import { Discussion } from "../src/models/Discussion.js";
 import { User } from "../src/models/User.js";
 import { listCommunityActivity } from "../src/services/community-activity.service.js";
@@ -158,15 +159,15 @@ describe("listCommunityActivity", () => {
     const newerTime = new Date("2026-01-02T00:00:00.000Z");
     const latestTime = new Date("2026-01-03T00:00:00.000Z");
 
-    await Comment.updateOne(
+    await Comment.collection.updateOne(
       { _id: olderFirst._id },
       { $set: { createdAt: firstTime, updatedAt: firstTime } },
     );
-    await Comment.updateOne(
+    await Comment.collection.updateOne(
       { _id: newerComment._id },
       { $set: { createdAt: newerTime, updatedAt: newerTime } },
     );
-    await Comment.updateOne(
+    await Comment.collection.updateOne(
       { _id: olderLatest._id },
       { $set: { createdAt: latestTime, updatedAt: latestTime } },
     );
@@ -203,15 +204,15 @@ describe("listCommunityActivity", () => {
     await addComment("ISSUE", issue._id, author._id);
 
     const timestamp = new Date("2026-01-01T00:00:00.000Z");
-    await Discussion.updateOne(
+    await Discussion.collection.updateOne(
       { _id: discussion._id },
       { $set: { createdAt: timestamp } },
     );
-    await Issue.updateOne(
+    await Issue.collection.updateOne(
       { _id: issue._id },
       { $set: { createdAt: timestamp } },
     );
-    await Comment.updateMany(
+    await Comment.collection.updateMany(
       { refId: { $in: [discussion._id, issue._id] } },
       { $set: { createdAt: timestamp, updatedAt: timestamp } },
     );
