@@ -3,6 +3,7 @@ import { CopyIssueId } from "@/components/issues/copy-issue-id";
 import { LOCATION_FALLBACK_TEXT, readableLocation } from "@/components/issues/issue-location";
 import { IssueMapLoader } from "@/components/issues/issue-map-loader";
 import { IssueProgress } from "@/components/issues/issue-progress";
+import { IssueRecommendations } from "@/components/issues/issue-recommendations";
 import { IssueStatusBadge } from "@/components/issues/issue-status-badge";
 import { IssueTimeline } from "@/components/issues/issue-timeline";
 import { formatDate } from "@/lib/format-date";
@@ -41,6 +42,8 @@ export function IssueDetail({ issue }: { issue: IssueDetailData }) {
       <UserText text={issue.description} />
 
       <IssueProgress issue={issue} />
+
+      <IssueRecommendations issueId={issue._id} />
 
       <dl className="grid gap-4 border-t pt-4 text-sm sm:grid-cols-2">
         {category && (

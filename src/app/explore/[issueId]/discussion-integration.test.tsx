@@ -37,6 +37,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/components/comments/comment-thread", () => ({ CommentThread: () => <p>Existing comment</p> }));
 vi.mock("@/components/issues/issue-map-loader", () => ({ IssueMapLoader: () => null }));
+vi.mock("@/components/issues/issue-recommendations", () => ({ IssueRecommendations: () => null }));
 
 const ISSUE = makeIssueDetail({ title: "Burst pipe", description: "Water everywhere", severity: "", category: "", status: "open", statusHistory: [], activity: [] });
 

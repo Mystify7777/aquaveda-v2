@@ -13,6 +13,9 @@ import { makeIssueDetail, reportedEntry } from "@/test-utils/issue-detail";
 vi.mock("@/components/issues/issue-map-loader", () => ({
   IssueMapLoader: ({ label }: { label: string }) => <div role="region" aria-label={label} />,
 }));
+vi.mock("@/components/issues/issue-recommendations", () => ({
+  IssueRecommendations: () => null,
+}));
 
 export function makeIssue(over: Partial<Issue> = {}): Issue {
   return {

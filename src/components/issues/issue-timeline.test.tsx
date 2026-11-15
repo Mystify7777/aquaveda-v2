@@ -9,6 +9,9 @@ import { makeIssueDetail, reportedEntry } from "@/test-utils/issue-detail";
 vi.mock("@/components/issues/issue-map-loader", () => ({
   IssueMapLoader: ({ label }: { label: string }) => <div role="region" aria-label={label} />,
 }));
+vi.mock("@/components/issues/issue-recommendations", () => ({
+  IssueRecommendations: () => null,
+}));
 
 const EXPERT = { _id: "u2", name: "Ed", role: "EXPERT" as const };
 const GRANTEE = { _id: "u3", name: "Gus", role: "USER" as const };
