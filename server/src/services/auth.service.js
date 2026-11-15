@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { User } from "../models/User.js";
+import { ACCOUNT_STATES } from "../domain/account-state.js";
 import { Session } from "../models/Session.js";
 import { PasswordResetCredential } from "../models/PasswordResetCredential.js";
 import { sendPasswordResetEmail } from "./password-reset-email.js";
@@ -257,6 +258,30 @@ export async function login(payload) {
     throw invalidCredentials("Invalid email or password");
   }
 
+  // Account state is checked after credential verification so the login
+  // path never becomes an account-enumeration oracle. MUTED remains
+  // login/read-capable; blocked lifecycle states cannot establish a new
+  // authenticated session.
+  const accountState = user.accountState ?? ACCOUNT_STATES.ACTIVE;
+  if (accountState === ACCOUNT_STATES.HARD_SUSPENDED) {
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_SUSPENDED,
+      "Account access is suspended",
+    );
+  }
+  if (accountState === ACCOUNT_STATES.DELETION_PENDING) {
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_DELETION_PENDING,
+      "Account deletion is pending",
+    );
+  }
+  if (accountState === ACCOUNT_STATES.PERMANENTLY_DELETED) {
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED,
+      "Account is permanently deleted",
+    );
+  }
+
   const { accessToken, refreshToken } = await issueTokenPair(user._id);
 
   return {
@@ -306,56 +331,95 @@ export async function refresh(rawRefreshToken) {
   try {
     decoded = verifyRefreshToken(rawRefreshToken);
   } catch {
-    // Malformed, tampered, or expired refresh JWT — same generic
-    // failure as every other refresh rejection reason (see header
-    // comment).
     throw refreshFailed("Refresh failed");
   }
 
   const { sub, sid } = decoded;
   const tokenHash = hashRefreshToken(rawRefreshToken);
 
+  // Consume the presented session atomically before doing any further
+  // work. All outcomes for absent/expired/consumed sessions stay generic.
   let consumed;
   try {
     consumed = await Session.findOneAndDelete({
       _id: sid,
       userId: sub,
       tokenHash,
-      expiresAt: { $gt: new Date() }, // independent expiry check (L13) —
-      // expressed as a query condition, not a separate read. TTL index
-      // cleanup on the Session model is eventual-only and must never be
-      // relied on here.
+      expiresAt: { $gt: new Date() },
     });
   } catch {
-    // A malformed `sid` (not a valid ObjectId) throws a Mongoose
-    // CastError here — still just a refresh failure from the caller's
-    // perspective, not a distinct error category.
     throw refreshFailed("Refresh failed");
   }
+  if (!consumed) throw refreshFailed("Refresh failed");
 
-  if (!consumed) {
-    // Session not found, wrong user, expired, or already consumed by a
-    // concurrent request — all collapse to the same outcome, per the
-    // header comment.
-    throw refreshFailed("Refresh failed");
-  }
-
-  // The consumed Session is proof `sub` was a real, valid user at the
-  // time this refresh token was issued — but per L11's fresh-role
-  // principle applied consistently, the User is still read fresh here
-  // rather than trusting anything cached from token issuance.
   const user = await User.findById(sub);
   if (!user) {
-    // The user was deleted between issuing this refresh token and using
-    // it. The old session is already correctly consumed above (single-
-    // use upheld); there is no user left to issue new tokens to.
+    await Session.deleteMany({ userId: sub });
+    throw refreshFailed("Refresh failed");
+  }
+
+  const state = user.accountState ?? ACCOUNT_STATES.ACTIVE;
+  const rejectBlockedState = async (currentState) => {
+    await Session.deleteMany({ userId: sub });
+    if (currentState === ACCOUNT_STATES.HARD_SUSPENDED) {
+      throw new DomainError(DomainErrorCode.ACCOUNT_SUSPENDED, "Account access is suspended");
+    }
+    if (currentState === ACCOUNT_STATES.DELETION_PENDING) {
+      throw new DomainError(DomainErrorCode.ACCOUNT_DELETION_PENDING, "Account deletion is pending");
+    }
+    if (currentState === ACCOUNT_STATES.PERMANENTLY_DELETED) {
+      throw new DomainError(DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED, "Account is permanently deleted");
+    }
+    throw refreshFailed("Refresh failed");
+  };
+
+  if (state !== ACCOUNT_STATES.ACTIVE && state !== ACCOUNT_STATES.MUTED) {
+    await rejectBlockedState(state);
+  }
+
+  // Re-read account state immediately before token issuance. This catches
+  // a state transition that committed after the previous read.
+  const latestUser = await User.findById(sub);
+  if (!latestUser) {
+    await Session.deleteMany({ userId: sub });
+    throw refreshFailed("Refresh failed");
+  }
+  const latestState = latestUser.accountState ?? ACCOUNT_STATES.ACTIVE;
+  if (latestState !== ACCOUNT_STATES.ACTIVE && latestState !== ACCOUNT_STATES.MUTED) {
+    await rejectBlockedState(latestState);
+  }
+
+  // Atomic state/version reservation coordinates refresh issuance with
+  // governance transitions. Every transition that changes accountState
+  // must increment accountStateVersion in the same User update.
+  const version = latestUser.accountStateVersion ?? 0;
+  const reservation = await User.findOneAndUpdate(
+    {
+      _id: latestUser._id,
+      accountState: { $in: [ACCOUNT_STATES.ACTIVE, ACCOUNT_STATES.MUTED] },
+      accountStateVersion: version,
+    },
+    { $inc: { accountStateVersion: 1 } },
+    { new: true },
+  );
+  if (!reservation) {
+    const current = await User.findById(sub).select("accountState");
+    if (!current) {
+      await Session.deleteMany({ userId: sub });
+      throw refreshFailed("Refresh failed");
+    }
+    await rejectBlockedState(current.accountState ?? ACCOUNT_STATES.ACTIVE);
     throw refreshFailed("Refresh failed");
   }
 
   const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(sub);
-
   return {
-    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    user: {
+      id: reservation._id,
+      name: reservation.name,
+      email: reservation.email,
+      role: reservation.role,
+    },
     accessToken,
     refreshToken: newRefreshToken,
   };

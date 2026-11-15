@@ -391,10 +391,42 @@ check("8a. User has exactly the expected top-level fields", () => {
     "email",
     "passwordHash",
     "role",
+    "accountState",
+    "accountStateVersion",
     "bio",
     "expertApplication",
   ].sort();
   assert.deepEqual(topLevelFields(User.schema), expected);
+});
+
+check("8a-1. User.accountState is required, defaults to ACTIVE, and is constrained to the lifecycle enum", () => {
+  const path = User.schema.path("accountState");
+  assert.equal(path.instance, "String", "accountState must be a string");
+  assert.equal(path.isRequired, true, "accountState must be required");
+  assert.equal(path.options.default, "ACTIVE", "accountState must default to ACTIVE");
+  assert.deepEqual(
+    [...path.enumValues].sort(),
+    ["ACTIVE", "MUTED", "HARD_SUSPENDED", "DELETION_PENDING", "PERMANENTLY_DELETED"].sort(),
+    "accountState must contain exactly the locked account lifecycle states",
+  );
+});
+
+check("8a-2. User.accountStateVersion is a required non-negative number defaulting to zero", () => {
+  const path = User.schema.path("accountStateVersion");
+  assert.equal(path.instance, "Number", "accountStateVersion must be numeric");
+  assert.equal(path.isRequired, true, "accountStateVersion must be required");
+  assert.equal(path.options.default, 0, "accountStateVersion must default to zero");
+  assert.equal(path.options.min, 0, "accountStateVersion must reject negative values");
+  const invalid = new User({
+    name: "A",
+    email: "version-negative@example.test",
+    passwordHash: "x",
+    accountStateVersion: -1,
+  });
+  assert.ok(
+    invalid.validateSync()?.errors?.accountStateVersion,
+    "negative accountStateVersion must fail validation",
+  );
 });
 
 check("8a-3. expert application history entries may carry an OPTIONAL submission (legacy entries have none); acknowledgement facts are server-shaped", () => {

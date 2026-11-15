@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 
 import { authMiddleware } from "./middleware/auth.js";
+import { accountStateMiddleware } from "./middleware/account-state.js";
 import { securityHeaders } from "./middleware/security-headers.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { authRouter } from "./routes/auth.routes.js";
@@ -154,6 +155,13 @@ export function createApp() {
   // router is self-contained — it never calls issue/knowledge/comment/
   // project.service.js.
   app.use("/api/v1/auth", authRouter);
+
+  // Account-state enforcement (#173): the auth router remains reachable
+  // for /me, logout, and refresh so blocked users can discover their
+  // current state and recover/invalidate sessions. All application/domain
+  // routes after this point require the current account state to be
+  // eligible for authenticated use.
+  app.use(accountStateMiddleware);
 
   // Routes milestone (decision-register.md "Locked — Routes",
   // ROUTE-L1–L6): issueRouter includes public list endpoint (Issue #40)
