@@ -61,6 +61,26 @@ A later recovery to `ACTIVE` therefore cannot reuse a pre-blocking refresh token
 
 `PERMANENTLY_DELETED` also removes remaining session records when encountered through refresh.
 
+## Refresh/state transition coordination
+
+Refresh consumes its presented Session, reads the current User state, then
+atomically reserves issuance by conditionally updating the same User document
+while its state is still ACTIVE/MUTED and its `accountStateVersion` is
+unchanged.
+
+Every governance transition that changes `accountState` must increment
+`accountStateVersion` in the same atomic User update. This establishes a
+single-document serialization point between refresh issuance and blocked-state
+transitions. If the governance transition wins first, the refresh reservation
+fails and no replacement session is issued. If refresh reserves first, its
+reservation is ordered before the subsequent governance transition, which
+must then invalidate sessions as part of its own operation.
+
+The guarantee is conditional on governance mutation implementations following
+this version-increment invariant. This issue establishes the field and refresh
+side of the protocol; #174–#180 must apply the invariant to their relevant
+state mutations.
+
 ## Security boundary
 
 A valid JWT is not sufficient to authorize an authenticated request. Cryptographic validity establishes only token validity; current account state establishes current eligibility.
