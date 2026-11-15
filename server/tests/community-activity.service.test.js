@@ -224,8 +224,8 @@ describe("listCommunityActivity", () => {
     assert.equal(result.total, 2);
     assert.equal(result.items[0].type, "DISCUSSION");
     assert.equal(result.items[1].type, "ISSUE");
-    assert.equal(result.items[0].activityAt, timestamp.toISOString());
-    assert.equal(result.items[1].activityAt, timestamp.toISOString());
+    assert.equal(new Date(result.items[0].activityAt).getTime(), timestamp.getTime());
+    assert.equal(new Date(result.items[1].activityAt).getTime(), timestamp.getTime());
   });
 
   it("paginates the globally sorted projection instead of fixed per-source slices", async () => {
