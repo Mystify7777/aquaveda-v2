@@ -382,18 +382,47 @@ export async function refresh(rawRefreshToken) {
     );
   }
 
-  // Session issuance and a governance state transition must serialize on
-  // the User document. The conditional write below is the reservation:
-  // a refresh can issue only while the account is still ACTIVE/MUTED and
-  // while the account-state version is unchanged. Governance mutations
-  // must update this same User document; when their write wins first this
-  // predicate fails, while a refresh reservation that wins first
-  // linearizes before the subsequent suspension write. A transaction is
-  // not required for this single-document coordination boundary.
-  const accountStateVersion = user.accountStateVersion ?? 0;
+  // Re-check immediately before issuing replacement credentials. This
+  // catches a state transition that won after the post-consumption read.
+  const latestUser = await User.findById(sub);
+  if (!latestUser) {
+    await Session.deleteMany({ userId: sub });
+    throw refreshFailed("Refresh failed");
+  }
+
+  const latestState = latestUser.accountState ?? ACCOUNT_STATES.ACTIVE;
+  if (latestState === ACCOUNT_STATES.HARD_SUSPENDED) {
+    await Session.deleteMany({ userId: sub });
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_SUSPENDED,
+      "Account access is suspended",
+    );
+  }
+  if (latestState === ACCOUNT_STATES.DELETION_PENDING) {
+    await Session.deleteMany({ userId: sub });
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_DELETION_PENDING,
+      "Account deletion is pending",
+    );
+  }
+  if (latestState === ACCOUNT_STATES.PERMANENTLY_DELETED) {
+    await Session.deleteMany({ userId: sub });
+    throw new DomainError(
+      DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED,
+      "Account is permanently deleted",
+    );
+  }
+  if (![ACCOUNT_STATES.ACTIVE, ACCOUNT_STATES.MUTED].includes(latestState)) {
+    throw refreshFailed("Refresh failed");
+  }
+
+  // Reserve the issuance against a concurrent governance state change.
+  // Governance transitions that move accountState out of ACTIVE/MUTED
+  // must update this same User document and increment accountStateVersion.
+  const accountStateVersion = latestUser.accountStateVersion ?? 0;
   const eligible = await User.findOneAndUpdate(
     {
-      _id: user._id,
+      _id: latestUser._id,
       accountState: { $in: [ACCOUNT_STATES.ACTIVE, ACCOUNT_STATES.MUTED] },
       accountStateVersion,
     },
@@ -402,29 +431,19 @@ export async function refresh(rawRefreshToken) {
   );
 
   if (!eligible) {
-    const latestUser = await User.findById(sub).select("accountState");
-    const latestState = latestUser?.accountState ?? ACCOUNT_STATES.ACTIVE;
-
-    if (latestState === ACCOUNT_STATES.HARD_SUSPENDED) {
+    const current = await User.findById(sub).select("accountState");
+    const state = current?.accountState ?? ACCOUNT_STATES.ACTIVE;
+    if (state === ACCOUNT_STATES.HARD_SUSPENDED) {
       await Session.deleteMany({ userId: sub });
-      throw new DomainError(
-        DomainErrorCode.ACCOUNT_SUSPENDED,
-        "Account access is suspended",
-      );
+      throw new DomainError(DomainErrorCode.ACCOUNT_SUSPENDED, "Account access is suspended");
     }
-    if (latestState === ACCOUNT_STATES.DELETION_PENDING) {
+    if (state === ACCOUNT_STATES.DELETION_PENDING) {
       await Session.deleteMany({ userId: sub });
-      throw new DomainError(
-        DomainErrorCode.ACCOUNT_DELETION_PENDING,
-        "Account deletion is pending",
-      );
+      throw new DomainError(DomainErrorCode.ACCOUNT_DELETION_PENDING, "Account deletion is pending");
     }
-    if (latestState === ACCOUNT_STATES.PERMANENTLY_DELETED || !latestUser) {
+    if (state === ACCOUNT_STATES.PERMANENTLY_DELETED || !current) {
       await Session.deleteMany({ userId: sub });
-      throw new DomainError(
-        DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED,
-        "Account is permanently deleted",
-      );
+      throw new DomainError(DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED, "Account is permanently deleted");
     }
     throw refreshFailed("Refresh failed");
   }
