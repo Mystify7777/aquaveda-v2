@@ -566,6 +566,46 @@ describe("Issue #173 — current account-state enforcement", () => {
     }
   });
 
+  it("a suspension that wins between refresh state reads prevents replacement-session issuance", async () => {
+    const registerRes = await request("POST", "/api/v1/auth/register", {
+      body: registerBody(),
+    });
+    const cookies = parseSetCookies(registerRes.setCookieHeaders);
+    const user = await User.findOne({ email: "test@example.com" });
+    assert.ok(user);
+
+    const originalFindById = User.findById.bind(User);
+    let reads = 0;
+    User.findById = function (...args) {
+      reads += 1;
+      if (reads === 1) {
+        return originalFindById(...args);
+      }
+      return Promise.resolve().then(async () => {
+        await User.updateOne(
+          { _id: user._id },
+          {
+            $set: { accountState: "HARD_SUSPENDED" },
+            $inc: { accountStateVersion: 1 },
+          },
+        );
+        return originalFindById(...args);
+      });
+    };
+
+    try {
+      const refreshRes = await request("POST", "/api/v1/auth/refresh", {
+        cookies: { refresh_token: cookies.refresh_token.value },
+      });
+
+      assert.equal(refreshRes.status, 403);
+      assert.equal(refreshRes.json.code, "ACCOUNT_SUSPENDED");
+      assert.equal(await Session.countDocuments({ userId: user._id }), 0);
+    } finally {
+      User.findById = originalFindById;
+    }
+  });
+
   it("HARD_SUSPENDED invalidates all refresh sessions and does not allow an old refresh token after recovery", async () => {
     const registerRes = await request("POST", "/api/v1/auth/register", {
       body: registerBody(),
