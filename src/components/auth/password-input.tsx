@@ -18,7 +18,8 @@ export function PasswordInput(props: Omit<InputProps, "type">) {
         ref={toggleRef}
         type="button"
         aria-pressed={visible}
-        aria-label={visible ? "Hide password" : "Show password"}
+        aria-label={visible ? "Hide text entry" : "Show text entry"}
+        aria-controls={typeof props.id === "string" ? props.id : undefined}
         onClick={() => setVisible((current) => !current)}
         className="absolute inset-y-0 right-2 my-auto h-8 rounded px-2 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >

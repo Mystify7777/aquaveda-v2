@@ -61,14 +61,14 @@ describe("password recovery and confirmation UI", () => {
   it("toggles both registration password fields and keeps keyboard focus on the control", async () => {
     render(<RegisterForm />);
     const fields = [screen.getByLabelText("Password"), screen.getByLabelText("Confirm password")];
-    const toggles = screen.getAllByRole("button", { name: "Show password" });
+    const toggles = screen.getAllByRole("button", { name: "Show text entry" });
     const user = userEvent.setup();
     fields.forEach((field) => expect(field).toHaveAttribute("type", "password"));
     for (const toggle of toggles) {
       toggle.focus();
       await user.keyboard("{Enter}");
       expect(toggle).toHaveFocus();
-      expect(toggle).toHaveAccessibleName("Hide password");
+      expect(toggle).toHaveAccessibleName("Hide text entry");
     }
     fields.forEach((field) => expect(field).toHaveAttribute("type", "text"));
   });
@@ -78,7 +78,7 @@ describe("password recovery and confirmation UI", () => {
     render(<LoginForm />);
     const field = screen.getByLabelText("Password");
     fireEvent.change(field, { target: { value: "my-secret" } });
-    const toggle = screen.getByRole("button", { name: "Show password" });
+    const toggle = screen.getByRole("button", { name: "Show text entry" });
     toggle.focus();
     await userEvent.setup().keyboard("{Enter}");
     expect(toggle).toHaveFocus();
