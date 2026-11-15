@@ -9,11 +9,9 @@ import { findBrokenLinks, internalHrefs } from "@/test-utils/app-routes";
 
 /**
  * Issue #81 — public navigation links must target implemented pages.
- * Community is linked ahead of its milestone; it is the ONLY accepted miss
- * (Dashboard gained its page in #54). When Community gains a page,
- * findBrokenLinks fails until it is removed from this list.
+ * Dashboard gained its page in #54 and Community is implemented by #12.
  */
-const DEFERRED = ["/community"] as const;
+const DEFERRED: readonly string[] = [];
 
 vi.mock("@/components/layout/auth-controls", () => ({ AuthControls: () => null }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
@@ -25,7 +23,7 @@ describe("navigation links resolve to implemented routes", () => {
   it("Navbar", () => {
     const { container } = render(<Navbar />);
     const hrefs = internalHrefs(container);
-    expect(hrefs).toEqual(expect.arrayContaining(["/", "/explore", "/learn", "/act"]));
+    expect(hrefs).toEqual(expect.arrayContaining(["/", "/explore", "/learn", "/act", "/community"]));
     expect(findBrokenLinks(hrefs, DEFERRED)).toEqual([]);
   });
 
@@ -33,7 +31,7 @@ describe("navigation links resolve to implemented routes", () => {
     render(<MobileNav />);
     await userEvent.setup().click(screen.getByRole("button", { name: "Open navigation menu" }));
     const hrefs = internalHrefs(document.body);
-    expect(hrefs).toEqual(expect.arrayContaining(["/", "/explore", "/learn", "/act"]));
+    expect(hrefs).toEqual(expect.arrayContaining(["/", "/explore", "/learn", "/act", "/community"]));
     expect(findBrokenLinks(hrefs, DEFERRED)).toEqual([]);
   });
 
