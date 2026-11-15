@@ -1270,3 +1270,10 @@ Read-only frontend slice: `/explore/[issueId]` presents the backend's progressio
 Execution order: **#163 (ADR-0009) → #164 + #165 → #167 → #166 → #12**. #164 and #165 may proceed in parallel after #163. #167 owns the concrete reporting/moderation authorization and lifecycle contract and depends on the Discussion visibility model from #163/#164. #166 requires finalized Discussion, Comment, and public-visibility contracts; it need not wait for unrelated #167 work once those contracts are settled. #12 begins backend-dependent implementation after those contracts stabilize.
 
 Full derivation and DTO sketches: `docs/adr/ADR-0009-community-domain-and-activity.md`.
+
+
+## Locked — Authentication
+
+### AUTH-L6 — Current account state is server-authoritative. Implemented in #173.
+
+`User.accountState` is resolved from persistence on every authenticated request. The JWT carries no account-state authority. `HARD_SUSPENDED`, `DELETION_PENDING`, and `PERMANENTLY_DELETED` cannot establish or use normal authenticated application capabilities; `MUTED` remains authenticated/read-capable and is handled separately by #174. Refresh sessions are invalidated for blocked states. Stable HTTP error codes are `ACCOUNT_SUSPENDED`, `ACCOUNT_DELETION_PENDING`, and `ACCOUNT_PERMANENTLY_DELETED`.

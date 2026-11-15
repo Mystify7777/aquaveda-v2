@@ -209,7 +209,10 @@ authRouter.get("/me", (req, res) => {
   // ever runs. This route's entire job is reading that value — per the
   // Phase E correction, there is no second, parallel actor-resolution
   // path anywhere in this codebase.
-  sendSuccess(res, { user: req.actorContext }, "OK");
+  sendSuccess(res, {
+    user: req.actorContext,
+    accountState: req.accountState,
+  }, "OK");
 });
 
 authRouter.post("/refresh", refreshLimiter, async (req, res) => {
