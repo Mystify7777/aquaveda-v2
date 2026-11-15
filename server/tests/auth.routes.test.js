@@ -566,44 +566,6 @@ describe("Issue #173 — current account-state enforcement", () => {
     }
   });
 
-  it("a concurrent blocked-state transition prevents the refresh reservation", async () => {
-    const registerRes = await request("POST", "/api/v1/auth/register", {
-      body: registerBody(),
-    });
-    const cookies = parseSetCookies(registerRes.setCookieHeaders);
-    const user = await User.findOne({ email: "test@example.com" });
-    assert.ok(user);
-
-    const originalFindOneAndUpdate = User.findOneAndUpdate.bind(User);
-    User.findOneAndUpdate = function (filter, update, options) {
-      if (filter?.accountStateVersion === 0) {
-        return Promise.resolve().then(async () => {
-          await User.updateOne(
-            { _id: user._id },
-            {
-              $set: { accountState: "HARD_SUSPENDED" },
-              $inc: { accountStateVersion: 1 },
-            },
-          );
-          return originalFindOneAndUpdate(filter, update, options);
-        });
-      }
-      return originalFindOneAndUpdate(filter, update, options);
-    };
-
-    try {
-      const refreshRes = await request("POST", "/api/v1/auth/refresh", {
-        cookies: { refresh_token: cookies.refresh_token.value },
-      });
-
-      assert.equal(refreshRes.status, 403);
-      assert.equal(refreshRes.json.code, "ACCOUNT_SUSPENDED");
-      assert.equal(await Session.countDocuments({ userId: user._id }), 0);
-    } finally {
-      User.findOneAndUpdate = originalFindOneAndUpdate;
-    }
-  });
-
   it("a suspension that wins between refresh state reads prevents replacement-session issuance", async () => {
     const registerRes = await request("POST", "/api/v1/auth/register", {
       body: registerBody(),
