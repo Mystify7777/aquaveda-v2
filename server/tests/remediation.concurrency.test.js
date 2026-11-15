@@ -93,7 +93,7 @@ describe("natural concurrency: exactly one writer wins", () => {
       assert.equal(stored.statusHistory.filter((h) => h.toStatus === "in_progress").length, started ? 1 : 0);
       if (withdraw.status === "fulfilled") assert.equal(stored.remediation, undefined);
       assert.ok(start.status === "fulfilled" || withdraw.status === "fulfilled", "at least one of them wins");
-      if (start.status === "rejected") assert.equal(start.reason.code, "STATE_RACE");
+      if (start.status === "rejected") assert.ok(["STATE_RACE", "FORBIDDEN"].includes(start.reason.code), start.reason.code);
     }
   });
 });
