@@ -328,39 +328,38 @@ export async function refresh(rawRefreshToken) {
   try {
     decoded = verifyRefreshToken(rawRefreshToken);
   } catch {
-    // Malformed, tampered, or expired refresh JWT — same generic
-    // failure as every other refresh rejection reason (see header
-    // comment).
     throw refreshFailed("Refresh failed");
   }
 
   const { sub, sid } = decoded;
   const tokenHash = hashRefreshToken(rawRefreshToken);
 
-  // Account state is authoritative over the refresh JWT. Before rotating
-  // any session, resolve the current User state from persistence. Blocked
-  // states invalidate every refresh session for the account, not merely
-  // the token presented on this request.
-  let currentUser;
+  // Consume exactly the presented session first. The User read below is
+  // deliberately after consumption so a concurrent state transition that
+  // wins before this point is observed before a replacement is issued.
+  let consumed;
   try {
-    currentUser = await User.findById(sub);
+    consumed = await Session.findOneAndDelete({
+      _id: sid,
+      userId: sub,
+      tokenHash,
+      expiresAt: { $gt: new Date() },
+    });
   } catch {
     throw refreshFailed("Refresh failed");
   }
 
-  if (!currentUser) {
-    // The account has already disappeared. Best-effort cleanup preserves
-    // the session invariant without turning a missing User into a new
-    // externally visible error category.
-    try {
-      await Session.deleteMany({ userId: sub });
-    } catch {
-      // Cleanup is defensive here; the refresh must still fail safely.
-    }
+  if (!consumed) {
     throw refreshFailed("Refresh failed");
   }
 
-  const accountState = currentUser.accountState ?? ACCOUNT_STATES.ACTIVE;
+  const user = await User.findById(sub);
+  if (!user) {
+    await Session.deleteMany({ userId: sub });
+    throw refreshFailed("Refresh failed");
+  }
+
+  const accountState = user.accountState ?? ACCOUNT_STATES.ACTIVE;
   if (accountState === ACCOUNT_STATES.HARD_SUSPENDED) {
     await Session.deleteMany({ userId: sub });
     throw new DomainError(
@@ -368,7 +367,6 @@ export async function refresh(rawRefreshToken) {
       "Account access is suspended",
     );
   }
-
   if (accountState === ACCOUNT_STATES.DELETION_PENDING) {
     await Session.deleteMany({ userId: sub });
     throw new DomainError(
@@ -376,7 +374,6 @@ export async function refresh(rawRefreshToken) {
       "Account deletion is pending",
     );
   }
-
   if (accountState === ACCOUNT_STATES.PERMANENTLY_DELETED) {
     await Session.deleteMany({ userId: sub });
     throw new DomainError(
@@ -385,48 +382,57 @@ export async function refresh(rawRefreshToken) {
     );
   }
 
-  let consumed;
-  try {
-    consumed = await Session.findOneAndDelete({
-      _id: sid,
-      userId: sub,
-      tokenHash,
-      expiresAt: { $gt: new Date() }, // independent expiry check (L13) —
-      // expressed as a query condition, not a separate read. TTL index
-      // cleanup on the Session model is eventual-only and must never be
-      // relied on here.
-    });
-  } catch {
-    // A malformed `sid` (not a valid ObjectId) throws a Mongoose
-    // CastError here — still just a refresh failure from the caller's
-    // perspective, not a distinct error category.
-    throw refreshFailed("Refresh failed");
-  }
+  // Session issuance and a governance state transition must serialize on
+  // the User document. The conditional write below is the reservation:
+  // a refresh can issue only while the account is still ACTIVE/MUTED and
+  // while the account-state version is unchanged. Governance mutations
+  // must update this same User document; when their write wins first this
+  // predicate fails, while a refresh reservation that wins first
+  // linearizes before the subsequent suspension write. A transaction is
+  // not required for this single-document coordination boundary.
+  const accountStateVersion = user.accountStateVersion ?? 0;
+  const eligible = await User.findOneAndUpdate(
+    {
+      _id: user._id,
+      accountState: { $in: [ACCOUNT_STATES.ACTIVE, ACCOUNT_STATES.MUTED] },
+      accountStateVersion,
+    },
+    { $inc: { accountStateVersion: 1 } },
+    { new: true },
+  );
 
-  if (!consumed) {
-    // Session not found, wrong user, expired, or already consumed by a
-    // concurrent request — all collapse to the same outcome, per the
-    // header comment.
-    throw refreshFailed("Refresh failed");
-  }
+  if (!eligible) {
+    const latestUser = await User.findById(sub).select("accountState");
+    const latestState = latestUser?.accountState ?? ACCOUNT_STATES.ACTIVE;
 
-  // Re-read the User after consuming the session. The first read above
-  // protected the rotation boundary from already-blocked accounts; this
-  // second read preserves the existing fresh-identity principle and
-  // closes the obvious state-change window before issuing replacement
-  // credentials.
-  const user = await User.findById(sub);
-  if (!user) {
-    // The user was deleted between issuing this refresh token and using
-    // it. The old session is already correctly consumed above (single-
-    // use upheld); there is no user left to issue new tokens to.
+    if (latestState === ACCOUNT_STATES.HARD_SUSPENDED) {
+      await Session.deleteMany({ userId: sub });
+      throw new DomainError(
+        DomainErrorCode.ACCOUNT_SUSPENDED,
+        "Account access is suspended",
+      );
+    }
+    if (latestState === ACCOUNT_STATES.DELETION_PENDING) {
+      await Session.deleteMany({ userId: sub });
+      throw new DomainError(
+        DomainErrorCode.ACCOUNT_DELETION_PENDING,
+        "Account deletion is pending",
+      );
+    }
+    if (latestState === ACCOUNT_STATES.PERMANENTLY_DELETED || !latestUser) {
+      await Session.deleteMany({ userId: sub });
+      throw new DomainError(
+        DomainErrorCode.ACCOUNT_PERMANENTLY_DELETED,
+        "Account is permanently deleted",
+      );
+    }
     throw refreshFailed("Refresh failed");
   }
 
   const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(sub);
 
   return {
-    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    user: { id: eligible._id, name: eligible.name, email: eligible.email, role: eligible.role },
     accessToken,
     refreshToken: newRefreshToken,
   };
