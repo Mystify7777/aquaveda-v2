@@ -1,5 +1,6 @@
 import { User } from "../models/User.js";
 import { verifyAccessToken } from "../services/auth-tokens.js";
+import { ACCOUNT_STATES } from "../domain/account-state.js";
 
 /**
  * Authentication middleware.
@@ -62,6 +63,7 @@ export const ACCESS_TOKEN_COOKIE_NAME = "access_token";
  */
 export async function authMiddleware(req, res, next) {
   req.actorContext = null;
+  req.accountState = null;
 
   const token = req.cookies?.[ACCESS_TOKEN_COOKIE_NAME];
   if (!token) {
@@ -103,10 +105,12 @@ export async function authMiddleware(req, res, next) {
     return;
   }
 
-  // Fresh role resolution (L11): role comes from the User document
-  // read just now, never from the token payload (which never carried
-  // a role in the first place — see L10/L16).
+  // Fresh role/state resolution: both role and current account state come
+  // from the User document read just now, never from JWT claims. Missing
+  // accountState on legacy documents is treated as ACTIVE for backwards
+  // compatibility; new documents receive the schema default explicitly.
   req.actorContext = { id: user._id, role: user.role };
+  req.accountState = user.accountState ?? ACCOUNT_STATES.ACTIVE;
   next();
 }
 
