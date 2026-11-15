@@ -9,6 +9,9 @@ import realPayload from "@/test-utils/fixtures/issue-detail.resolved.json";
 vi.mock("@/components/issues/issue-map-loader", () => ({
   IssueMapLoader: ({ label }: { label: string }) => <div role="region" aria-label={label} />,
 }));
+vi.mock("@/components/issues/issue-recommendations", () => ({
+  IssueRecommendations: () => null,
+}));
 
 /**
  * The UI against a payload RECORDED FROM THE REAL BACKEND (`GET /api/v1/issues/:id`
