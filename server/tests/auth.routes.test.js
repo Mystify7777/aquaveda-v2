@@ -461,8 +461,8 @@ describe("Issue #173 — current account-state enforcement", () => {
       assert.ok(blockedUser);
       assert.equal(
         await Session.countDocuments({ userId: blockedUser._id }),
-        0,
-        "blocked login must not create a refresh session",
+        1,
+        "rejected login must not create an additional refresh session (the original registration session remains)",
       );
     }
   });
