@@ -22,12 +22,12 @@ function commentStatsLookup() {
             },
           },
         },
-        { $sort: { createdAt: -1, _id: -1 } },
+        // $sum/$max need no per-target sort; equivalent to count + latest createdAt.
         {
           $group: {
             _id: null,
             count: { $sum: 1 },
-            latestCommentAt: { $first: "$createdAt" },
+            latestCommentAt: { $max: "$createdAt" },
           },
         },
       ],
@@ -152,10 +152,10 @@ function knowledgePipeline() {
  * aggregation. The application never materializes the eligible source
  * population or performs a per-item query loop.
  */
-export async function listCommunityActivity({ page = 1, limit = 20 } = {}) {
+export function buildCommunityActivityPipeline({ page = 1, limit = 20 } = {}) {
   const skip = (page - 1) * limit;
 
-  const pipeline = [
+  return [
     ...discussionPipeline(),
     {
       $unionWith: {
@@ -204,7 +204,8 @@ export async function listCommunityActivity({ page = 1, limit = 20 } = {}) {
               type: "$sourceType",
               activityAt: 1,
               title: 1,
-              category: 1,
+              // Always present (null when the source has none): stable key set.
+              category: { $ifNull: ["$category", null] },
               commentCount: 1,
               resource: {
                 type: "$sourceType",
@@ -228,8 +229,17 @@ export async function listCommunityActivity({ page = 1, limit = 20 } = {}) {
       },
     },
   ];
+}
 
-  const [result] = await Discussion.aggregate(pipeline);
+export async function listCommunityActivity({ page = 1, limit = 20 } = {}) {
+  // allowDiskUse: the global $sort runs over every eligible source row (one
+  // small projected document each). That working set grows with the data and
+  // is the only stage that can exceed the 100 MB in-memory sort limit on
+  // servers that do not enable spilling by default; spilling is preferred
+  // over a request failing. Application memory stays bounded by `limit`.
+  const [result] = await Discussion.aggregate(
+    buildCommunityActivityPipeline({ page, limit }),
+  ).allowDiskUse(true);
   const total = result?.total?.[0]?.value ?? 0;
 
   return {
