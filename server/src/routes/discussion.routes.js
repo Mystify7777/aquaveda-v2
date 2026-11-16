@@ -5,24 +5,29 @@ import {
   getPublicDiscussionById,
   listPublicDiscussions,
 } from "../services/discussion.service.js";
+import {
+  hideDiscussion,
+  reportDiscussion,
+  unhideDiscussion,
+} from "../services/discussion-moderation.service.js";
 import { toPublicDiscussionDTO } from "../services/discussion.dto.js";
 import {
   sendSuccess,
   sendError,
   sendValidationError,
 } from "../http/respond.js";
+import { createRateLimiter } from "../middleware/rate-limiter.js";
+import { requireActor } from "../services/authorization.js";
 import {
   createDiscussionSchema,
+  hideDiscussionSchema,
   listDiscussionsQuerySchema,
+  reportDiscussionSchema,
+  unhideDiscussionSchema,
 } from "../validation/discussion.validation.js";
 
 /**
  * Discussion routes.
- *
- * Routes stay thin: validate request shape -> domain service -> explicit
- * public DTO -> shared response envelope. Authentication/authorization
- * remains a service concern; req.actorContext is produced globally by the
- * advisory auth middleware.
  *
  * Public:
  *   GET /api/v1/discussions
@@ -30,7 +35,30 @@ import {
  *
  * Authenticated:
  *   POST /api/v1/discussions
+ *   POST /api/v1/discussions/:discussionId/reports
+ *   POST /api/v1/discussions/:discussionId/hide
+ *   POST /api/v1/discussions/:discussionId/unhide (ADMIN)
+ *
+ * Moderation/reporting authority remains in the service layer. The router
+ * only performs request-shape validation and applies the report endpoint's
+ * abuse limiter.
  */
+
+const reportLimiter = createRateLimiter({
+  windowMs: 3_600_000,
+  maxRequests: 10,
+  keyPrefix: "discussion:report:",
+});
+
+function requireAuthenticated(req, res, next) {
+  try {
+    requireActor(req.actorContext);
+    next();
+  } catch (err) {
+    sendError(res, err);
+  }
+}
+
 export const discussionRouter = Router();
 
 discussionRouter.get("/", async (req, res) => {
@@ -85,6 +113,87 @@ discussionRouter.post("/", async (req, res) => {
       toPublicDiscussionDTO(discussion),
       "Discussion created",
       201,
+    );
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+discussionRouter.post("/:discussionId/reports", requireAuthenticated, reportLimiter, async (req, res) => {
+  try {
+    const parsed = reportDiscussionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+
+    const report = await reportDiscussion(
+      req.actorContext,
+      req.params.discussionId,
+      parsed.data.reason,
+    );
+
+    sendSuccess(
+      res,
+      {
+        submitted: true,
+        reason: report.reason,
+        createdAt: report.createdAt,
+      },
+      "Discussion report submitted",
+      201,
+    );
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+discussionRouter.post("/:discussionId/hide", async (req, res) => {
+  try {
+    requireActor(req.actorContext);
+
+    const parsed = hideDiscussionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+
+    const discussion = await hideDiscussion(
+      req.actorContext,
+      req.params.discussionId,
+      parsed.data.reason,
+    );
+
+    sendSuccess(
+      res,
+      toPublicDiscussionDTO(discussion),
+      "Discussion hidden",
+    );
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+discussionRouter.post("/:discussionId/unhide", async (req, res) => {
+  try {
+    requireActor(req.actorContext);
+
+    const parsed = unhideDiscussionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+
+    const discussion = await unhideDiscussion(
+      req.actorContext,
+      req.params.discussionId,
+      parsed.data.reason,
+    );
+
+    sendSuccess(
+      res,
+      toPublicDiscussionDTO(discussion),
+      "Discussion restored",
     );
   } catch (err) {
     sendError(res, err);

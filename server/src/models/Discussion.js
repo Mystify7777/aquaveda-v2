@@ -4,8 +4,57 @@ import {
   DISCUSSION_CATEGORIES,
   DISCUSSION_STATUSES,
 } from "../domain/discussion.js";
+import { DISCUSSION_MODERATION_ACTIONS } from "../domain/discussion-moderation.js";
 
 const { Schema } = mongoose;
+
+/**
+ * Append-only Discussion moderation history entry.
+ *
+ * The entry is pushed in the same atomic status transition that changes
+ * Discussion.status, so the current visibility state and its audit trail
+ * cannot diverge through a partial write.
+ */
+const moderationHistoryEntrySchema = new Schema(
+  {
+    actor: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      immutable: true,
+    },
+    action: {
+      type: String,
+      enum: DISCUSSION_MODERATION_ACTIONS,
+      required: true,
+      immutable: true,
+    },
+    fromStatus: {
+      type: String,
+      enum: DISCUSSION_STATUSES,
+      required: true,
+      immutable: true,
+    },
+    toStatus: {
+      type: String,
+      enum: DISCUSSION_STATUSES,
+      required: true,
+      immutable: true,
+    },
+    reason: {
+      type: String,
+      default: null,
+      immutable: true,
+      maxlength: 500,
+    },
+    timestamp: {
+      type: Date,
+      required: true,
+      immutable: true,
+    },
+  },
+  { _id: true },
+);
 
 /**
  * Discussion
@@ -17,9 +66,10 @@ const { Schema } = mongoose;
  * - category/status enum membership
  * - immutable author
  * - public list ordering index
+ * - append-only moderation history entry shape
  *
  * Visibility transitions and moderation authority remain service/domain
- * responsibilities. #167 owns the concrete hide/unhide/reporting contract.
+ * responsibilities.
  */
 const discussionSchema = new Schema(
   {
@@ -48,6 +98,10 @@ const discussionSchema = new Schema(
       ref: "User",
       required: true,
       immutable: true,
+    },
+    moderationHistory: {
+      type: [moderationHistoryEntrySchema],
+      default: [],
     },
   },
   { timestamps: true },

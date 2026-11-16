@@ -5,6 +5,7 @@ import {
   EXPERTISE_VALUES,
   REFERENCE_MAX_LENGTH,
 } from "../domain/expert-application-submission.js";
+import { ACCOUNT_STATES } from "../domain/account-state.js";
 
 const { Schema } = mongoose;
 
@@ -20,6 +21,7 @@ const { Schema } = mongoose;
  * - required fields, type correctness
  * - `email` uniqueness (via index)
  * - `role` enum membership
+ * - `accountState` lifecycle enum, defaulting to ACTIVE
  * - `bio` max length
  * - `passwordHash` excluded from default query projection and from JSON
  *   serialization
@@ -28,8 +30,8 @@ const { Schema } = mongoose;
  * - how a password is hashed, verified, or rotated
  * - how a user is granted ADMIN (#89). EXPERT is granted only through
  *   an approved `expertApplication` (#91, expert-application.service.js)
- * - account suspension/deactivation (decision-register D-1, deferred —
- *   deliberately no `status`/`isActive` field exists on this schema)
+ * - governance mutation semantics and audit history, which belong to the
+ *   focused follow-up issues after #168
  */
 
 const BIO_MAX_LENGTH = 500; // No approved document specifies this number.
@@ -141,6 +143,18 @@ const userSchema = new Schema(
       enum: ["USER", "EXPERT", "ADMIN"],
       required: true,
       default: "USER",
+    },
+    accountState: {
+      type: String,
+      enum: Object.values(ACCOUNT_STATES),
+      required: true,
+      default: ACCOUNT_STATES.ACTIVE,
+    },
+    accountStateVersion: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
     },
     bio: {
       type: String,

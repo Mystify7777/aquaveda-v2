@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 
 import { authMiddleware } from "./middleware/auth.js";
+import { accountStateMiddleware } from "./middleware/account-state.js";
 import { securityHeaders } from "./middleware/security-headers.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { authRouter } from "./routes/auth.routes.js";
@@ -11,6 +12,8 @@ import { geocodeRouter } from "./routes/geocode.routes.js";
 import { knowledgeRouter } from "./routes/knowledge.routes.js";
 import { commentRouter } from "./routes/comment.routes.js";
 import { discussionRouter } from "./routes/discussion.routes.js";
+import { discussionReportRouter } from "./routes/discussion-report.routes.js";
+import { communityRouter } from "./routes/community.routes.js";
 import { projectRouter } from "./routes/project.routes.js";
 import { expertApplicationRouter } from "./routes/expert-application.routes.js";
 import { healthRouter } from "./routes/health.routes.js";
@@ -153,6 +156,13 @@ export function createApp() {
   // project.service.js.
   app.use("/api/v1/auth", authRouter);
 
+  // Account-state enforcement (#173): the auth router remains reachable
+  // for /me, logout, and refresh so blocked users can discover their
+  // current state and recover/invalidate sessions. All application/domain
+  // routes after this point require the current account state to be
+  // eligible for authenticated use.
+  app.use(accountStateMiddleware);
+
   // Routes milestone (decision-register.md "Locked — Routes",
   // ROUTE-L1–L6): issueRouter includes public list endpoint (Issue #40)
   // along with create and update status operations.
@@ -163,6 +173,8 @@ export function createApp() {
   app.use("/api/v1/knowledge", knowledgeRouter);
   app.use("/api/v1/comments", commentRouter);
   app.use("/api/v1/discussions", discussionRouter);
+  app.use("/api/v1/discussion-reports", discussionReportRouter);
+  app.use("/api/v1/community", communityRouter);
   app.use("/api/v1/projects", projectRouter);
   // Authenticated, derived Dashboard read (Issue #53).
   app.use("/api/v1/dashboard", dashboardRouter);
