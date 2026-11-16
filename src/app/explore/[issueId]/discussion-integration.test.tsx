@@ -20,6 +20,8 @@ const mockRefreshSession = vi.fn();
 const mockCreateComment = vi.fn();
 const mockRefresh = vi.fn();
 
+// Client island (own tests: issue-action-bar.test.tsx); inert here so IssueDetail stays a pure render.
+vi.mock("@/components/issues/issue-action-bar", () => ({ IssueActionBar: () => null }));
 vi.mock("@/lib/api/issues", () => ({ getIssue: (id: string) => mockGetIssue(id) }));
 vi.mock("@/lib/api/auth", () => ({
   getCurrentUser: () => mockGetCurrentUser(),

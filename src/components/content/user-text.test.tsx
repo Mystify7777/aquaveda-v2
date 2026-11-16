@@ -11,6 +11,8 @@ import type { IssueDetailData } from "@/lib/api/types/issue";
 import type { KnowledgeArticle, WorkflowKnowledge } from "@/lib/api/types/knowledge";
 import { makeIssueDetail } from "@/test-utils/issue-detail";
 
+// Client island (own tests: issue-action-bar.test.tsx); inert here so IssueDetail stays a pure render.
+vi.mock("@/components/issues/issue-action-bar", () => ({ IssueActionBar: () => null }));
 vi.mock("@/components/issues/issue-map-loader", () => ({
   IssueMapLoader: ({ label }: { label: string }) => <div role="region" aria-label={label} />,
 }));

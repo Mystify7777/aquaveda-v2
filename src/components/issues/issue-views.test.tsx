@@ -16,6 +16,10 @@ vi.mock("@/components/issues/issue-map-loader", () => ({
 vi.mock("@/components/issues/issue-recommendations", () => ({
   IssueRecommendations: () => null,
 }));
+// Client island that fetches the viewer's workflow; covered by issue-action-bar.test.tsx.
+vi.mock("@/components/issues/issue-action-bar", () => ({
+  IssueActionBar: ({ issueId }: { issueId: string }) => <div data-testid="issue-action-bar" data-issue-id={issueId} />,
+}));
 
 export function makeIssue(over: Partial<Issue> = {}): Issue {
   return {
@@ -98,9 +102,11 @@ describe("IssueDetail", () => {
     expect(screen.queryByRole("region", { name: "Status history" })).not.toBeInTheDocument();
   });
 
-  it("offers no lifecycle/transition controls (D-3a stays out of this surface)", () => {
+  it("mounts IssueActionBar for the issue and renders no lifecycle controls itself (#192)", () => {
     render(<IssueDetail issue={makeIssueDetail({ status: "acknowledged" })} />);
-    // The only control is the Issue ID copy action (#87) — not a lifecycle write.
+    // Capabilities come only from the server via IssueActionBar; IssueDetail infers none.
+    expect(screen.getByTestId("issue-action-bar")).toHaveAttribute("data-issue-id", "i1");
+    // Besides that island, the only control is the Issue ID copy action (#87).
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Copy ID"]);
     for (const name of [/acknowledge/i, /resolve/i, /verify/i, /progress/i]) {
       expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();

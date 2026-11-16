@@ -1,4 +1,5 @@
 import { UserText } from "@/components/content/user-text";
+import { IssueActionBar } from "@/components/issues/issue-action-bar";
 import { CopyIssueId } from "@/components/issues/copy-issue-id";
 import { LOCATION_FALLBACK_TEXT, readableLocation } from "@/components/issues/issue-location";
 import { IssueMapLoader } from "@/components/issues/issue-map-loader";
@@ -17,8 +18,11 @@ import { isProjectEligible } from "@/lib/issues/status";
  * model (#148): a "Progress" summary (what the issue is waiting on, since
  * when, who is responsible, whether the resolution is disputed) and the
  * public activity "Timeline". Everything shown is supplied by the backend
- * DTO; nothing is derived or authorized here. No transition, progress-note or
- * dispute controls exist on this surface (ADR-0008 later slices).
+ * DTO; nothing is derived or authorized here. Lifecycle/remediation controls
+ * are the only interactive exception (#192): `IssueActionBar` is a client
+ * island that renders exclusively from the viewer-specific `workflow.actions`
+ * (ADR-0008 §11); this component never infers a capability. Progress-note and
+ * dispute controls remain out of scope (later slices).
  */
 export function IssueDetail({ issue }: { issue: IssueDetailData }) {
   const position = toLatLng(issue.location);
@@ -42,6 +46,8 @@ export function IssueDetail({ issue }: { issue: IssueDetailData }) {
       <UserText text={issue.description} />
 
       <IssueProgress issue={issue} />
+
+      <IssueActionBar issueId={issue._id} />
 
       <IssueRecommendations issueId={issue._id} />
 
