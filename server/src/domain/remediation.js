@@ -27,6 +27,19 @@ export function deriveResponsibilityState(remediation) {
   return remediation.acceptedAt ? "accepted" : "pending";
 }
 
+/**
+ * True iff `actorId` is the grantee of the current grant, pending or accepted.
+ * Shared by the grant-operation services, `authorizeTransition` and the
+ * workflow capability evaluator so "is this the grantee?" has one definition.
+ */
+export function isGrantee(remediation, actorId) {
+  return (
+    deriveResponsibilityState(remediation) !== "unassigned" &&
+    actorId != null &&
+    String(remediation.actor) === String(actorId)
+  );
+}
+
 /** True iff `actorId` holds an ACCEPTED grant. Role is deliberately not a parameter. */
 export function isAcceptedGrantee(remediation, actorId) {
   return (

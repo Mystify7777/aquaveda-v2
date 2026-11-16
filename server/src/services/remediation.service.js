@@ -4,7 +4,12 @@ import { Issue } from "../models/Issue.js";
 import { User } from "../models/User.js";
 import { resolveSelfGrantThreshold } from "../config/env.js";
 import { parseNote } from "../domain/lifecycle-note.js";
-import { GRANT_OPERATION_STATUSES, selfGrantPermitted } from "../domain/remediation.js";
+import {
+  GRANT_OPERATION_STATUSES,
+  deriveResponsibilityState,
+  isGrantee,
+  selfGrantPermitted,
+} from "../domain/remediation.js";
 import { requireActor, requireRole } from "./authorization.js";
 import { DomainError, DomainErrorCode, forbidden, invalidState, notFound, stateRace } from "./errors.js";
 
@@ -91,7 +96,7 @@ async function writeIfUnchanged(issueId, filter, update) {
 /** The pre-read check shared by accept / decline / release: the actor must be the CURRENT grantee. */
 function requireCurrentGrantee(issue, actorContext) {
   const grant = issue.remediation;
-  if (!grant || String(grant.actor) !== String(actorContext.id)) {
+  if (!isGrantee(grant, actorContext.id)) {
     throw forbidden("only the grantee of the current remediation grant may perform this operation");
   }
   return grant;
@@ -114,7 +119,7 @@ export async function grantRemediation(actorContext, issueId, granteeId, { note 
 
   const issue = await loadIssue(issueId);
   assertGrantStatus(issue);
-  if (issue.remediation) {
+  if (deriveResponsibilityState(issue.remediation) !== "unassigned") {
     throw invalidState("this issue already has a remediation grant", { reason: "GRANT_EXISTS" });
   }
   if (!(await User.exists({ _id: grantee }))) {
@@ -166,7 +171,7 @@ export async function acceptRemediation(actorContext, issueId) {
   const issue = await loadIssue(issueId);
   const grant = requireCurrentGrantee(issue, actorContext);
   assertGrantStatus(issue);
-  if (grant.acceptedAt) {
+  if (deriveResponsibilityState(grant) === "accepted") {
     throw invalidState("this remediation grant was already accepted", { reason: "GRANT_ALREADY_ACCEPTED" });
   }
 
@@ -195,7 +200,7 @@ export async function declineRemediation(actorContext, issueId, { note } = {}) {
   const issue = await loadIssue(issueId);
   const grant = requireCurrentGrantee(issue, actorContext);
   assertGrantStatus(issue);
-  if (grant.acceptedAt) {
+  if (deriveResponsibilityState(grant) === "accepted") {
     throw invalidState("an accepted grant is released, not declined", { reason: "GRANT_ALREADY_ACCEPTED" });
   }
   const parsedNote = parseOptionalNote(note);
@@ -232,7 +237,7 @@ export async function releaseRemediation(actorContext, issueId, { note } = {}) {
   const issue = await loadIssue(issueId);
   const grant = requireCurrentGrantee(issue, actorContext);
   assertGrantStatus(issue);
-  if (!grant.acceptedAt) {
+  if (deriveResponsibilityState(grant) !== "accepted") {
     throw invalidState("a pending grant is declined, not released", { reason: "GRANT_NOT_ACCEPTED" });
   }
   const parsedNote = parseOptionalNote(note);
@@ -269,7 +274,7 @@ async function removeGrantByAuthority({ actorContext, issueId, note, role, type 
   const issue = await loadIssue(issueId);
   assertGrantStatus(issue);
   const grant = issue.remediation;
-  if (!grant) {
+  if (deriveResponsibilityState(grant) === "unassigned") {
     throw invalidState("this issue has no remediation grant", { reason: "NO_GRANT" });
   }
   const parsedNote = parseOptionalNote(note, { required: true });

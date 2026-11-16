@@ -15,6 +15,8 @@
  * effect immediately and participation is unaffected by role changes.
  */
 
+import { evaluateWorkflowActions } from "./workflow-actions.js";
+
 const WORKFLOW_ROLES = new Set(["EXPERT", "ADMIN"]);
 
 /**
@@ -196,5 +198,8 @@ export function projectWorkflowView(issue, viewer, actorsById) {
         }
       : null,
     events: visibleRemediationEvents(issue, viewer),
+    // What THIS viewer may do now (ADR-0008 section 11): computed by the shared
+    // capability evaluator from the same facts the services enforce.
+    actions: evaluateWorkflowActions(issue, viewer),
   };
 }

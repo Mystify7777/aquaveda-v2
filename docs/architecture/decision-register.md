@@ -1271,6 +1271,27 @@ Execution order: **#163 (ADR-0009) → #164 + #165 → #167 → #166 → #12**. 
 
 Full derivation and DTO sketches: `docs/adr/ADR-0009-community-domain-and-activity.md`.
 
+## Implemented — Workflow capability read model (`workflow.actions`; prerequisite of ADR-0008 slice 4)
+
+The server tells each viewer which lifecycle/remediation operations they may perform now, so no client infers authority from roles, status and grants (ADR-0008 §11). Backend only: read-only, schema-free, no new route. Tags: `[ADR-0008]` = required by the ADR; `[impl]` = a choice made here, pending review.
+
+| ID | Decision |
+|---|---|
+| WFA-1 | `[ADR-0008 §11]` The **viewer-specific workflow view** (`GET /issues/:id/workflow` and the `workflow` part of every mutation response) gains `actions`: an explicit list of permitted operation names (bare strings, stable vocabulary order). It is **never** present in the public detail, the list, the create response or any anonymous payload. |
+| WFA-2 | `[impl]` **Vocabulary = the eleven operations that exist today:** `acknowledge`, `remediation.grant`, `.withdraw`, `.revoke`, `.accept`, `.decline`, `.release`, `.start`, `.resolve`, `resolution.verify`, `resolution.fail`. ADR-0008 §3 also names `remediation.progress` and the dispute capabilities; they are added by their own slices, when their operations exist (listing them now would advertise actions with no route). |
+| WFA-3 | `[ADR-0008 §11]` **One evaluator, shared facts.** `domain/workflow-actions.js` (`evaluateWorkflowActions`) is built from the SAME predicates the services enforce: `hasRole` (also used by `requireRole`), `isGrantee` and `deriveResponsibilityState` (now used by `authorizeTransition` and the grant operations in place of inline comparisons), `GRANT_OPERATION_STATUSES`, and `resolverOf` (now in the neutral `domain/issue-lifecycle.js`, also used by `authorizeTransition`). `[impl]` The services keep their own check order and error shaping (ADR-0006/0007 semantics), so drift is guarded by the **agreement matrix test**: every operation is attempted against the real services for every state × actor and must succeed exactly when listed, and be refused without effect otherwise. |
+| WFA-4 | `[impl]` **Availability = state + authority only**, never parameters or notes: e.g. `remediation.grant` is offered to an EXPERT while no grant exists; which grantee is chosen (self-grant policy) is decided when the operation runs. A listed action is **not a security token**: the services re-authorize every call. |
+| WFA-5 | `[ADR-0007 §2/§7, Invariant 9]` **Privacy and authority basis.** Grantee operations come from the grant RECORD, never from role, and only for the current grantee; an ordinary non-grantee USER has an empty list in every state, so a pending grant is indistinguishable from none for them. **ADMIN's role confers only `remediation.revoke`**; ADMIN is never offered `acknowledge`, `remediation.grant`, `remediation.withdraw`, `resolution.verify` or `resolution.fail`. Because ADR-0007 §2 lets the grantee be any existing user, an ADMIN who IS the current grantee (by direct grant, or by a later role change: invariant 11) is also offered that grant's participation actions (accept/decline, release/start, resolve) by the record, in addition to revoke. (An earlier draft of this row said "ADMIN never receives lifecycle actions", which contradicted ADR-0007 §2 and the existing role-change test; this is the corrected statement.) |
+| WFA-6 | `[impl]` **Observation, not a change:** `resolution.fail` carries no resolver-independence rule because the existing `authorizeTransition` has none (only `verify` does), so an EXPERT who is also the resolver is offered `resolution.fail` but not `resolution.verify`. The evaluator mirrors the services; whether failed verification should also require independence is a policy question for review. |
+| WFA-7 | `[impl]` **Open policy question, not decided here:** whether an ADMIN should be barred from holding a grant ("governance, not remediation") would reverse ADR-0007 §2 ("the grantee may be any existing User ... ADMIN") and invariant 11, and the existing role-change test (`lifecycle.authorization.test.js`). That needs an explicit ADR-0007 amendment plus a service change (grant-time check, and an action-time check if role changes must be covered); the evaluator would then follow, because it mirrors the services. Until then the evaluator and services agree on ADMIN-as-grantee (agreement matrix scenarios included). |
+
+### Compatibility ledger
+
+| Change | Kind |
+|---|---|
+| `workflow.actions` in the viewer-specific workflow view and mutation responses | Additive |
+| `requireRole`, `authorizeTransition` and the grant operations now call shared predicates | Behavior-preserving refactor (all 1580 existing tests unchanged apart from the exact-key assertions for the additive field) |
+| Public detail, list, create response, activity log, status/history/grant semantics | Unchanged |
 
 ## Locked — Authentication
 

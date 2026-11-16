@@ -1,3 +1,4 @@
+import { hasRole } from "../domain/actor.js";
 import { unauthorized, forbidden } from "./errors.js";
 
 /**
@@ -52,10 +53,10 @@ export function requireActor(actorContext) {
  * parsing a message string.
  */
 export function requireRole(actorContext, role) {
-  if (actorContext.role !== role) {
+  if (!hasRole(actorContext, role)) {
     throw forbidden("Forbidden: insufficient role privileges", {
       requiredRole: role,
-      actualRole: actorContext.role,
+      actualRole: actorContext?.role,
     });
   }
 }
