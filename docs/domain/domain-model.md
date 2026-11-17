@@ -201,6 +201,10 @@ Issue and Knowledge live in `docs/adr/ADR-0003-issue-lifecycle.md` and
 from the Domain Model milestone — including deferred and dispositioned
 items — lives in `docs/architecture/decision-register.md`.
 
+Account lifecycle and governance (mute, suspension, deletion/recovery, Expert
+revocation, Admin capability boundary) are recorded in
+`docs/adr/ADR-0010-account-governance.md` (register: GOV-L1–L15).
+
 ## Expert acquisition (#91)
 
 `User.role` becomes `EXPERT` only through an ADMIN-approved `expertApplication` (pending → approved), never by client input. See decision-register EXP-L1–L8.
