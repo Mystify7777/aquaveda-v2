@@ -46,6 +46,30 @@ describe("LoginForm accessibility regression baseline", () => {
     expect(screen.getByRole("link", { name: "Create an account" })).toHaveFocus();
   });
 
+  it("submits using Enter from the password field and restores an announced error", async () => {
+    const user = userEvent.setup();
+    mockLogin.mockRejectedValue(
+      new ApiError("bad credentials", "http", 401, "INVALID_CREDENTIALS"),
+    );
+    render(<LoginForm />);
+
+    const email = screen.getByLabelText("Email");
+    const password = screen.getByLabelText("Password");
+    await user.type(email, "person@example.com");
+    await user.type(password, "wrong-password");
+    password.focus();
+    await user.keyboard("{Enter}");
+
+    expect(mockLogin).toHaveBeenCalledWith({
+      email: "person@example.com",
+      password: "wrong-password",
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "We could not sign you in with those details.",
+    );
+    expect(password).toHaveFocus();
+  });
+
   it("announces client-side validation failures through an alert", async () => {
     const user = userEvent.setup();
     render(<LoginForm />);
@@ -71,5 +95,31 @@ describe("LoginForm accessibility regression baseline", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "We could not sign you in with those details.",
     );
+  });
+
+  it("keeps entered values and disables the submit while a keyboard submission is pending", async () => {
+    const user = userEvent.setup();
+    let resolveLogin!: () => void;
+    mockLogin.mockImplementation(
+      () => new Promise<void>((resolve) => { resolveLogin = resolve; }),
+    );
+    render(<LoginForm />);
+
+    const email = screen.getByLabelText("Email");
+    const password = screen.getByLabelText("Password");
+    await user.type(email, "person@example.com");
+    await user.type(password, "correct-horse");
+    password.focus();
+    await user.keyboard("{Enter}");
+
+    const pendingButton = screen.getByRole("button", { name: "Please wait..." });
+    expect(pendingButton).toBeDisabled();
+    expect(email).toHaveValue("person@example.com");
+    expect(password).toHaveValue("correct-horse");
+    expect(mockLogin).toHaveBeenCalledTimes(1);
+
+    resolveLogin();
+    await screen.findByRole("button", { name: "Sign in" });
+    expect(mockReplace).toHaveBeenCalledWith("/");
   });
 });
