@@ -2,6 +2,8 @@
 
 Status: Implemented in #173.
 
+The authoritative account-governance policy is defined by [ADR-0010](../adr/ADR-0010-account-governance.md). This document describes only the current #173 enforcement implementation; the follow-up implementation issues referenced by that ADR are tracked separately.
+
 ## Authoritative state
 
 The current account lifecycle is persisted on `User.accountState` and uses:
