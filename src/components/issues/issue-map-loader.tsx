@@ -45,7 +45,7 @@ export function IssueMapLoader({
   if (mappable.length === 0 && !bounds) return null;
 
   const map = (
-    <div role="region" aria-label={label} className={`${heightClassName} overflow-hidden rounded-lg border`}>
+    <div role="region" aria-label={label} className={`${heightClassName} relative z-0 overflow-hidden rounded-lg border`}>
       <IssueMap issues={mappable} bbox={bounds} onViewportChange={areaSearch ? setViewport : undefined} />
     </div>
   );
