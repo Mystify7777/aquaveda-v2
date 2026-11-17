@@ -30,6 +30,7 @@ describe("IssueMapLoader", () => {
   it("renders a labelled region with only the mappable issues", async () => {
     render(<IssueMapLoader label="Map of issues" issues={[issue("a", [77, 12]), issue("bad", [999, 0]), issue("b", [78, 13])]} />);
     expect(screen.getByRole("region", { name: "Map of issues" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Map of issues" }).className.split(/\\s+/)).toContain("z-0");
     expect(await screen.findByTestId("map")).toHaveTextContent("a,b");
   });
 
