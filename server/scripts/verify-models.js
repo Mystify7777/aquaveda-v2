@@ -379,6 +379,8 @@ check("8a. User has exactly the expected top-level fields", () => {
     "role",
     "accountState",
     "accountStateVersion",
+    "accountStateChangedAt",
+    "accountRestriction",
     "bio",
     "expertApplication",
   ].sort();
@@ -395,6 +397,15 @@ check("8a-1. User.accountState is required, defaults to ACTIVE, and is constrain
     ["ACTIVE", "MUTED", "HARD_SUSPENDED", "DELETION_PENDING", "PERMANENTLY_DELETED"].sort(),
     "accountState must contain exactly the locked account lifecycle states",
   );
+});
+
+check("8a-3. User.accountRestriction is optional, explicit about temporary vs indefinite, and holds no history", () => {
+  const sub = User.schema.path("accountRestriction").schema;
+  assert.deepEqual(Object.keys(sub.paths).filter((k) => k !== "_id").sort(), ["expiresAt", "kind", "safeReason"]);
+  assert.equal(sub.path("kind").isRequired, true);
+  assert.deepEqual([...sub.path("kind").enumValues].sort(), ["INDEFINITE", "TEMPORARY"]);
+  assert.equal(User.schema.path("accountRestriction").options.default, undefined, "absent on ACTIVE users");
+  assert.equal(User.schema.path("accountStateChangedAt").options.default, undefined);
 });
 
 check("8a-2. User.accountStateVersion is a required non-negative number defaulting to zero", () => {

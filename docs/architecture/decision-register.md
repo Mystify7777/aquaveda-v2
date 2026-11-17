@@ -1329,3 +1329,12 @@ The server tells each viewer which lifecycle/remediation operations they may per
 ### Deferred (not decided; see ADR-0010 "Deferred decisions")
 
 Recoverable-deletion window and retention duration; MUTE classification of non-contribution operations and Project actions; indefinite-suspension appeal policy and "safe reason" definition; Expert-revocation handling of assignments/reviews/Knowledge/applications and restoration policy; anonymized-contribution representation and per-domain Model C rules; interaction of an outstanding suspension with `DELETION_PENDING` and unstated restriction-state transitions; Invariant 10 reconciliation (GOV-X1); external object cleanup; any evasion-risk system; Admin deletion-notification content; analytics definitions.
+
+### Implementation notes — Account state persistence (#171; implementation-level, not locked by #168)
+
+- **GOV-I1 — Current restriction is an optional embedded subdocument** (`User.accountRestriction`: explicit `kind` TEMPORARY|INDEFINITE, `expiresAt`, `safeReason`) plus `accountStateChangedAt`; history stays out of `User` (#172). Valid (state, restriction) combinations are defined once in `server/src/domain/account-restriction.js`. It is a stored-record validity rule, not a transition graph. Details: `docs/architecture/account-state-persistence.md`.
+- **GOV-I2 — Indefinite is explicit, never a null expiry.** MUTED is TEMPORARY only (ADR-0010 §2); HARD_SUSPENDED is TEMPORARY with `expiresAt` or INDEFINITE without it.
+- **GOV-I3 — Raw updates bypass validators.** Mutation services must call `validateAccountRecord` and `$inc` `accountStateVersion` atomically (extends the #173 invariant).
+- **GOV-I4 — Two partial indexes** (`account_state_changed` over MUTED/HARD_SUSPENDED/DELETION_PENDING, `account_restriction_expiry`); ACTIVE users carry no entries. PERMANENTLY_DELETED is intentionally not indexed (terminal; no specified access path).
+- **GOV-I5 — Pre-#173 users without stored `accountState`/`accountStateVersion` cannot refresh** (#173 reservation filters on the stored version). Mitigated by the idempotent `backfill:account-state` script; #173 code unchanged.
+- **GOV-I6 — Still unresolved:** outstanding suspension under DELETION_PENDING (ADR-0010 Deferred) is not storable; governance event reference awaits #172; expiry is defined (`isRestrictionExpired`) but not yet evaluated (#174/#175).
