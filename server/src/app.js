@@ -4,6 +4,7 @@ import cors from "cors";
 
 import { authMiddleware } from "./middleware/auth.js";
 import { accountStateMiddleware } from "./middleware/account-state.js";
+import { contributionRestrictionMiddleware } from "./middleware/contribution-restriction.js";
 import { securityHeaders } from "./middleware/security-headers.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { authRouter } from "./routes/auth.routes.js";
@@ -18,6 +19,7 @@ import { projectRouter } from "./routes/project.routes.js";
 import { expertApplicationRouter } from "./routes/expert-application.routes.js";
 import { healthRouter } from "./routes/health.routes.js";
 import { dashboardRouter } from "./routes/dashboard.routes.js";
+import { accountGovernanceRouter } from "./routes/account-governance.routes.js";
 import { sendError } from "./http/respond.js";
 
 /**
@@ -162,6 +164,8 @@ export function createApp() {
   // routes after this point require the current account state to be
   // eligible for authenticated use.
   app.use(accountStateMiddleware);
+  // MUTE (#174): fail-closed contribution guard for every domain write below.
+  app.use(contributionRestrictionMiddleware);
 
   // Routes milestone (decision-register.md "Locked — Routes",
   // ROUTE-L1–L6): issueRouter includes public list endpoint (Issue #40)
@@ -179,6 +183,7 @@ export function createApp() {
   // Authenticated, derived Dashboard read (Issue #53).
   app.use("/api/v1/dashboard", dashboardRouter);
   app.use("/api/v1/expert-application", expertApplicationRouter);
+  app.use("/api/v1/accounts", accountGovernanceRouter);
 
   // No route matched. Conforms to the ApiResponse<T> envelope
   // (ROUTE-L6) via the same shared sendError used by every router —

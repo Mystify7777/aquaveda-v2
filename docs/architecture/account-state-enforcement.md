@@ -35,7 +35,7 @@ After the auth router, `accountStateMiddleware` blocks application/domain routes
 - `DELETION_PENDING`
 - `PERMANENTLY_DELETED`
 
-`MUTED` remains authenticated and read-capable. Contribution enforcement belongs to #174.
+`MUTED` remains authenticated and read-capable. Contribution enforcement is implemented in #174: see [mute-enforcement.md](./mute-enforcement.md).
 
 The auth router remains reachable for `/me`, logout, and refresh because those operations are part of the account/session recovery boundary.
 
