@@ -466,6 +466,24 @@ Intentionally not decided by #168 or this ADR:
 
 (#173, authenticated-request enforcement, is already implemented.)
 
+## Implementation amendments
+
+### #172 — Governance audit events use a dedicated collection
+
+§14 requires governance events to be append-only and independent of current
+account state. They are therefore stored in their own collection
+(`GovernanceEvent`), not on `User`. Append-only is enforced at the application
+(Mongoose) boundary; making it authoritative against raw-driver or
+out-of-process writes requires database-level permissions, which are an
+operations decision outside #172. This is a deliberate addition to the earlier
+"five domain collections plus Session" rule (ADR-0007 constraints; the
+`verify-models` registered-models guard is updated accordingly). Embedding in
+`User` was rejected: it would mix history with state, grow without a domain
+bound, and could not carry a different retention/purge disposition (§11
+"governance/security audit: RETAIN according to policy"). Details, retry
+semantics, and immutability enforcement: `docs/architecture/governance-audit-events.md`.
+No other part of this ADR changes.
+
 ## References
 
 - Issue #168 (architecture), #170 (this record), #173 (enforcement)
