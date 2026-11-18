@@ -1347,3 +1347,12 @@ Recoverable-deletion window and retention duration; MUTE classification of non-c
 - **GOV-A4 — Retries:** required unique `idempotencyKey`; same key + same content returns the original, different content → `INVALID_STATE` (`IDEMPOTENCY_KEY_CONFLICT`); recommended key `${action}:${target}:${accountStateVersion}`.
 - **GOV-A5 — Privacy:** private `reason` never serialized; the only projection is the affected-user allowlist (`id`, `action`, `occurredAt`, `safeReason`); Admin projection deferred to #181.
 - **GOV-A6 — Unresolved:** non-user (`SYSTEM`) actor representation; per-action reason requirements beyond `EXPERT_REVOKED`; event retention period (none invented); whether the User restriction stores an event reference.
+
+### Implementation notes — MUTE enforcement and expiration (#174; implementation-level, not locked by #168)
+
+- **GOV-M1 — Fail-closed contribution guard.** A MUTED actor's non-safe HTTP methods are rejected `403 ACCOUNT_MUTED` unless on an explicit allowlist, which is empty. No per-feature exceptions; authority acts are blocked too. Future write endpoints are blocked by default. Classification of every existing write route: `docs/architecture/mute-enforcement.md`. This is the classification ADR-0010 deferred, for the routes that exist; appeals/deletion/recovery must be added explicitly when built.
+- **GOV-M2 — `ACCOUNT_MUTED`** is a new error code (403); ADR-0010 locks only `ACCOUNT_SUSPENDED`. No restriction details are returned yet (deferred).
+- **GOV-M3 — Server-side expiry via effective state.** `authMiddleware` computes the effective state per request, so an expired mute stops blocking immediately; persisting the lift (SYSTEM `MUTE_LIFTED`, event `occurredAt` = `expiresAt`) is lazy, best-effort, idempotent and race-safe. A sweep (`liftExpiredMutes`) exists; nothing schedules it.
+- **GOV-M4 — Mute/lift are conditional atomic updates** pinned on state and `accountStateVersion` with `$inc` in the same write; sessions are not invalidated by MUTE (ADR-0010 §4).
+- **GOV-M5 — Event write is a second operation** (no transactions, ADR-0006): retried and idempotent (`${action}:${target}:${version}`); failure leaves a missing event, never a false one. Transaction/outbox options undecided.
+- **GOV-M6 — Admin routes added:** `POST /api/v1/accounts/:userId/mute` and `/mute/lift` (ADMIN, strict bodies, explicit DTOs). Muting Admins/self: no rule invented.
