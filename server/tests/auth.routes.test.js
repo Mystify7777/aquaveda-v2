@@ -5,6 +5,7 @@ import http from "node:http";
 import { createApp } from "../src/app.js";
 import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.js";
 import { defaultStore } from "../src/middleware/rate-limiter.js";
+import { User } from "../src/models/User.js";
 
 /**
  * Minimal, dependency-free HTTP test client built on node:http directly.
