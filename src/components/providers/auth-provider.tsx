@@ -26,7 +26,6 @@ type AuthContextValue = {
     register: typeof registerRequest;
     logout: () => Promise<void>;
     refreshUser: () => Promise<AuthUser | null>;
-    /** Retry the existing /me + /refresh bootstrap contract after unavailability. */
     retryInitialization: () => Promise<void>;
 };
 
@@ -38,6 +37,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [retrying, setRetrying] = React.useState(false);
     const requestGeneration = React.useRef(0);
     const retryGeneration = React.useRef(0);
+    const manualRetryInFlight = React.useRef(false);
+    const mounted = React.useRef(false);
 
     const setAuthenticated = React.useCallback((nextUser: AuthUser) => {
         setUser(nextUser);
@@ -70,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const logout = React.useCallback(async () => {
         const generation = ++requestGeneration.current;
         retryGeneration.current += 1;
+        manualRetryInFlight.current = false;
         await logoutRequest();
         if (generation === requestGeneration.current) {
             setUser(null);
@@ -94,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             refreshSession,
         });
 
-        if (generation !== retryGeneration.current) return;
+        if (!mounted.current || generation !== retryGeneration.current) return;
         if (result.user) {
             setAuthenticated(result.user);
         } else {
@@ -104,46 +106,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [setAuthenticated]);
 
     const retryInitialization = React.useCallback(async () => {
-        // Only expose retry when the initial bounded attempt ended in the
-        // explicit unavailable state. No manual retry of definitive auth errors.
-        if (status !== "unavailable" || retrying) return;
+        if (status !== "unavailable" || manualRetryInFlight.current) return;
+        manualRetryInFlight.current = true;
         const generation = ++retryGeneration.current;
         setRetrying(true);
         setStatus("initializing");
         try {
             await runInitialization(generation);
         } finally {
-            if (generation === retryGeneration.current) setRetrying(false);
-        }
-    }, [status, retrying, runInitialization]);
-
-    React.useEffect(() => {
-        let active = true;
-        const generation = ++retryGeneration.current;
-        const isCurrent = () => active && generation === retryGeneration.current;
-
-        async function initialize() {
-            const result = await initializeAuthSessionWithRetry({
-                getCurrentUser,
-                refreshSession,
-            });
-
-            if (!isCurrent()) return;
-            if (result.user) {
-                setAuthenticated(result.user);
-            } else {
-                setUser(null);
-                setStatus(result.status as AuthStatus);
+            if (generation === retryGeneration.current) {
+                manualRetryInFlight.current = false;
+                setRetrying(false);
             }
         }
+    }, [status, runInitialization]);
 
-        void initialize();
+    React.useEffect(() => {
+        mounted.current = true;
+        const generation = ++retryGeneration.current;
+        void runInitialization(generation);
+
         return () => {
-            active = false;
-            // Invalidates an in-flight retry result on unmount/Strict Mode cleanup.
+            mounted.current = false;
+            // Invalidates results from an in-flight retry on unmount/Strict Mode cleanup.
             if (retryGeneration.current === generation) retryGeneration.current += 1;
+            manualRetryInFlight.current = false;
         };
-    }, [setAuthenticated]);
+    }, [runInitialization]);
 
     const value = React.useMemo(
         () => ({ status, user, login, register, logout, refreshUser, retryInitialization }),
