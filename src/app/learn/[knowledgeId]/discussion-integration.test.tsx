@@ -162,9 +162,10 @@ describe("public article discussion × auth boundary", () => {
     expect(mockRefresh).not.toHaveBeenCalled();
   });
 
-  it("auth service unreachable: 'unavailable' alert (not a sign-in prompt), article unaffected", async () => {
+  it("auth service unreachable: bounded bootstrap retries before the unavailable fallback", async () => {
     mockGetCurrentUser.mockRejectedValue(new ApiError("Failed to fetch", "network"));
     await renderArticle();
+    await waitFor(() => expect(mockGetCurrentUser).toHaveBeenCalledTimes(3));
     expect(await screen.findAllByText(/Authentication is unavailable right now/)).not.toHaveLength(0);
     expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Comment")).not.toBeInTheDocument();
