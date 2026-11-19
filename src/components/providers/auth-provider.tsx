@@ -34,7 +34,6 @@ const AuthContext = React.createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [status, setStatus] = React.useState<AuthStatus>("initializing");
     const [user, setUser] = React.useState<AuthUser | null>(null);
-    const [retrying, setRetrying] = React.useState(false);
     const requestGeneration = React.useRef(0);
     const retryGeneration = React.useRef(0);
     const manualRetryInFlight = React.useRef(false);
@@ -110,7 +109,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         manualRetryInFlight.current = true;
         const generation = ++retryGeneration.current;
         requestGeneration.current = generation;
-        setRetrying(true);
         setStatus("initializing");
         try {
             await runInitialization(generation);
@@ -121,7 +119,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } finally {
             if (generation === retryGeneration.current) {
                 manualRetryInFlight.current = false;
-                setRetrying(false);
             }
         }
     }, [status, runInitialization]);
