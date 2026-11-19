@@ -44,7 +44,7 @@ async function mount() {
 }
 
 describe("AuthProvider.refreshUser", () => {
-  it("re-reads /auth/me into state (fresh role) WITHOUT rotating tokens or reloading", async () => {
+  it("re-reads /auth/me into state without rotating tokens or reloading", async () => {
     await mount();
     getCurrentUser.mockResolvedValue(user("EXPERT"));
     let result: unknown;
@@ -92,17 +92,13 @@ describe("AuthProvider.refreshUser", () => {
 });
 
 describe("AuthProvider bootstrap retry integration", () => {
-  it("runs the bounded recovery policy and applies an authenticated result without reload", async () => {
-    initializeAuthSessionWithRetry.mockResolvedValueOnce({
-      status: "authenticated",
-      user: user("USER"),
-    });
+  it("applies the successful result from the bounded bootstrap without a page reload", async () => {
     await mount();
     expect(initializeAuthSessionWithRetry).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("who")).toHaveTextContent("authenticated:USER");
   });
 
-  it("manual retry transitions unavailable through initializing and recovers shared auth state", async () => {
+  it("manual retry recovers shared auth state without a page reload", async () => {
     initializeAuthSessionWithRetry
       .mockResolvedValueOnce({ status: "unavailable", user: null })
       .mockResolvedValueOnce({ status: "authenticated", user: user("EXPERT") });
@@ -146,5 +142,23 @@ describe("AuthProvider bootstrap retry integration", () => {
       await first;
     });
     expect(screen.getByTestId("who")).toHaveTextContent("authenticated:USER");
+  });
+
+  it("ignores a late bootstrap result after logout supersedes it", async () => {
+    let resolveBootstrap!: (value: unknown) => void;
+    initializeAuthSessionWithRetry.mockReturnValueOnce(
+      new Promise((resolve) => { resolveBootstrap = resolve; }),
+    );
+    logoutRequest.mockResolvedValue(undefined);
+    render(<AuthProvider><Probe /></AuthProvider>);
+
+    await act(async () => { await ctx.logout(); });
+    expect(screen.getByTestId("who")).toHaveTextContent("anonymous:-");
+
+    await act(async () => {
+      resolveBootstrap({ status: "authenticated", user: user("USER") });
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("who")).toHaveTextContent("anonymous:-");
   });
 });
