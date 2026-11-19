@@ -113,6 +113,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setStatus("initializing");
         try {
             await runInitialization(generation);
+        } catch {
+            if (mounted.current && generation === retryGeneration.current) {
+                setStatus("unavailable");
+            }
         } finally {
             if (generation === retryGeneration.current) {
                 manualRetryInFlight.current = false;
