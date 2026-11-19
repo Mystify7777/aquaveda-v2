@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             refreshSession,
         });
 
-        if (!mounted.current || generation !== retryGeneration.current) return;
+        if (!mounted.current || generation !== retryGeneration.current || requestGeneration.current !== generation) return;
         if (result.user) {
             setAuthenticated(result.user);
         } else {
@@ -109,6 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (status !== "unavailable" || manualRetryInFlight.current) return;
         manualRetryInFlight.current = true;
         const generation = ++retryGeneration.current;
+        requestGeneration.current = generation;
         setRetrying(true);
         setStatus("initializing");
         try {
@@ -128,6 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     React.useEffect(() => {
         mounted.current = true;
         const generation = ++retryGeneration.current;
+        requestGeneration.current = generation;
         void runInitialization(generation);
 
         return () => {
