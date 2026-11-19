@@ -109,6 +109,7 @@ export function DashboardView() {
   if (resource.status === "error") {
     return (
       <LoadError
+        title="Dashboard unavailable"
         message={loadErrorMessage(resource.error, "your dashboard")}
         onRetry={reload}
         signIn={resource.error.status === 401}
