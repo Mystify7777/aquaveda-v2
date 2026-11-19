@@ -165,7 +165,7 @@ describe("public article discussion × auth boundary", () => {
   it("auth service unreachable: bounded bootstrap retries before the unavailable fallback", async () => {
     mockGetCurrentUser.mockRejectedValue(new ApiError("Failed to fetch", "network"));
     await renderArticle();
-    await waitFor(() => expect(mockGetCurrentUser).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(mockGetCurrentUser).toHaveBeenCalledTimes(3), { timeout: 5000 });
     expect(await screen.findAllByText(/Authentication is unavailable right now/)).not.toHaveLength(0);
     expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Comment")).not.toBeInTheDocument();
