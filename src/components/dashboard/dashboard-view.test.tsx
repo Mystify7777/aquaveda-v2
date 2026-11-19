@@ -151,7 +151,10 @@ describe("DashboardView: error", () => {
     );
     render(<DashboardView />);
     const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Dashboard unavailable");
     expect(alert).toHaveTextContent("We could not load your dashboard. Try again.");
+    expect(within(alert).getByRole("heading", { name: "Dashboard unavailable", level: 2 })).toBeInTheDocument();
+    expect(within(alert).getByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/Mongo|E11000|server\.js|secret|abc123|500/);
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
   });
@@ -175,7 +178,9 @@ describe("DashboardView: error", () => {
     render(<DashboardView />);
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Your session is no longer valid. Sign in again to continue.");
+    expect(within(alert).getByRole("heading", { name: "Dashboard unavailable", level: 2 })).toBeInTheDocument();
     expect(within(alert).getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
+    expect(within(alert).getByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(mockGetDashboard).toHaveBeenCalledTimes(1);
   });
 
