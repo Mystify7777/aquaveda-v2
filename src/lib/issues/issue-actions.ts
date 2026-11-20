@@ -27,6 +27,8 @@ export interface ActionSpec {
   path: string;
   note: "none" | "optional" | "required";
   noteLabel?: string;
+  noteMinLength?: number;
+  consequence?: string;
   grantee?: boolean;
   destructive?: boolean;
 }
@@ -42,7 +44,15 @@ export const ACTION_SPECS: Record<WorkflowAction, ActionSpec> = {
   "remediation.start": { label: "Start remediation", confirmLabel: "Confirm start", path: "start", note: "optional" },
   "remediation.resolve": { label: "Mark resolved", confirmLabel: "Confirm resolution", path: "resolve", note: "required", noteLabel: "Resolution note" },
   "resolution.verify": { label: "Verify resolution", confirmLabel: "Confirm verification", path: "verify", note: "required", noteLabel: "Verification rationale" },
-  "resolution.fail": { label: "Fail verification", confirmLabel: "Confirm failure", path: "fail-verification", note: "required", noteLabel: "Failure reason", destructive: true },
+  "resolution.fail": {
+    label: "Request changes",
+    confirmLabel: "Request changes",
+    path: "fail-verification",
+    note: "required",
+    noteLabel: "Reason for requesting changes",
+    noteMinLength: 10,
+    consequence: "The resolution will be sent back for further work and the current resolution will not be verified.",
+  },
 };
 
 export function isKnownAction(action: string): action is WorkflowAction {
@@ -65,8 +75,13 @@ export function validateActionInput(
   if (spec.grantee && !OBJECT_ID.test(input.granteeId.trim())) {
     errors.granteeId = "Enter a valid user ID (24 hexadecimal characters).";
   }
-  if (spec.note === "required" && !input.note.trim()) {
-    errors.note = "A note is required.";
+  if (spec.note === "required") {
+    const note = input.note.trim();
+    if (!note) {
+      errors.note = "A note is required.";
+    } else if (spec.noteMinLength && note.length < spec.noteMinLength) {
+      errors.note = `Use at least ${spec.noteMinLength} characters to explain the reason.`;
+    }
   }
   return errors;
 }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -81,6 +81,24 @@ describe("IssueActionBar — capability rendering", () => {
 });
 
 describe("IssueActionBar — input", () => {
+  it("renders failed verification as a non-destructive request-changes action with consequence", async () => {
+    getWf.mockResolvedValue(wf("resolution.fail"));
+    render(<IssueActionBar issueId="i1" />);
+    const user = userEvent.setup();
+
+    const actionButton = await screen.findByRole("button", {
+      name: "Request changes",
+    });
+    expect(actionButton).toHaveClass("border-warning", "text-warning");
+    await user.click(actionButton);
+
+    expect(screen.getByText(/sent back for further work/i)).toBeVisible();
+    expect(screen.getByLabelText(/reason for requesting changes/i)).toBeVisible();
+
+    const form = screen.getByRole("form", { name: "Request changes" });
+    expect(within(form).getByRole("button", { name: "Request changes" })).toBeVisible();
+  });
+
   it("rejects empty required note before the API call", async () => {
     getWf.mockResolvedValue(wf("remediation.resolve"));
     render(<IssueActionBar issueId="i1" />);
@@ -88,6 +106,24 @@ describe("IssueActionBar — input", () => {
     await user.click(await screen.findByRole("button", { name: "Mark resolved" }));
     await user.click(screen.getByRole("button", { name: "Confirm resolution" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/required/i);
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("rejects a too-short failed-verification reason before the API call", async () => {
+    getWf.mockResolvedValue(wf("resolution.fail"));
+    render(<IssueActionBar issueId="i1" />);
+    const user = userEvent.setup();
+
+    const actionButton = await screen.findByRole("button", {
+      name: "Request changes",
+    });
+    await user.click(actionButton);
+
+    const form = screen.getByRole("form", { name: "Request changes" });
+    await user.type(screen.getByLabelText(/reason for requesting changes/i), "too short");
+    await user.click(within(form).getByRole("button", { name: "Request changes" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/at least 10 characters/i);
     expect(exec).not.toHaveBeenCalled();
   });
 
@@ -155,7 +191,6 @@ describe("IssueActionBar — failures", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Acknowledge" })).toBeNull());
     expect(exec).toHaveBeenCalledTimes(1);
     expect(getWf).toHaveBeenCalledTimes(2);
-    // Explanation is a notice shown after the re-read; no stale failure alert survives it.
     expect(await screen.findByRole("status")).not.toHaveTextContent("RAW BACKEND TEXT");
     expect(screen.queryByRole("alert")).toBeNull();
   });
