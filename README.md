@@ -194,6 +194,8 @@ Read [`docs/architecture/decision-register.md`](docs/architecture/decision-regis
 
 Read [`CLAUDE.md`](CLAUDE.md) for the current engineering progress log and milestone verification state.
 
+Read [`docs/engineering/frontend-contributing.md`](docs/engineering/frontend-contributing.md) before taking a frontend issue; it provides the recommended reading path, contribution workflow, Server/Client boundary guidance, verification expectations, and the rule for unresolved domain/backend questions.
+
 ---
 
 ## Development approach
