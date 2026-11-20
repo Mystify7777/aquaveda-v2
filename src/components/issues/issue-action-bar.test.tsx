@@ -88,7 +88,6 @@ describe("IssueActionBar — input", () => {
 
     const actionButton = await screen.findByRole("button", {
       name: "Request changes",
-      exact: true,
     });
     expect(actionButton).toHaveClass("border-warning", "text-warning");
     await user.click(actionButton);
@@ -97,7 +96,7 @@ describe("IssueActionBar — input", () => {
     expect(screen.getByLabelText(/reason for requesting changes/i)).toBeVisible();
 
     const form = screen.getByRole("form", { name: "Request changes" });
-    expect(within(form).getByRole("button", { name: "Request changes", exact: true })).toBeVisible();
+    expect(within(form).getByRole("button", { name: "Request changes" })).toBeVisible();
   });
 
   it("rejects empty required note before the API call", async () => {
@@ -117,13 +116,12 @@ describe("IssueActionBar — input", () => {
 
     const actionButton = await screen.findByRole("button", {
       name: "Request changes",
-      exact: true,
     });
     await user.click(actionButton);
 
     const form = screen.getByRole("form", { name: "Request changes" });
     await user.type(screen.getByLabelText(/reason for requesting changes/i), "too short");
-    await user.click(within(form).getByRole("button", { name: "Request changes", exact: true }));
+    await user.click(within(form).getByRole("button", { name: "Request changes" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/at least 10 characters/i);
     expect(exec).not.toHaveBeenCalled();
