@@ -10,8 +10,30 @@ import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/lib/api/client";
 import { getIssue } from "@/lib/api/issues";
+import { cleanMetadataText, publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "Issue" };
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ issueId: string }>;
+}): Promise<Metadata> {
+  const { issueId } = await params;
+
+  try {
+    const issue = await getIssue(issueId);
+    return publicPageMetadata({
+      title: issue.title,
+      description: cleanMetadataText(issue.description),
+      canonical: `/explore/${encodeURIComponent(issueId)}`,
+    });
+  } catch {
+    return publicPageMetadata({
+      title: "Issue",
+      description: "Public environmental issue details on AquaVeda.",
+      canonical: `/explore/${encodeURIComponent(issueId)}`,
+    });
+  }
+}
 
 /**
  * Public Issue detail (#50). 404 (unknown) and 400 VALIDATION_FAILED
