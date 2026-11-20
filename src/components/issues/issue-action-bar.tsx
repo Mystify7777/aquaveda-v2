@@ -72,6 +72,11 @@ function ActionForm({
           )}
         </div>
       )}
+      {spec.consequence && (
+        <p className="bg-muted/50 text-muted-foreground rounded-md border p-3 text-sm leading-5">
+          {spec.consequence}
+        </p>
+      )}
       {spec.note !== "none" && (
         <div className="space-y-1">
           <label className="text-sm font-medium" htmlFor={`${uid}-note`}>
