@@ -9,8 +9,23 @@ import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { PaginationNav } from "@/components/ui/pagination-nav";
 import { ApiError } from "@/lib/api/client";
 import { getKnowledgeList } from "@/lib/api/knowledge";
+import { publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "Learn" };
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string | string[] }>;
+}): Promise<Metadata> {
+  const raw = (await searchParams).page;
+  const n = Number(Array.isArray(raw) ? raw[0] : raw);
+  const page = Number.isInteger(n) && n >= 1 ? n : 1;
+
+  return publicPageMetadata({
+    title: "Learn",
+    description: "Read reviewed environmental knowledge published through AquaVeda.",
+    canonical: page === 1 ? "/learn" : `/learn?page=${page}`,
+  });
+}
 
 function parsePage(raw: string | string[] | undefined): number {
   const n = Number(Array.isArray(raw) ? raw[0] : raw);

@@ -7,6 +7,7 @@ import { ExpertStatusProvider } from "@/components/expert/expert-status-provider
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { cn } from "@/lib/utils";
+import { AQUAVEDA_DESCRIPTION, SITE_URL } from "@/lib/seo";
 
 import "./globals.css";
 
@@ -31,12 +32,24 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: SITE_URL,
   title: {
     default: "AquaVeda",
     template: "%s | AquaVeda",
   },
-  description:
-    "Explore environmental issues, trusted knowledge, and community action with AquaVeda, a civic intelligence platform focused on water and the environment.",
+  description: AQUAVEDA_DESCRIPTION,
+  openGraph: {
+    title: "AquaVeda",
+    description: AQUAVEDA_DESCRIPTION,
+    url: SITE_URL,
+    type: "website",
+    siteName: "AquaVeda",
+  },
+  twitter: {
+    card: "summary",
+    title: "AquaVeda",
+    description: AQUAVEDA_DESCRIPTION,
+  },
 };
 
 export default function RootLayout({
