@@ -9,8 +9,23 @@ import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { PaginationNav } from "@/components/ui/pagination-nav";
 import { ApiError } from "@/lib/api/client";
 import { getProjects } from "@/lib/api/projects";
+import { publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "Act" };
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string | string[] }>;
+}): Promise<Metadata> {
+  const raw = (await searchParams).page;
+  const n = Number(Array.isArray(raw) ? raw[0] : raw);
+  const page = Number.isInteger(n) && n >= 1 ? n : 1;
+
+  return publicPageMetadata({
+    title: "Act",
+    description: "Follow public environmental projects turning acknowledged issues into coordinated action.",
+    canonical: page === 1 ? "/act" : `/act?page=${page}`,
+  });
+}
 
 function parsePage(raw: string | string[] | undefined): number {
   const n = Number(Array.isArray(raw) ? raw[0] : raw);
