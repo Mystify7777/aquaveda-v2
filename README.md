@@ -194,6 +194,8 @@ Read [`docs/architecture/decision-register.md`](docs/architecture/decision-regis
 
 Read [`CLAUDE.md`](CLAUDE.md) for the current engineering progress log and milestone verification state.
 
+Read [`docs/architecture/seo-metadata.md`](docs/architecture/seo-metadata.md) for the public-route metadata, canonical URL, social preview, and noindex policy.
+
 ---
 
 ## Development approach
