@@ -25,8 +25,24 @@ import {
   type ExploreQuery,
 } from "@/lib/issues/discovery";
 import { ISSUE_STATUS_LABELS } from "@/lib/issues/status";
+import { publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "Explore" };
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}): Promise<Metadata> {
+  const sp = await searchParams;
+  const { filters } = parseExploreQuery(sp);
+  const page = parsePage(sp.page);
+
+  return publicPageMetadata({
+    title: "Explore",
+    description:
+      "Discover public environmental issues by status, category, severity, search, and map area.",
+    canonical: exploreHref(filters, page),
+  });
+}
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
