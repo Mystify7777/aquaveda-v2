@@ -6,6 +6,12 @@ lives in.
 
 ---
 
+## Frontend contribution path
+
+For frontend issue work, use [`frontend-contributing.md`](./frontend-contributing.md) as the concise navigation path through product invariants, architecture decisions, Next.js patterns, testing, and PR expectations. This file remains the canonical home for engineering standards and Definition of Done.
+
+---
+
 ## Coding standards
 
 - **TypeScript, strictly.** `strict: true` in tsconfig. No `any`, no

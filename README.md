@@ -30,7 +30,7 @@ The project now has a working Express authentication foundation with:
 
 Verification is defined by scripts rather than recorded counts, which go stale: `npm run verify` (root) runs the backend and frontend pipelines concurrently; it does not include the Playwright browser smoke suite (`npm run test:e2e`). CI (`.github/workflows/ci.yml`) runs on every PR and push to `main` with three jobs: `frontend`, `backend` (against a pinned `mongo:7` service) and `e2e` (Playwright smoke suite, also against `mongo:7`). Offline backend checks: `npm --prefix server run verify:models`, `verify:validation`, `verify:cookie-config`.
 
-The backend exposes the five authentication routes plus Issue, Knowledge, Comment, Project, and Expert-application routes under `/api/v1`, including public read/list routes (see `server/src/routes/`). Issue guidance is available as a service (`server/src/services/recommendation.service.js`); it has no HTTP route yet. The frontend implements public Explore/Learn/Act surfaces and authenticated workflows; `/community` and `/dashboard` remain deferred.
+The backend exposes the five authentication routes plus Issue, Knowledge, Comment, Project, and Expert-application routes under `/api/v1`, including public read/list routes (see `server/src/routes/`). Issue guidance is available as a service (`server/src/services/recommendation.service.js`); it has no HTTP route yet. The frontend implements public Explore/Learn/Act/Community surfaces and authenticated workflows, including the Dashboard.
 
 ---
 
@@ -193,6 +193,8 @@ Read [`docs/vision/product-invariants.md`](docs/vision/product-invariants.md) fo
 Read [`docs/architecture/decision-register.md`](docs/architecture/decision-register.md) for the canonical record of locked, deferred, and implementation decisions.
 
 Read [`CLAUDE.md`](CLAUDE.md) for the current engineering progress log and milestone verification state.
+
+Read [`docs/engineering/frontend-contributing.md`](docs/engineering/frontend-contributing.md) before taking a frontend issue; it provides the recommended reading path, contribution workflow, Server/Client boundary guidance, verification expectations, and the rule for unresolved domain/backend questions.
 
 ---
 
