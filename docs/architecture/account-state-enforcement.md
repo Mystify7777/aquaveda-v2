@@ -4,6 +4,8 @@ Status: Implemented in #173.
 
 The authoritative account-governance policy is defined by [ADR-0010](../adr/ADR-0010-account-governance.md). This document describes only the current #173 enforcement implementation; the follow-up implementation issues referenced by that ADR are tracked separately.
 
+HARD_SUSPENDED transitions, session invalidation at the transition, and suspension expiry (including at login): [hard-suspension.md](./hard-suspension.md) (#207).
+
 What is stored for the current restriction, and which stored combinations are valid: [account-state-persistence.md](./account-state-persistence.md) (#171).
 
 ## Authoritative state

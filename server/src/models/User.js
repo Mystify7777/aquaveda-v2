@@ -185,6 +185,14 @@ const userSchema = new Schema(
     // When the CURRENT accountState was entered. Absent on ACTIVE users that
     // have never been restricted (all legacy users).
     accountStateChangedAt: { type: Date, default: undefined },
+    // Credential generation (#207). Access tokens carry the generation they were
+    // issued under; the server accepts a token only if it equals the user's
+    // current value. It is incremented, in the SAME atomic write that restores
+    // eligibility, when a HARD_SUSPENDED account returns to ACTIVE (admin lift
+    // or expiry), so every access token issued before the restoration is
+    // permanently invalid and a fresh login is required (ADR-0010 §4). Absent
+    // means 0 (no backfill needed); never exposed.
+    authGeneration: { type: Number, min: 0, default: undefined },
     accountRestriction: { type: accountRestrictionSchema, default: undefined },
     bio: {
       type: String,
@@ -207,6 +215,7 @@ const userSchema = new Schema(
         // Same defense-in-depth for governance enforcement data: a user-visible
         // projection of the restriction is an explicit DTO decision (#175).
         delete ret.accountRestriction;
+        delete ret.authGeneration;
         return ret;
       },
     },

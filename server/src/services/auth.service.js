@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { User } from "../models/User.js";
 import { ACCOUNT_STATES } from "../domain/account-state.js";
+import { isRestrictionExpired } from "../domain/account-restriction.js";
+import { expireSuspensionIfDue } from "./account-governance.service.js";
 import { Session } from "../models/Session.js";
 import { PasswordResetCredential } from "../models/PasswordResetCredential.js";
 import { sendPasswordResetEmail } from "./password-reset-email.js";
@@ -101,7 +103,7 @@ function isDuplicateEmailError(err) {
  * @param {import("mongoose").Types.ObjectId | string} userId
  * @returns {Promise<{ accessToken: string, refreshToken: string, session: import("mongoose").Document }>}
  */
-async function prepareTokenPair(userId) {
+async function prepareTokenPair(userId, gen = 0) {
   // Mongoose assigns `_id` client-side as soon as the document is
   // constructed (before `.save()`), so it's available to embed in the
   // refresh JWT's `sid` claim before the Session is actually persisted.
@@ -116,7 +118,7 @@ async function prepareTokenPair(userId) {
     sub: String(userId),
     sid: String(session._id),
   });
-  const accessToken = signAccessToken({ sub: String(userId) });
+  const accessToken = signAccessToken({ sub: String(userId), gen });
   session.tokenHash = hashRefreshToken(refreshToken);
 
   return { accessToken, refreshToken, session };
@@ -133,8 +135,8 @@ async function prepareTokenPair(userId) {
  * @param {import("mongoose").Types.ObjectId | string} userId
  * @returns {Promise<{ accessToken: string, refreshToken: string }>}
  */
-async function issueTokenPair(userId) {
-  const { accessToken, refreshToken, session } = await prepareTokenPair(userId);
+async function issueTokenPair(userId, gen = 0) {
+  const { accessToken, refreshToken, session } = await prepareTokenPair(userId, gen);
   await session.save();
   return { accessToken, refreshToken };
 }
@@ -262,7 +264,29 @@ export async function login(payload) {
   // path never becomes an account-enumeration oracle. MUTED remains
   // login/read-capable; blocked lifecycle states cannot establish a new
   // authenticated session.
-  const accountState = user.accountState ?? ACCOUNT_STATES.ACTIVE;
+  let accountState = user.accountState ?? ACCOUNT_STATES.ACTIVE;
+  let credentialGeneration = user.authGeneration ?? 0;
+
+  // A TEMPORARY suspension whose expiry has passed must not keep the account
+  // locked out (#207): persist the lift (idempotent, SYSTEM event), then
+  // re-read. Any failure leaves the account suspended (fail closed). An
+  // INDEFINITE suspension never matches.
+  if (
+    accountState === ACCOUNT_STATES.HARD_SUSPENDED &&
+    isRestrictionExpired(user.accountRestriction)
+  ) {
+    try {
+      await expireSuspensionIfDue(user._id);
+      // Re-read BOTH: the lift bumps the credential generation, and the token
+      // issued below must carry the NEW one or it would be rejected.
+      const fresh = await User.findById(user._id).select("accountState authGeneration");
+      accountState = fresh?.accountState ?? ACCOUNT_STATES.ACTIVE;
+      credentialGeneration = fresh?.authGeneration ?? 0;
+    } catch (err) {
+      console.error("[auth] failed to persist suspension expiry at login", { name: err?.name });
+    }
+  }
+
   if (accountState === ACCOUNT_STATES.HARD_SUSPENDED) {
     throw new DomainError(
       DomainErrorCode.ACCOUNT_SUSPENDED,
@@ -282,7 +306,10 @@ export async function login(payload) {
     );
   }
 
-  const { accessToken, refreshToken } = await issueTokenPair(user._id);
+  // The access token carries the user's CURRENT credential generation, so a
+  // login after a suspension lift gets a token the server accepts, while any
+  // token issued before the lift stays invalid (#207).
+  const { accessToken, refreshToken } = await issueTokenPair(user._id, credentialGeneration);
 
   return {
     user: { id: user._id, name: user.name, email: user.email, role: user.role },
@@ -412,7 +439,7 @@ export async function refresh(rawRefreshToken) {
     throw refreshFailed("Refresh failed");
   }
 
-  const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(sub);
+  const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(sub, reservation.authGeneration ?? 0);
   return {
     user: {
       id: reservation._id,

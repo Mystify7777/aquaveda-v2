@@ -396,6 +396,7 @@ check("8a. User has exactly the expected top-level fields", () => {
     "accountStateVersion",
     "accountStateChangedAt",
     "accountRestriction",
+    "authGeneration",
     "bio",
     "expertApplication",
   ].sort();

@@ -16,6 +16,7 @@ when, or how (mutation issues #174–#180), and it stores no governance history
 | `accountStateVersion` | number ≥ 0, required, default `0` | Concurrency serialization point (existing, #173) |
 | `accountStateChangedAt` | Date, absent by default | When the **current** state was entered. Absent on never-restricted (including all legacy) users. |
 | `accountRestriction` | subdocument, absent by default | **Current** restriction for `MUTED` / `HARD_SUSPENDED` only |
+| `authGeneration` | integer ≥ 0, absent = 0, never exposed | Credential generation (#207): access tokens issued under an older value are rejected; bumped atomically when a suspension is restored. See [hard-suspension.md](./hard-suspension.md) |
 | `accountRestriction.kind` | `TEMPORARY` \| `INDEFINITE`, required | Explicit; indefinite is never inferred from a missing expiry |
 | `accountRestriction.expiresAt` | Date | Required for `TEMPORARY`; must be absent for `INDEFINITE` |
 | `accountRestriction.safeReason` | trimmed string ≤ 500 | The user-visible reason only. Private moderation notes are never stored here. |

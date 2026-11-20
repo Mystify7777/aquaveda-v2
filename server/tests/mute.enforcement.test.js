@@ -127,6 +127,8 @@ const WRITE_ROUTES = [
   "POST /api/v1/expert-application/:userId/reject",
   "POST /api/v1/accounts/:userId/mute",
   "POST /api/v1/accounts/:userId/mute/lift",
+  "POST /api/v1/accounts/:userId/suspend",
+  "POST /api/v1/accounts/:userId/suspend/lift",
 ];
 
 describe("MUTE service — mute / lift", () => {

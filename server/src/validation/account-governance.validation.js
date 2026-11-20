@@ -19,6 +19,33 @@ export const muteAccountSchema = z
   })
   .strict();
 
+// Explicit `kind` (never inferred from a missing expiry): an indefinite
+// suspension cannot result from merely omitting expiresAt. `reason` is the
+// private enforcement reason and is required for a suspension.
+export const suspendAccountSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("TEMPORARY"),
+      expiresAt: z.string().datetime({ message: "expiresAt must be an ISO 8601 date-time" }),
+      reason: z.string(),
+      safeReason: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("INDEFINITE"),
+      reason: z.string(),
+      safeReason: z.string().optional(),
+    })
+    .strict(),
+]);
+
+export const liftSuspensionSchema = z
+  .object({
+    reason: z.string().optional(),
+  })
+  .strict();
+
 export const liftMuteSchema = z
   .object({
     reason: z.string().optional(),
