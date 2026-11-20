@@ -6,8 +6,31 @@ import { ProjectDetail } from "@/components/projects/project-detail";
 import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { ApiError } from "@/lib/api/client";
 import { getProject } from "@/lib/api/projects";
+import { cleanMetadataText, publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "Project" };
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ projectId: string }>;
+}): Promise<Metadata> {
+  const { projectId } = await params;
+  const canonical = `/act/${encodeURIComponent(projectId)}`;
+
+  try {
+    const project = await getProject(projectId);
+    return publicPageMetadata({
+      title: project.title,
+      description: cleanMetadataText(project.description),
+      canonical,
+    });
+  } catch {
+    return publicPageMetadata({
+      title: "Project",
+      description: "Public environmental project details on AquaVeda.",
+      canonical,
+    });
+  }
+}
 
 /**
  * Public Project detail (#52). 404 (unknown) and 400 (malformed ID,
