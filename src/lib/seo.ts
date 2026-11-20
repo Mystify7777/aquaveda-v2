@@ -38,7 +38,7 @@ export function publicPageMetadata({
 }
 
 export function cleanMetadataText(value: string, maxLength = 160): string {
-  const cleaned = value.replace(/\\s+/g, " ").trim();
+  const cleaned = value.replace(/\s+/g, " ").trim();
   if (cleaned.length <= maxLength) return cleaned;
   return cleaned.slice(0, maxLength - 1).trimEnd() + "…";
 }
