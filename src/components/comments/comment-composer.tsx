@@ -40,6 +40,12 @@ function toFailure(error: unknown): SubmitFailure {
         message: "Your session is no longer valid. Sign in again to post this comment.",
       };
     }
+    if (error.status === 403) {
+      return {
+        kind: "failure",
+        message: "Your account is not permitted to post this comment.",
+      };
+    }
     if (error.code === "VALIDATION_FAILED") {
       return { kind: "validation", message: error.message };
     }

@@ -26,14 +26,18 @@ export default function NewDiscussionPage() {
   const [category, setCategory] = React.useState<DiscussionCategory>("QUESTION");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
+  // Ref guard: pending state updates after the event, so two rapid submit
+  // events must not both reach the API before the first render settles.
+  const inFlight = React.useRef(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending) return;
+    if (inFlight.current) return;
     const trimmedTitle = title.trim();
     const trimmedBody = body.trim();
     if (!trimmedTitle || !trimmedBody) { setError("Title and body are required."); return; }
     setError(null);
+    inFlight.current = true;
     setPending(true);
     try {
       const discussion = await createDiscussion({ title: trimmedTitle, body: trimmedBody, category });
@@ -41,11 +45,15 @@ export default function NewDiscussionPage() {
     } catch (error) {
       if (error instanceof ApiError) {
         if (error.status === 401) setError("Your session is no longer valid. Sign in again to create a discussion.");
+        else if (error.status === 403) setError("Your account is not permitted to create discussions.");
         else if (error.code === "VALIDATION_FAILED") setError(error.message);
         else if (error.kind === "network") setError("The service is unreachable right now. Check your connection and try again.");
         else setError("We could not publish the discussion. Try again.");
       } else setError("We could not publish the discussion. Try again.");
-    } finally { setPending(false); }
+    } finally {
+      inFlight.current = false;
+      setPending(false);
+    }
   }
 
   return (

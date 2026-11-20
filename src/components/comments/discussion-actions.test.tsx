@@ -51,6 +51,19 @@ describe("discussion actions", () => {
     expect(mockRefresh).not.toHaveBeenCalled();
   });
 
+  it("DiscussionComposer: forbidden post is distinct from session failure", async () => {
+    const user = userEvent.setup();
+    const { ApiError } = await import("@/lib/api/client");
+    mockCreateComment.mockRejectedValue(new ApiError("forbidden", "http", 403));
+    render(<DiscussionComposer refType="WIKI" refId="k1" />);
+    await user.type(screen.getByLabelText("Comment"), "Hi");
+    await user.click(screen.getByRole("button", { name: "Post comment" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Your account is not permitted to post this comment.",
+    );
+    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
+  });
+
   it("ReplyToggle: disclosure with aria-expanded; reply carries parentComment and refreshes", async () => {
     const user = userEvent.setup();
     mockCreateComment.mockResolvedValue({ ...CREATED, parentComment: "c1" });
