@@ -81,6 +81,18 @@ describe("IssueActionBar — capability rendering", () => {
 });
 
 describe("IssueActionBar — input", () => {
+  it("renders failed verification as a non-destructive request-changes action with consequence", async () => {
+    getWf.mockResolvedValue(wf("resolution.fail"));
+    render(<IssueActionBar issueId="i1" />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Request changes" }));
+
+    expect(screen.getByText(/sent back for further work/i)).toBeVisible();
+    expect(screen.getByLabelText(/reason for requesting changes/i)).toBeVisible();
+        expect(screen.getByRole("button", { name: "Request changes" })).toBeVisible();
+  });
+
   it("rejects empty required note before the API call", async () => {
     getWf.mockResolvedValue(wf("remediation.resolve"));
     render(<IssueActionBar issueId="i1" />);
@@ -88,6 +100,18 @@ describe("IssueActionBar — input", () => {
     await user.click(await screen.findByRole("button", { name: "Mark resolved" }));
     await user.click(screen.getByRole("button", { name: "Confirm resolution" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/required/i);
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("rejects a too-short failed-verification reason before the API call", async () => {
+    getWf.mockResolvedValue(wf("resolution.fail"));
+    render(<IssueActionBar issueId="i1" />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Request changes" }));
+    await user.type(screen.getByLabelText(/reason for requesting changes/i), "too short");
+    await user.click(screen.getByRole("button", { name: "Request changes" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/at least 10 characters/i);
     expect(exec).not.toHaveBeenCalled();
   });
 
