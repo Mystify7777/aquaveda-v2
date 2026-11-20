@@ -90,16 +90,14 @@ describe("IssueActionBar — input", () => {
       name: "Request changes",
       exact: true,
     });
+    expect(actionButton).toHaveClass("border-warning", "text-warning");
     await user.click(actionButton);
 
     expect(screen.getByText(/sent back for further work/i)).toBeVisible();
     expect(screen.getByLabelText(/reason for requesting changes/i)).toBeVisible();
 
     const form = screen.getByRole("form", { name: "Request changes" });
-    expect(within(form).getByRole("button", { name: "Request changes", exact: true })).toHaveClass(
-      "border-warning",
-      "text-warning",
-    );
+    expect(within(form).getByRole("button", { name: "Request changes", exact: true })).toBeVisible();
   });
 
   it("rejects empty required note before the API call", async () => {
