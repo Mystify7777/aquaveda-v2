@@ -90,7 +90,7 @@ describe("IssueActionBar — input", () => {
 
     expect(screen.getByText(/sent back for further work/i)).toBeVisible();
     expect(screen.getByLabelText(/reason for requesting changes/i)).toBeVisible();
-        expect(screen.getByRole("button", { name: "Request changes" })).toBeVisible();
+        expect(screen.getByRole("button", { name: "Request changes" })).toHaveClass("border-warning", "text-warning");
   });
 
   it("rejects empty required note before the API call", async () => {
