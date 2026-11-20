@@ -196,6 +196,8 @@ Read [`CLAUDE.md`](CLAUDE.md) for the current engineering progress log and miles
 
 Read [`docs/engineering/frontend-contributing.md`](docs/engineering/frontend-contributing.md) before taking a frontend issue; it provides the recommended reading path, contribution workflow, Server/Client boundary guidance, verification expectations, and the rule for unresolved domain/backend questions.
 
+Read [`docs/architecture/seo-metadata.md`](docs/architecture/seo-metadata.md) for the public-route metadata, canonical URL, social preview, and noindex policy.
+
 ---
 
 ## Development approach
