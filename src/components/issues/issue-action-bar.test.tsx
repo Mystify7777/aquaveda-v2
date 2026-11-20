@@ -86,11 +86,11 @@ describe("IssueActionBar — input", () => {
     render(<IssueActionBar issueId="i1" />);
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole("button", { name: "Request changes" }));
+    await user.click(await screen.findByRole("button", { name: "Request changes", exact: true }));
 
     expect(screen.getByText(/sent back for further work/i)).toBeVisible();
     expect(screen.getByLabelText(/reason for requesting changes/i)).toBeVisible();
-        expect(screen.getByRole("button", { name: "Request changes" })).toHaveClass("border-warning", "text-warning");
+        expect(screen.getByRole("button", { name: "Request changes", exact: true })).toHaveClass("border-warning", "text-warning");
   });
 
   it("rejects empty required note before the API call", async () => {
@@ -107,9 +107,9 @@ describe("IssueActionBar — input", () => {
     getWf.mockResolvedValue(wf("resolution.fail"));
     render(<IssueActionBar issueId="i1" />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Request changes" }));
+    await user.click(await screen.findByRole("button", { name: "Request changes", exact: true }));
     await user.type(screen.getByLabelText(/reason for requesting changes/i), "too short");
-    await user.click(screen.getByRole("button", { name: "Request changes" }));
+    await user.click(screen.getByRole("button", { name: "Request changes", exact: true }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/at least 10 characters/i);
     expect(exec).not.toHaveBeenCalled();
