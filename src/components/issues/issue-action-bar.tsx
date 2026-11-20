@@ -219,6 +219,11 @@ export function IssueActionBar({ issueId }: { issueId: string }) {
               key={action}
               type="button"
               variant="outline"
+              className={
+                action === "resolution.fail"
+                  ? "border-warning text-warning hover:bg-warning/10"
+                  : undefined
+              }
               onClick={() => choose(action)}
               disabled={pendingId !== null}
               aria-busy={pendingId === action}
