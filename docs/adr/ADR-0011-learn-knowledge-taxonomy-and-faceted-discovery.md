@@ -38,17 +38,19 @@ Every Category and Topic has a stable immutable slug and a display name.
 
 ## Region compatibility and normalization
 
-The existing `Knowledge.region` field is a **single free-form string**. V1 keeps one region value per article and does not invent an authoritative geographic hierarchy or silently convert the field to an array.
+The existing `Knowledge.region` field is a single free-form string. V1 keeps one region value per article and does not invent an authoritative geographic hierarchy or silently convert the field to an array.
 
 - Preserve the original region display value.
-- Derive a normalized matching key for filtering: Unicode NFKC normalization, trim, locale-independent case-fold/lowercase, and collapse repeated internal whitespace.
+- Produce the filter key using one shared server-side normalization utility, used by both normal request handling and migration scripts.
+- The utility applies Unicode NFKC normalization, trims leading/trailing whitespace, collapses each run of Unicode whitespace to one ASCII space, and applies the ECMAScript default Unicode-aware `toLowerCase()` operation. It must not use locale-sensitive lowercasing.
+- This is a normalization key, not a universal Unicode caseless-matching implementation. Any future need for full Unicode case folding requires a separately selected library and migration/versioning decision.
 - Do not assume different geographic descriptions refer to the same place. For example, `Bihar` and `Bihar, India` remain distinct unless an explicit, reviewed alias maps them together.
-- Aliases are explicit, source-controlled mappings from known input variants to one canonical matching key. Aliases never overwrite the original display value.
+- Aliases are explicit, source-controlled mappings from known normalized input variants to one canonical matching key. Alias resolution is performed after base normalization and never overwrites the original display value.
 - Empty/whitespace-only region is unclassified and is not a selectable region facet.
-- Values that cannot safely be mapped remain distinct under their normalized key. Migration reports them; it must not guess.
+- Values not covered by aliases remain distinct under their normalized key. Migration reports blanks and distinct legacy values; it must not guess.
 - Multi-region articles are out of scope for v1.
 
-A normalized field/index may be added while preserving the original display value. Its exact persistence shape and backfill must be specified and tested before deployment.
+Required normalization test vectors include case variants, leading/trailing and repeated whitespace, non-breaking spaces, compatibility characters, accented Latin characters, and representative non-Latin text. Migration and API tests must consume the same utility and vectors.
 
 ## Facet composition and search semantics
 
@@ -88,14 +90,15 @@ Filter state is URL-addressable, shareable, refresh-safe, and browser-history co
 Related candidates must:
 - have `status = approved`;
 - exclude the current article;
-- be scored only from active Category/Topic identities and normalized Region keys.
+- contain at least one active Category or Topic identity;
+- be scored using active Category/Topic identities and normalized Region keys.
 
 The deterministic score is:
 - same active Category: **+4**;
 - each shared active Topic tag: **+2**, capped at **+6** total;
 - same normalized Region key: **+1**.
 
-Only candidates with score greater than zero qualify. Sort by score descending, then `updatedAt DESC`, then `_id ASC` as a stable final tie-break. The API returns a bounded number of candidates. Retired terms do not contribute to the score. No AI/LLM ranking is introduced.
+Only candidates with score greater than zero qualify. A candidate with no matching Category/Topic may not qualify solely because it shares a Region. Sort by score descending, then `updatedAt DESC`, then `_id ASC` as a stable final tie-break. The API returns a bounded number of candidates. Retired terms do not contribute to the score. No AI/LLM ranking is introduced.
 
 ## Options rejected
 
