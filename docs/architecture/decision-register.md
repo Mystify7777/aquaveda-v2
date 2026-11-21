@@ -1360,18 +1360,18 @@ Recoverable-deletion window and retention duration; MUTE classification of non-c
 
 ## 🔒 Locked — Learn Knowledge Taxonomy and Faceted Discovery (ADR-0011; recorded by #226)
 
-**Status: accepted.** ADR-0011 defines the Knowledge discovery taxonomy and Learn faceted-navigation model. It extends Knowledge metadata and public discovery without changing the existing moderation lifecycle or approved-only visibility boundary.
+**Status: accepted.** Full decision: `docs/adr/ADR-0011-learn-knowledge-taxonomy-and-faceted-discovery.md`. This extends Knowledge metadata/discovery only; it preserves the existing Knowledge lifecycle and approved-only public visibility.
 
-- **LRN-L1 — One primary category.** Every Knowledge article has exactly one controlled primary category representing its broad subject.
-- **LRN-L2 — Canonical topic tags.** Articles may have zero or more reusable controlled topic tags. Synonyms and duplicates resolve to one canonical term; arbitrary user-created public tags are not supported.
-- **LRN-L3 — Region remains a separate facet.** Geographic classification is not folded into generic topic tags. Existing region semantics are preserved and migrated only as required by implementation.
-- **LRN-L4 — Application-owned vocabulary for v1.** Categories/tags are maintained by application code/configuration rather than a dedicated taxonomy collection. This can be revisited if dynamic taxonomy administration becomes necessary.
-- **LRN-L5 — Public discovery is faceted.** Learn combines search with Category, Topic/Tag, and Region filters, pagination, result counts, active filter chips, and clear-all behavior.
-- **LRN-L6 — Filter state is URL-addressable.** Active filters are represented in the URL so filtered Learn views are shareable, refresh-safe, history-compatible, and directly addressable.
-- **LRN-L7 — Responsive filter presentation.** Desktop uses a persistent sidebar; mobile uses a responsive filter drawer/sheet.
-- **LRN-L8 — Taxonomy is navigable metadata.** Article cards expose canonical category/tags, and canonical terms link to filtered Learn views.
-- **LRN-L9 — Related knowledge is deterministic in v1.** Initial related-article signals are same category, shared topic tags, and compatible region. No AI recommendation system is introduced by this ADR.
-- **LRN-L10 — Governance is explicit.** Taxonomy additions, renames, merges, and retirement are deliberate changes; the system does not silently derive new public facets from article text.
-- **LRN-L11 — Existing Knowledge governance remains authoritative.** Lifecycle states, review authority, approved-only public visibility, author/reviewer rules, and authentication boundaries are unchanged.
+- **LRN-L1 — Cardinality.** One primary Category per article; zero or more Topic tags; one Region string per article in v1.
+- **LRN-L2 — Controlled identity.** Category/Topic values have stable immutable slugs and display names. Active terms may be assigned and filtered; retired terms may remain on existing articles and render there, but cannot be newly assigned, selected as filters, or used for related scoring.
+- **LRN-L3 — Rename vs merge.** Display-name rename preserves the slug. Semantic merge/replacement requires explicit migration to a canonical ID; retired old IDs remain recognized for rendering.
+- **LRN-L4 — Vocabulary governance.** Vocabulary is application-owned/source-controlled. Additions, renames, merges, and retirement require reviewed PRs and tests; persisted-reference rewrites require an idempotent migration. No runtime taxonomy editor in v1.
+- **LRN-L5 — Region semantics.** Preserve the original free-form display string. Matching key uses Unicode NFKC, trim, locale-independent case folding/lowercase, and internal-whitespace collapse. No inferred equivalence between `Bihar` and `Bihar, India`; only explicit reviewed aliases map variants. Blank is unclassified. Unsafe/unmapped historic values remain distinct and are reported. No multi-region support in v1.
+- **LRN-L6 — Facet composition.** Category is single-select. Multiple Topic selections OR together; multiple Region selections OR together. Category, Topic facet, Region facet, and title/body search combine with AND. Empty facets impose no restriction. Only active Category/Topic values are filterable; invalid/retired Category/Topic filters are validation failures; unknown Region keys validly match no records.
+- **LRN-L7 — Public visibility.** Every public Learn query retains the mandatory `status=approved` predicate; filters cannot relax it.
+- **LRN-L8 — URL/UX.** Filter state is URL-addressable. Desktop sidebar, mobile drawer/sheet; active chips, clear-all, result count, search, pagination.
+- **LRN-L9 — Related Knowledge.** Approved-only; exclude source article. Score: same active Category +4; each shared active Topic +2 (max +6); same normalized Region +1. Require score >0. Sort score DESC, `updatedAt DESC`, `_id ASC`. Bounded result count; retired terms do not score; no AI ranking.
+- **LRN-L10 — V1 exclusions.** No taxonomy collection, arbitrary user tags, AI tagging/ranking, followable topics, or runtime taxonomy editor.
+- **LRN-L11 — Existing governance.** Knowledge lifecycle, review authority, author/reviewer rules, anonymous public read boundary, and approved-only visibility remain unchanged.
 
-Implementation work is split across issues for taxonomy contract, persistence/migration, authoring validation, public query/filtering, taxonomy metadata, frontend URL state, filter UI, card presentation, related knowledge, and cross-layer regression coverage.
+The application-owned vocabulary and exact API semantics are implementation contracts; tasks #228–#240 must conform to this ADR.
