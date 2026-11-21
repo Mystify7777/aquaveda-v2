@@ -217,3 +217,5 @@ implementation planning. Remaining smaller open items (exact cookie
 attributes for the Topology B split, refresh-rotation strategy, final
 `DomainErrorCode` naming for auth-specific errors, the `sid`-in-JWT
 lookup mechanism) are captured in the Step 4 consolidated report.
+
+See also: account-state effects on sessions (invalidation, fresh-session recovery) are recorded in [ADR-0010](../adr/ADR-0010-account-governance.md) §4 (register GOV-L4); this design's session model is unchanged.

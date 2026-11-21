@@ -12,8 +12,8 @@ import { DomainErrorCode } from "../services/errors.js";
  * state is HARD_SUSPENDED, DELETION_PENDING, or PERMANENTLY_DELETED.
  *
  * MUTED deliberately passes through here: MUTE is a contribution
- * restriction, not an authentication/access block, and is enforced by
- * the dedicated contribution-governance issue (#174).
+ * restriction, not an authentication/access block. It is enforced by
+ * contribution-restriction.js (#174), mounted immediately after this.
  */
 export function accountStateMiddleware(req, res, next) {
   const state = req.accountState;

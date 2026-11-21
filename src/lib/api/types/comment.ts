@@ -1,6 +1,6 @@
 import type { PublicActor } from "./actor";
 
-export type CommentRefType = "ISSUE" | "WIKI";
+export type CommentRefType = "ISSUE" | "WIKI" | "DISCUSSION";
 
 export interface Comment {
   _id: string;

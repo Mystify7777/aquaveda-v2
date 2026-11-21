@@ -49,6 +49,7 @@ export const DomainErrorCode = Object.freeze({
   PASSWORD_RESET_INVALID: "PASSWORD_RESET_INVALID",
 
   ACCOUNT_SUSPENDED: "ACCOUNT_SUSPENDED", // current account state blocks authenticated access
+  ACCOUNT_MUTED: "ACCOUNT_MUTED", // current account state is MUTED: authenticated and read-capable, contribution blocked (#174)
   ACCOUNT_DELETION_PENDING: "ACCOUNT_DELETION_PENDING", // recoverable deletion state blocks normal authenticated access
   ACCOUNT_PERMANENTLY_DELETED: "ACCOUNT_PERMANENTLY_DELETED", // terminal account state blocks authenticated access
 

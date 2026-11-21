@@ -9,6 +9,7 @@ import { User } from "../../src/models/User.js";
 import { Session } from "../../src/models/Session.js";
 import { PasswordResetCredential } from "../../src/models/PasswordResetCredential.js";
 import { DiscussionReport } from "../../src/models/DiscussionReport.js";
+import { GovernanceEvent } from "../../src/models/GovernanceEvent.js";
 
 /**
  * Test helper for service-layer tests.
@@ -75,6 +76,9 @@ export async function clearCollections() {
     Session.deleteMany({}),
     PasswordResetCredential.deleteMany({}),
     DiscussionReport.deleteMany({}),
+    // GovernanceEvent is append-only: Mongoose deleteMany is rejected by design,
+    // so test cleanup uses the raw driver. Test-only; no application path does this.
+    GovernanceEvent.collection.deleteMany({}),
   ]);
 }
 

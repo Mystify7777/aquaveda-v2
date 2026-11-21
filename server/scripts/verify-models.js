@@ -31,6 +31,7 @@ import { Comment } from "../src/models/Comment.js";
 import { Project } from "../src/models/Project.js";
 import { Session } from "../src/models/Session.js";
 import { PasswordResetCredential } from "../src/models/PasswordResetCredential.js";
+import { GovernanceEvent } from "../src/models/GovernanceEvent.js";
 
 const results = [];
 let failures = 0;
@@ -393,6 +394,8 @@ check("8a. User has exactly the expected top-level fields", () => {
     "role",
     "accountState",
     "accountStateVersion",
+    "accountStateChangedAt",
+    "accountRestriction",
     "bio",
     "expertApplication",
   ].sort();
@@ -409,6 +412,15 @@ check("8a-1. User.accountState is required, defaults to ACTIVE, and is constrain
     ["ACTIVE", "MUTED", "HARD_SUSPENDED", "DELETION_PENDING", "PERMANENTLY_DELETED"].sort(),
     "accountState must contain exactly the locked account lifecycle states",
   );
+});
+
+check("8a-3. User.accountRestriction is optional, explicit about temporary vs indefinite, and holds no history", () => {
+  const sub = User.schema.path("accountRestriction").schema;
+  assert.deepEqual(Object.keys(sub.paths).filter((k) => k !== "_id").sort(), ["expiresAt", "kind", "safeReason"]);
+  assert.equal(sub.path("kind").isRequired, true);
+  assert.deepEqual([...sub.path("kind").enumValues].sort(), ["INDEFINITE", "TEMPORARY"]);
+  assert.equal(User.schema.path("accountRestriction").options.default, undefined, "absent on ACTIVE users");
+  assert.equal(User.schema.path("accountStateChangedAt").options.default, undefined);
 });
 
 check("8a-2. User.accountStateVersion is a required non-negative number defaulting to zero", () => {
@@ -598,7 +610,7 @@ check("8i. Issue has no resolvedBy/verifiedBy top-level fields", () => {
   assert.equal(Issue.schema.path("verifiedBy"), undefined);
 });
 
-check("8j. Exactly the expected seven models are registered", () => {
+check("8j. Exactly the expected models are registered (five domain models, Session, PasswordResetCredential, and GovernanceEvent audit model)", () => {
   const names = mongoose.modelNames();
   assert.ok(
     !names.includes("Recommendation"),
@@ -606,13 +618,28 @@ check("8j. Exactly the expected seven models are registered", () => {
   );
   assert.deepEqual(
     [...names].sort(),
-    ["Comment", "Issue", "Knowledge", "PasswordResetCredential", "Project", "Session", "User"].sort()
+    ["Comment", "GovernanceEvent", "Issue", "Knowledge", "PasswordResetCredential", "Project", "Session", "User"].sort()
   );
 });
 
 check("8k. Session has exactly the expected top-level fields (Authentication milestone)", () => {
   const expected = ["userId", "tokenHash", "expiresAt"].sort();
   assert.deepEqual(topLevelFields(Session.schema), expected);
+});
+
+check("8m. GovernanceEvent (#172): exact fields, all event-domain fields immutable (createdAt is generated metadata), no updatedAt, unique idempotency index", () => {
+  const expected = [
+    "idempotencyKey", "action", "actorType", "actor", "target", "previousState",
+    "resultingState", "reason", "safeReason", "references", "occurredAt",
+  ].sort();
+  assert.deepEqual(topLevelFields(GovernanceEvent.schema), expected);
+  for (const field of expected) {
+    assert.equal(GovernanceEvent.schema.path(field).options.immutable, true, `${field} must be immutable`);
+  }
+  assert.equal(GovernanceEvent.schema.options.timestamps.updatedAt, false, "events are never updated");
+  const idx = GovernanceEvent.schema.indexes();
+  assert.ok(idx.some(([k, o]) => k.idempotencyKey === 1 && o.unique === true), "unique idempotencyKey index");
+  assert.equal(GovernanceEvent.schema.path("reason").options.select, undefined);
 });
 
 // ---------------------------------------------------------------------

@@ -2,6 +2,10 @@
 
 Status: Implemented in #173.
 
+The authoritative account-governance policy is defined by [ADR-0010](../adr/ADR-0010-account-governance.md). This document describes only the current #173 enforcement implementation; the follow-up implementation issues referenced by that ADR are tracked separately.
+
+What is stored for the current restriction, and which stored combinations are valid: [account-state-persistence.md](./account-state-persistence.md) (#171).
+
 ## Authoritative state
 
 The current account lifecycle is persisted on `User.accountState` and uses:
@@ -31,7 +35,7 @@ After the auth router, `accountStateMiddleware` blocks application/domain routes
 - `DELETION_PENDING`
 - `PERMANENTLY_DELETED`
 
-`MUTED` remains authenticated and read-capable. Contribution enforcement belongs to #174.
+`MUTED` remains authenticated and read-capable. Contribution enforcement is implemented in #174: see [mute-enforcement.md](./mute-enforcement.md).
 
 The auth router remains reachable for `/me`, logout, and refresh because those operations are part of the account/session recovery boundary.
 
