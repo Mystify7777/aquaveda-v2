@@ -525,7 +525,19 @@ export async function requestPasswordReset(emailInput, deliverEmail = sendPasswo
   return { success: true };
 }
 
-/** Atomically consumes a valid token, updates the password, and revokes refresh sessions. */
+/** Atomically consumes a valid token, updates the password, and revokes refresh sessions.
+ *
+ * Account-state policy for password reset:
+ *   ACTIVE           — permitted (normal case).
+ *   MUTED            — permitted; muting is a contribution restriction, not a credential block.
+ *   HARD_SUSPENDED   — REJECTED. The credential reset path must not be a suspension bypass.
+ *   DELETION_PENDING — REJECTED. Credential changes are not permitted once deletion is queued.
+ *   PERMANENTLY_DELETED — REJECTED. The account no longer exists.
+ *
+ * The credential is consumed BEFORE the state check so that an attacker
+ * probing blocked accounts cannot distinguish state from "invalid token":
+ * either way the token is gone and the response is an identical error.
+ */
 export async function resetPassword({ token, password }) {
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const credential = await PasswordResetCredential.findOneAndDelete({
@@ -534,6 +546,21 @@ export async function resetPassword({ token, password }) {
   });
 
   if (!credential) {
+    throw new DomainError(DomainErrorCode.PASSWORD_RESET_INVALID, PASSWORD_RESET_INVALID_MESSAGE);
+  }
+
+  // Enforce account-state policy AFTER consuming the credential so that
+  // blocked-state probing returns the same opaque error as an invalid token.
+  const user = await User.findById(credential.userId).select("accountState");
+  if (!user) {
+    throw new DomainError(DomainErrorCode.PASSWORD_RESET_INVALID, PASSWORD_RESET_INVALID_MESSAGE);
+  }
+  const blockedStates = new Set([
+    ACCOUNT_STATES.HARD_SUSPENDED,
+    ACCOUNT_STATES.DELETION_PENDING,
+    ACCOUNT_STATES.PERMANENTLY_DELETED,
+  ]);
+  if (blockedStates.has(user.accountState)) {
     throw new DomainError(DomainErrorCode.PASSWORD_RESET_INVALID, PASSWORD_RESET_INVALID_MESSAGE);
   }
 

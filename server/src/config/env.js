@@ -475,7 +475,89 @@ export function validateStartupConfig(env = process.env) {
     );
   }
 
+  // Password-reset link origin: must be a valid, safe frontend URL.
+  // Required in production (where SMTP must be configured and reset links
+  // will actually be sent); optional in development/test where SMTP is
+  // typically absent and the email delivery is bypassed anyway.
+  if (env.NODE_ENV === "production" || (env.FRONTEND_BASE_URL ?? "").trim() !== "") {
+    resolveFrontendBaseUrl(env);
+  }
+
   return true;
+}
+
+/**
+ * Validates FRONTEND_BASE_URL for password-reset link construction.
+ *
+ * Rules:
+ *   - Must be set (required; without it, reset links cannot be built).
+ *   - Must be an absolute http or https URL.
+ *   - In production, must be https (no plain-http production reset links).
+ *   - Must not contain a path component other than "/" (bare origin only),
+ *     a query string, or a fragment — reset link construction appends its
+ *     own path and would otherwise produce a double-path URL.
+ *   - In production, must not be a loopback/localhost address.
+ *
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @returns {string} the validated, trimmed base URL
+ */
+export function resolveFrontendBaseUrl(env = process.env) {
+  const raw = (env.FRONTEND_BASE_URL ?? "").trim();
+  if (!raw) {
+    throw new Error(
+      "Missing required environment variable: FRONTEND_BASE_URL. " +
+        "This value is used to construct password-reset links and must be the frontend origin (e.g. https://app.example.com)."
+    );
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(
+      `Invalid FRONTEND_BASE_URL value: "${env.FRONTEND_BASE_URL}". Expected an absolute URL (e.g. https://app.example.com).`
+    );
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error(
+      `Invalid FRONTEND_BASE_URL value: "${env.FRONTEND_BASE_URL}". Must be an http or https URL.`
+    );
+  }
+
+  // Reject anything other than a bare origin — a trailing path would cause
+  // double-path reset URLs (e.g. https://host/app/auth/reset-password/auth/reset-password).
+  const strippedPath = parsed.pathname.replace(/\/+$/, "");
+  if (strippedPath !== "" && strippedPath !== "/") {
+    throw new Error(
+      `Invalid FRONTEND_BASE_URL value: "${env.FRONTEND_BASE_URL}". ` +
+        "Must be a bare origin with no path component (e.g. https://app.example.com)."
+    );
+  }
+
+  if (parsed.search || parsed.hash) {
+    throw new Error(
+      `Invalid FRONTEND_BASE_URL value: "${env.FRONTEND_BASE_URL}". ` +
+        "Must not contain a query string or fragment."
+    );
+  }
+
+  if (env.NODE_ENV === "production") {
+    if (parsed.protocol !== "https:") {
+      throw new Error(
+        "Production security violation: FRONTEND_BASE_URL must use https in production."
+      );
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (LOOPBACK_HOSTS.has(hostname) || hostname === "localhost") {
+      throw new Error(
+        "Production configuration error: FRONTEND_BASE_URL must not be a loopback address in production."
+      );
+    }
+  }
+
+  // Return the bare origin (strip any trailing slash).
+  return `${parsed.protocol}//${parsed.host}`;
 }
 
 /**
