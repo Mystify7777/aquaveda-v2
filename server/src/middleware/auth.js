@@ -2,7 +2,7 @@ import { User } from "../models/User.js";
 import { verifyAccessToken } from "../services/auth-tokens.js";
 import { ACCOUNT_STATES } from "../domain/account-state.js";
 import { isRestrictionExpired } from "../domain/account-restriction.js";
-import { expireMuteIfDue } from "../services/account-governance.service.js";
+import { expireAccountRestrictionIfDue } from "../services/account-governance.service.js";
 
 /**
  * Authentication middleware.
@@ -107,6 +107,16 @@ export async function authMiddleware(req, res, next) {
     return;
   }
 
+  // Credential generation (#207): an access token is honored only if it was
+  // issued under the user's CURRENT generation. The generation is bumped when a
+  // suspension is lifted or expires, so a token issued before the restoration
+  // can never be used again (a fresh login is required). A mismatch is treated
+  // exactly like an invalid token: no actor. Absent on both sides means 0.
+  if ((decoded.gen ?? 0) !== (user.authGeneration ?? 0)) {
+    next();
+    return;
+  }
+
   // Fresh role/state resolution: both role and current account state come
   // from the User document read just now, never from JWT claims. Missing
   // accountState on legacy documents is treated as ACTIVE for backwards
@@ -114,21 +124,42 @@ export async function authMiddleware(req, res, next) {
   req.actorContext = { id: user._id, role: user.role };
   let effectiveState = user.accountState ?? ACCOUNT_STATES.ACTIVE;
 
-  // Server-side MUTE expiry (#174). The EFFECTIVE state is computed from the
-  // stored restriction on every request, so an expired mute stops blocking
-  // contribution immediately, with no dependency on any background job.
-  // Persisting the lift (state + SYSTEM MUTE_LIFTED event) is best-effort and
-  // idempotent; its failure never blocks or re-blocks the request. A MUTED
-  // record with no valid restriction cannot expire and stays MUTED (fail closed).
+  // Server-side restriction expiry (#174 MUTE, #207 HARD_SUSPENDED). The
+  // EFFECTIVE state is computed from the stored restriction on every request,
+  // so an expired mute or temporary suspension stops applying immediately, with
+  // no dependency on any background job. Persisting the lift (state + SYSTEM
+  // event) is best-effort and idempotent; its failure never blocks or re-blocks
+  // the request. INDEFINITE restrictions never expire, and a restricted record
+  // with no valid restriction cannot expire and stays restricted (fail closed).
+  if (
+    effectiveState === ACCOUNT_STATES.HARD_SUSPENDED &&
+    isRestrictionExpired(user.accountRestriction)
+  ) {
+    // The suspension has expired, but THIS token was issued before it. Expiry
+    // must not resurrect it (ADR-0010 §4): persist the restoration (which bumps
+    // the credential generation, idempotently) and treat this request as
+    // unauthenticated. The user logs in again and gets a token for the new
+    // generation. Failure to persist changes nothing: the stored state stays
+    // HARD_SUSPENDED and this token is not honored either way.
+    try {
+      await expireAccountRestrictionIfDue(user._id);
+    } catch (err) {
+      console.error("[auth] failed to persist suspension expiry", { userId: String(user._id), name: err?.name });
+    }
+    req.actorContext = null;
+    next();
+    return;
+  }
   if (
     effectiveState === ACCOUNT_STATES.MUTED &&
     isRestrictionExpired(user.accountRestriction)
   ) {
+    // MUTE never invalidates credentials, so the same token keeps working.
     effectiveState = ACCOUNT_STATES.ACTIVE;
     try {
-      await expireMuteIfDue(user._id);
+      await expireAccountRestrictionIfDue(user._id);
     } catch (err) {
-      console.error("[auth] failed to persist mute expiry", { userId: String(user._id), name: err?.name });
+      console.error("[auth] failed to persist restriction expiry", { userId: String(user._id), name: err?.name });
     }
   }
 

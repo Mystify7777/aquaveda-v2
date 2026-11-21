@@ -35,7 +35,7 @@ the classified table below.
 | Knowledge | create; submit; revise (editing); approve; reject | **blocked** |
 | Projects | `POST /projects` | **blocked** |
 | Expert application | apply; approve; reject | **blocked** |
-| Account governance | `POST /accounts/:id/mute`, `/mute/lift` | **blocked** (a muted Admin cannot govern; mute is always temporary, so this self-heals) |
+| Account governance | `POST /accounts/:id/mute`, `/mute/lift`, `/suspend`, `/suspend/lift` | **blocked** (a muted Admin cannot govern; mute is always temporary, so this self-heals) |
 
 **There are no per-feature exceptions.** Authority acts (lifecycle, review,
 moderation) are blocked as well as content creation: the rule is "a muted
@@ -105,7 +105,8 @@ events). `MUTE` and admin `MUTE_LIFTED` carry the Admin as actor; expiry lifts
 use `actorType: SYSTEM`.
 
 **Known limitation (no transactions, ADR-0006):** the state write and the event
-write are two operations. The event write is retried (idempotent); if it still
+write are two operations. (Since #207 the retry-and-surface step is the shared
+`recordTransitionEvent` seam in `services/governance-audit.js`; #204 replaces it.) The event write is retried (idempotent); if it still
 fails, the error is logged and surfaced and the state change is **not** rolled
 back, so the failure mode is a missing audit event, never a false one. Options
 for closing the gap (a transaction on replica sets, or an outbox on the User

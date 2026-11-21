@@ -396,6 +396,7 @@ check("8a. User has exactly the expected top-level fields", () => {
     "accountStateVersion",
     "accountStateChangedAt",
     "accountRestriction",
+    "authGeneration",
     "bio",
     "expertApplication",
   ].sort();
@@ -622,9 +623,10 @@ check("8j. Exactly the expected models are registered (five domain models, Sessi
   );
 });
 
-check("8k. Session has exactly the expected top-level fields (Authentication milestone)", () => {
-  const expected = ["userId", "tokenHash", "expiresAt"].sort();
+check("8k. Session has exactly the expected top-level fields (Authentication milestone; authGeneration added by #219, optional, absent = 0)", () => {
+  const expected = ["userId", "tokenHash", "expiresAt", "authGeneration"].sort();
   assert.deepEqual(topLevelFields(Session.schema), expected);
+  assert.equal(Session.schema.path("authGeneration").options.default, undefined, "absent on legacy and generation-0 sessions");
 });
 
 check("8m. GovernanceEvent (#172): exact fields, all event-domain fields immutable (createdAt is generated metadata), no updatedAt, unique idempotency index", () => {

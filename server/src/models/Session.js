@@ -70,6 +70,18 @@ const sessionSchema = new Schema(
       type: Date,
       required: true,
     },
+    // The user's credential generation (User.authGeneration) at issuance
+    // (#217/#219). Absent means 0, so existing Session records and users need
+    // no migration, and it is stored only when non-zero. refresh() accepts a
+    // session only if this equals the user's CURRENT generation, so a session
+    // issued before a suspension is restored is unusable the moment the
+    // restoring write commits, independent of any cleanup. Cleanup is bound to
+    // a generation and can therefore never match a later session.
+    authGeneration: {
+      type: Number,
+      min: 0,
+      default: undefined,
+    },
   },
   {
     timestamps: true,

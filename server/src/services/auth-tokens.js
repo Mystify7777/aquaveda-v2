@@ -293,11 +293,15 @@ export function getRefreshTokenLifetimeMs() {
  * other claim. Role is never carried in the access token; it is always
  * resolved fresh from the database by whatever verifies this token.
  *
- * @param {{ sub: string }} params
+ * @param {{ sub: string, gen?: number }} params
  * @returns {string} signed JWT
  */
-export function signAccessToken({ sub }) {
-  return jwt.sign({ sub }, getAccessSecret(), {
+export function signAccessToken({ sub, gen = 0 }) {
+  // `gen` is the user's credential generation (see User.authGeneration). It is
+  // carried only when non-zero, so tokens for users who have never had
+  // credentials invalidated are byte-identical in shape to pre-#207 tokens.
+  const payload = gen > 0 ? { sub, gen } : { sub };
+  return jwt.sign(payload, getAccessSecret(), {
     algorithm: JWT_ALGORITHM,
     expiresIn: getAccessExpires(),
   });
@@ -350,7 +354,11 @@ function verifyPinned(token, secret) {
  */
 export function verifyAccessToken(token) {
   const decoded = verifyPinned(token, getAccessSecret());
-  return { sub: decoded.sub };
+  if (decoded.gen !== undefined && !(Number.isInteger(decoded.gen) && decoded.gen >= 0)) {
+    throw new jwt.JsonWebTokenError("jwt gen invalid");
+  }
+  // `gen` is only present for a non-zero credential generation; absent means 0.
+  return decoded.gen ? { sub: decoded.sub, gen: decoded.gen } : { sub: decoded.sub };
 }
 
 /**

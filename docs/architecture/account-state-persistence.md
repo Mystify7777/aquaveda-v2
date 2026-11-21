@@ -16,9 +16,16 @@ when, or how (mutation issues #174–#180), and it stores no governance history
 | `accountStateVersion` | number ≥ 0, required, default `0` | Concurrency serialization point (existing, #173) |
 | `accountStateChangedAt` | Date, absent by default | When the **current** state was entered. Absent on never-restricted (including all legacy) users. |
 | `accountRestriction` | subdocument, absent by default | **Current** restriction for `MUTED` / `HARD_SUSPENDED` only |
+| `authGeneration` | integer ≥ 0, absent = 0, never exposed | Credential generation (#207): access tokens issued under an older value are rejected; bumped atomically when a suspension is restored. See [hard-suspension.md](./hard-suspension.md) |
 | `accountRestriction.kind` | `TEMPORARY` \| `INDEFINITE`, required | Explicit; indefinite is never inferred from a missing expiry |
 | `accountRestriction.expiresAt` | Date | Required for `TEMPORARY`; must be absent for `INDEFINITE` |
 | `accountRestriction.safeReason` | trimmed string ≤ 500 | The user-visible reason only. Private moderation notes are never stored here. |
+
+`Session.authGeneration` (#219): the credential generation a refresh session was
+issued under (optional, absent = 0, stored only when non-zero, so existing Session
+records need no migration). `refresh()` accepts a session only when it equals the
+user's current `authGeneration`; session cleanup is bound to a generation. See
+[hard-suspension.md](./hard-suspension.md) ("Restoration and session-cleanup protocol").
 
 Not stored here (by design): actor, internal notes, `previousState`, event
 history, appeal data, deletion-window duration. Those belong to the append-only
