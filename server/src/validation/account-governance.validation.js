@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 import { objectIdString } from "./shared/objectId.js";
+import {
+  DIRECTORY_ROLES,
+  DIRECTORY_STATES,
+  SEARCH_MIN_LENGTH,
+  SEARCH_MAX_LENGTH,
+} from "../domain/account-directory.js";
+import { paginationQuerySchema } from "./shared/pagination.js";
 
 /**
  * Account-governance request shapes (#174). Bodies are `.strict()`: no schema
@@ -51,3 +58,22 @@ export const liftMuteSchema = z
     reason: z.string().optional(),
   })
   .strict();
+
+// --- Admin directory read API (#181) ----------------------------------------
+// Query bodies are .strict(): an unknown/misspelled parameter is a 400, never a
+// silently unfiltered directory.
+
+export const accountDirectoryQuerySchema = paginationQuerySchema
+  .extend({
+    role: z.enum(DIRECTORY_ROLES).optional(),
+    accountState: z.enum(DIRECTORY_STATES).optional(),
+    q: z
+      .string()
+      .trim()
+      .min(SEARCH_MIN_LENGTH, `q must be at least ${SEARCH_MIN_LENGTH} characters`)
+      .max(SEARCH_MAX_LENGTH)
+      .optional(),
+  })
+  .strict();
+
+export const accountHistoryQuerySchema = paginationQuerySchema.strict();

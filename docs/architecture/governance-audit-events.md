@@ -104,7 +104,7 @@ Events are never serialized raw: `toJSON` strips `reason` and `idempotencyKey`.
 The only projection added is `toAffectedUserGovernanceEvent` — an allowlist of
 `id`, `action`, `occurredAt`, `safeReason`; it omits actor identity, the private
 reason, references, and states. The Admin governance-history projection is
-decided with the Admin directory (#181). No route or UI exists.
+`toAdminGovernanceEvent` (#181, `admin-directory.md`).
 
 ## Separation from account state
 

@@ -17,3 +17,23 @@ export function toAffectedUserGovernanceEvent(event) {
     safeReason: event.safeReason ?? null,
   };
 }
+
+/**
+ * Admin governance-history projection (#181, ADR-0010 §13/§14). Allowlist.
+ * Actor identity is shown (governance accountability); the private `reason`,
+ * `references` and `idempotencyKey` are NOT. `actorsById` is a batch-hydrated
+ * map (id string -> name) so callers never query per event.
+ */
+export function toAdminGovernanceEvent(event, actorsById = new Map()) {
+  const actorId = event.actor ? String(event.actor) : null;
+  return {
+    id: String(event._id),
+    action: event.action,
+    actorType: event.actorType,
+    actor: actorId ? { id: actorId, name: actorsById.get(actorId) ?? null } : null,
+    previousState: event.previousState,
+    resultingState: event.resultingState,
+    safeReason: event.safeReason ?? null,
+    occurredAt: event.occurredAt.toISOString(),
+  };
+}
