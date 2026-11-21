@@ -37,7 +37,8 @@ export const DomainErrorCode = Object.freeze({
   // VALIDATION_FAILED: the input is syntactically valid, it conflicts
   // with existing application state, which is a different kind of
   // failure than a shape/format problem
-  REFRESH_FAILED: "REFRESH_FAILED", // any reason a refresh attempt could
+  REFRESH_FAILED: "REFRESH_FAILED",
+  PASSWORD_RESET_INVALID: "PASSWORD_RESET_INVALID", // any reason a refresh attempt could
   // not produce a new token pair (malformed/tampered/expired refresh
   // JWT, session not found, session expired, wrong-user mismatch,
   // already-consumed/race). These collapse to one code and one generic

@@ -17,7 +17,7 @@ test.describe.configure({ retries: 0 });
 async function signIn(page: Page, email: string, password: string) {
   await page.goto("/auth/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/$/);
 }
@@ -39,7 +39,8 @@ test("USER applies -> ADMIN approves -> EXPERT moderates; role boundaries hold",
       await user.goto("/auth/register");
       await user.getByLabel("Name").fill(name);
       await user.getByLabel("Email").fill(email);
-      await user.getByLabel("Password").fill(password);
+      await user.getByLabel("Password", { exact: true }).fill(password);
+      await user.getByLabel("Confirm password", { exact: true }).fill(password);
       await user.getByRole("button", { name: "Create account" }).click();
       await expect(role(user)).toHaveText("USER");
 

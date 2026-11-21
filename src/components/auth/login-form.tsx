@@ -8,6 +8,7 @@ import { AuthError, getAuthErrorMessage } from "@/components/auth/auth-error";
 import { AuthSubmitButton } from "@/components/auth/auth-submit-button";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/auth/password-input";
 
 export function LoginForm() {
     const { login } = useAuth();
@@ -50,7 +51,8 @@ export function LoginForm() {
             </div>
             <div className="space-y-2">
                 <label htmlFor="login-password" className="text-sm font-medium">Password</label>
-                <Input id="login-password" name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+                <PasswordInput id="login-password" name="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+                <div className="text-right"><Link href="/auth/forgot-password" className="text-primary text-sm font-medium hover:underline">Forgot password?</Link></div>
             </div>
             <AuthSubmitButton pending={pending}>Sign in</AuthSubmitButton>
             <p className="text-muted-foreground text-center text-sm">

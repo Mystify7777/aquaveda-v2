@@ -45,7 +45,7 @@ import {
   approveExpertApplicationSchema,
   rejectExpertApplicationSchema,
 } from "../src/validation/expert-application.validation.js";
-import { registerSchema, loginSchema } from "../src/validation/auth.validation.js";
+import { registerSchema, loginSchema, passwordResetRequestSchema, passwordResetSchema } from "../src/validation/auth.validation.js";
 
 const results = [];
 let failures = 0;
@@ -490,6 +490,18 @@ check("10e. loginSchema does NOT enforce the 128-character maximum either — a 
 
 check("10f. Missing password fails (still requires the field to be present and a string)", () => {
   assert.equal(loginSchema.safeParse({ email: "test@example.com" }).success, false);
+});
+
+check("10g. Password reset request normalizes a valid email", () => {
+  assert.deepEqual(passwordResetRequestSchema.parse({ email: " Reset@Example.Test " }), { email: "reset@example.test" });
+});
+check("10h. Password reset request rejects malformed email", () => {
+  assert.equal(passwordResetRequestSchema.safeParse({ email: "bad" }).success, false);
+});
+check("10i. Reset password enforces the existing 8–128 character policy", () => {
+  assert.equal(passwordResetSchema.safeParse({ token: "token", password: "12345678" }).success, true);
+  assert.equal(passwordResetSchema.safeParse({ token: "token", password: "short" }).success, false);
+  assert.equal(passwordResetSchema.safeParse({ token: "token", password: "x".repeat(129) }).success, false);
 });
 
 // ---------------------------------------------------------------------

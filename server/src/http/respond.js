@@ -54,6 +54,7 @@ const ERROR_STATUS_MAP = Object.freeze({
   [DomainErrorCode.INVALID_CREDENTIALS]: 401,
   [DomainErrorCode.EMAIL_ALREADY_REGISTERED]: 409,
   [DomainErrorCode.REFRESH_FAILED]: 401,
+  [DomainErrorCode.PASSWORD_RESET_INVALID]: 400,
   [DomainErrorCode.ACCOUNT_SUSPENDED]: 403,
   [DomainErrorCode.ACCOUNT_MUTED]: 403,
   [DomainErrorCode.ACCOUNT_DELETION_PENDING]: 403,
