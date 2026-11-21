@@ -36,7 +36,8 @@ Each item contains:
 - activityAt: latest public comment timestamp, or Discussion createdAt
   when there are no comments
 - title
-- optional category
+- category: string | null (always present; null when the source has none —
+  Knowledge and Issues without a category)
 - commentCount
 - resource: { type, id }
 - author: { _id, name, role } | null
@@ -71,6 +72,31 @@ population into memory or issue one query per Activity item.
 
 Pagination uses the established V2 bounds: page >= 1 and 1 <= limit <= 50,
 default limit 20.
+
+## Data access and scaling characteristics
+
+Verified against a real MongoDB (see `server/tests/community-activity.hardening.test.js`):
+
+- One database operation per request (`discussions.aggregate`), independent of
+  source population size; no per-item queries (no N+1).
+- Application memory is bounded by `limit` (<= 50 rows returned); the eligible
+  population is never materialized in the application.
+- Comment stats are `$sum` / `$max` per target (no per-target sort). Every
+  comment lookup is index-backed (`refType_1_refId_1`, zero collection scans,
+  confirmed via `explain("executionStats")`).
+- The global `$sort` runs over one small projected row per eligible source
+  document and is the only stage whose working set grows with the data. The
+  aggregation sets `allowDiskUse: true` so that stage can spill instead of
+  failing when it exceeds the in-memory sort limit.
+
+Known limitation (accepted, not a contract violation): the projection is
+derived at request time, so each request is O(eligible source documents)
+**database-side** work (all ACTIVE Discussions, all Issues, all approved
+Knowledge are scanned to compute activity). This is bounded for the
+application and correct, but not free at large scale. A materialized or cached
+read-optimized projection is a possible future option; it is a separate
+architecture decision (ADR-0009 §11 currently forbids it for MVP) and is not
+introduced here.
 
 ## Privacy
 

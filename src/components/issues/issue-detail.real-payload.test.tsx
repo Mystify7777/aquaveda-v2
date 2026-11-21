@@ -6,8 +6,13 @@ import type { IssueActivityType, IssueDetailData, IssueNextAction } from "@/lib/
 import { ISSUE_STATUSES } from "@/lib/issues/status";
 import realPayload from "@/test-utils/fixtures/issue-detail.resolved.json";
 
+// Client island (own tests: issue-action-bar.test.tsx); inert here so IssueDetail stays a pure render.
+vi.mock("@/components/issues/issue-action-bar", () => ({ IssueActionBar: () => null }));
 vi.mock("@/components/issues/issue-map-loader", () => ({
   IssueMapLoader: ({ label }: { label: string }) => <div role="region" aria-label={label} />,
+}));
+vi.mock("@/components/issues/issue-recommendations", () => ({
+  IssueRecommendations: () => null,
 }));
 
 /**

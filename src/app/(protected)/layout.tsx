@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
+
 import { RequireAuth } from "@/components/auth/require-auth";
+import { noIndexMetadata } from "@/lib/seo";
 
 /**
  * Route group for authenticated-only surfaces (Issue #43).
@@ -21,6 +24,8 @@ import { RequireAuth } from "@/components/auth/require-auth";
  * future page can't accidentally be added to an authenticated area
  * and forget to protect itself — the App Router structure enforces it.
  */
+export const metadata: Metadata = noIndexMetadata();
+
 export default function ProtectedLayout({
     children,
 }: {

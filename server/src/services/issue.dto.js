@@ -152,6 +152,12 @@ export function toWorkflowDTO(view) {
         }
       : null,
     events: (view.events ?? []).map(toWorkflowEventDTO),
+    // The viewer's permitted operations, produced by the shared evaluator
+    // (`domain/workflow-actions.js`). The DTO only TRANSPORTS them: a vocabulary
+    // violation is the evaluator's bug and is caught by its tests, not hidden
+    // here. A read capability is not a security token: the mutation services
+    // re-authorize every call.
+    actions: view.actions ?? [],
   };
 }
 

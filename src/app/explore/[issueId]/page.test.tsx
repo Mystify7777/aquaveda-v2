@@ -7,6 +7,8 @@ import { ApiError } from "@/lib/api/client";
 import { makeIssueDetail, reportedEntry } from "@/test-utils/issue-detail";
 
 const mockGetIssue = vi.fn();
+// Client island (own tests: issue-action-bar.test.tsx); inert here so IssueDetail stays a pure render.
+vi.mock("@/components/issues/issue-action-bar", () => ({ IssueActionBar: () => null }));
 vi.mock("@/lib/api/issues", () => ({ getIssue: (id: string) => mockGetIssue(id) }));
 vi.mock("next/navigation", () => ({
   notFound: () => {

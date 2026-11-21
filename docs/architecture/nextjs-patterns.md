@@ -129,8 +129,9 @@ shrink that payload; it is a props-shape change, not a boundary change.
 
 Authenticated workflow pages live in `src/app/(protected)/` and are gated by
 `(protected)/layout.tsx` (`RequireAuth`). The group name is implementation-only:
-it never appears in a URL. Canonical URLs: `/learn/new`, `/learn/mine`,
-`/learn/review`, `/learn/review/[id]`, `/act/new`. `/protected/*` is not a route
-(no redirects, no compatibility tree). Public Explore/Learn/Act surfaces stay
-outside the group and anonymous. New authenticated pages go in the group; the
-route/link contract (`src/test-utils/app-routes.ts`) treats groups as transparent.
+it never appears in a URL. Canonical URLs include `/dashboard`, `/learn/new`,
+`/learn/mine`, `/learn/review`, `/learn/review/[id]`, and `/act/new`.
+`/protected/*` is not a route (no redirects, no compatibility tree). Public
+Explore/Learn/Act/Community surfaces stay outside the group and anonymous. New
+authenticated pages go in the group; the route/link contract
+(`src/test-utils/app-routes.ts`) treats groups as transparent.

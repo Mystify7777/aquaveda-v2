@@ -23,11 +23,14 @@ export function loadErrorMessage(error: ApiError, noun: string): string {
  */
 export function LoadError({
   message,
+  title,
   retryHref,
   onRetry,
   signIn,
 }: {
   message: string;
+  /** Optional context-specific heading for surfaces that need stronger hierarchy. */
+  title?: string;
   retryHref?: string;
   onRetry?: () => void;
   signIn?: boolean;
@@ -35,9 +38,16 @@ export function LoadError({
   return (
     <div
       role="alert"
-      className="text-destructive border-destructive/30 bg-destructive/5 space-y-3 rounded-md border p-4 text-sm"
+      className="border-destructive/30 bg-destructive/5 space-y-4 rounded-lg border p-5 text-sm sm:p-6"
     >
-      <p>{message}</p>
+      <div className="space-y-1.5">
+        {title && (
+          <h2 className="text-foreground font-display text-base font-semibold">
+            {title}
+          </h2>
+        )}
+        <p className="text-destructive leading-relaxed">{message}</p>
+      </div>
       <div className="flex flex-wrap gap-2">
         {signIn && (
           <Button asChild size="sm">

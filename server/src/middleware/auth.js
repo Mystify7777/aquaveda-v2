@@ -1,6 +1,8 @@
 import { User } from "../models/User.js";
 import { verifyAccessToken } from "../services/auth-tokens.js";
 import { ACCOUNT_STATES } from "../domain/account-state.js";
+import { isRestrictionExpired } from "../domain/account-restriction.js";
+import { expireMuteIfDue } from "../services/account-governance.service.js";
 
 /**
  * Authentication middleware.
@@ -110,7 +112,27 @@ export async function authMiddleware(req, res, next) {
   // accountState on legacy documents is treated as ACTIVE for backwards
   // compatibility; new documents receive the schema default explicitly.
   req.actorContext = { id: user._id, role: user.role };
-  req.accountState = user.accountState ?? ACCOUNT_STATES.ACTIVE;
+  let effectiveState = user.accountState ?? ACCOUNT_STATES.ACTIVE;
+
+  // Server-side MUTE expiry (#174). The EFFECTIVE state is computed from the
+  // stored restriction on every request, so an expired mute stops blocking
+  // contribution immediately, with no dependency on any background job.
+  // Persisting the lift (state + SYSTEM MUTE_LIFTED event) is best-effort and
+  // idempotent; its failure never blocks or re-blocks the request. A MUTED
+  // record with no valid restriction cannot expire and stays MUTED (fail closed).
+  if (
+    effectiveState === ACCOUNT_STATES.MUTED &&
+    isRestrictionExpired(user.accountRestriction)
+  ) {
+    effectiveState = ACCOUNT_STATES.ACTIVE;
+    try {
+      await expireMuteIfDue(user._id);
+    } catch (err) {
+      console.error("[auth] failed to persist mute expiry", { userId: String(user._id), name: err?.name });
+    }
+  }
+
+  req.accountState = effectiveState;
   next();
 }
 

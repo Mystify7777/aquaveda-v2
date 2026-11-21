@@ -6,6 +6,11 @@ import {
   REFERENCE_MAX_LENGTH,
 } from "../domain/expert-application-submission.js";
 import { ACCOUNT_STATES } from "../domain/account-state.js";
+import {
+  RESTRICTION_KINDS,
+  SAFE_REASON_MAX_LENGTH,
+  validateAccountRecord,
+} from "../domain/account-restriction.js";
 
 const { Schema } = mongoose;
 
@@ -22,6 +27,9 @@ const { Schema } = mongoose;
  * - `email` uniqueness (via index)
  * - `role` enum membership
  * - `accountState` lifecycle enum, defaulting to ACTIVE
+ * - `accountRestriction` / `accountStateChangedAt`: current restriction
+ *   metadata and the valid (state, restriction) combinations
+ *   (`domain/account-restriction.js`). Governance HISTORY is not stored here
  * - `bio` max length
  * - `passwordHash` excluded from default query projection and from JSON
  *   serialization
@@ -119,6 +127,24 @@ const expertApplicationSchema = new Schema(
   { _id: false },
 );
 
+// Current restriction only (MUTED / HARD_SUSPENDED). History is #172.
+const accountRestrictionSchema = new Schema(
+  {
+    kind: {
+      type: String,
+      enum: Object.values(RESTRICTION_KINDS),
+      required: true,
+    },
+    // TEMPORARY: required. INDEFINITE: must be absent. Never `null` ==
+    // "indefinite": indefinite is the explicit `kind`, so a missing expiry on a
+    // TEMPORARY restriction is rejected instead of silently never expiring.
+    expiresAt: { type: Date, default: undefined },
+    // The user-visible reason only. Private moderation notes never live here.
+    safeReason: { type: String, trim: true, maxlength: SAFE_REASON_MAX_LENGTH },
+  },
+  { _id: false },
+);
+
 const userSchema = new Schema(
   {
     name: {
@@ -156,6 +182,10 @@ const userSchema = new Schema(
       default: 0,
       min: 0,
     },
+    // When the CURRENT accountState was entered. Absent on ACTIVE users that
+    // have never been restricted (all legacy users).
+    accountStateChangedAt: { type: Date, default: undefined },
+    accountRestriction: { type: accountRestrictionSchema, default: undefined },
     bio: {
       type: String,
       maxlength: BIO_MAX_LENGTH,
@@ -174,16 +204,64 @@ const userSchema = new Schema(
         // against passwordHash ever reaching a serialized response, even
         // if a future query explicitly re-selects it.
         delete ret.passwordHash;
+        // Same defense-in-depth for governance enforcement data: a user-visible
+        // projection of the restriction is an explicit DTO decision (#175).
+        delete ret.accountRestriction;
         return ret;
       },
     },
   },
 );
 
+// Enforce valid (state, restriction) combinations on save/validate. Only when
+// a governance path changed (or a new document), so unrelated saves are never
+// blocked by a legacy/raw record. Partial selections (fields not loaded) are
+// skipped. NOTE: Mongoose does not run validators for raw update operators
+// (updateOne/findOneAndUpdate); mutation services (#174-#180) must call
+// `validateAccountRecord` on the resulting record and use conditional atomic
+// updates that also increment `accountStateVersion` (ADR-0006; #173).
+userSchema.pre("validate", function validateAccountGovernance() {
+  const governancePaths = ["accountState", "accountRestriction", "accountStateChangedAt"];
+  if (!governancePaths.every((p) => this.isSelected(p))) return;
+  if (!this.isNew && !governancePaths.some((p) => this.isModified(p))) return;
+  const errors = validateAccountRecord(this);
+  if (errors.length > 0) this.invalidate("accountState", errors.join("; "));
+});
+
 // Reviewer queue (#91): partial index over pending applications only.
 userSchema.index(
   { "expertApplication.status": 1, updatedAt: 1 },
   { partialFilterExpression: { "expertApplication.status": "pending" } },
+);
+
+// Account governance access paths (ADR-0010 §2/§3 server-side expiry, §10
+// asynchronous deletion worker, Admin directory by state). PARTIAL so the
+// ACTIVE majority carries no index entries and ACTIVE-user writes are
+// unaffected. PERMANENTLY_DELETED is intentionally NOT indexed: it is terminal
+// and no access path is specified (the purge worker selects DELETION_PENDING;
+// ADR-0010 does not call for listing purged accounts). Add it only when a
+// concrete query needs it.
+userSchema.index(
+  { accountState: 1, accountStateChangedAt: 1 },
+  {
+    name: "account_state_changed",
+    partialFilterExpression: {
+      accountState: {
+        $in: [
+          ACCOUNT_STATES.MUTED,
+          ACCOUNT_STATES.HARD_SUSPENDED,
+          ACCOUNT_STATES.DELETION_PENDING,
+        ],
+      },
+    },
+  },
+);
+userSchema.index(
+  { "accountRestriction.expiresAt": 1 },
+  {
+    name: "account_restriction_expiry",
+    partialFilterExpression: { "accountRestriction.expiresAt": { $exists: true } },
+  },
 );
 
 // Approved index: unique email (uniqueness comes from `unique: true` above;

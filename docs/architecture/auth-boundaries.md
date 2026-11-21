@@ -84,6 +84,49 @@ their operations. No generic ownership rule is introduced. D-3a remains
 resolved by ADR-0007 (issue-scoped remediation grants, exposed in #142); no
 service emits `AUTHORIZATION_POLICY_UNRESOLVED` any more.
 
+## Issue #131 authenticated-route UX audit
+
+The implemented authenticated frontend surfaces were audited against the
+shared session and failure contract. The route-group boundary is the single
+protection point for the authenticated route tree:
+
+- `/act/new`
+- `/admin/expert-applications`
+- `/community/discussions/new`
+- `/dashboard`
+- `/dashboard/attention`
+- `/learn/expert-application`
+- `/learn/mine`
+- `/learn/new`
+- `/learn/review`
+- `/learn/review/[id]`
+
+Authenticated client forms and mutation controls include issue reporting,
+project creation, Knowledge drafting/revision/submission/review, comments,
+community discussion creation, Expert application/decision, and Issue
+lifecycle actions. Existing public routes that host contribution controls
+continue to use `RequireAuth` where appropriate rather than becoming globally
+protected.
+
+The standardized behavior is:
+
+| Situation | Read surface | Mutation/form surface |
+|---|---|---|
+| `initializing` | Show loading/skeleton; protected content is not rendered | Form is not exposed through `RequireAuth` until authentication resolves |
+| `401` / session expired | Explain that the session is invalid and offer sign-in | Preserve controlled form state, stop pending state, show sign-in action |
+| `403` / forbidden | Explain that the account is not permitted | Show operation-specific permission refusal; do not reinterpret it as session failure |
+| network/timeout | Distinguish service unavailability from API refusal and offer retry | Preserve safe user input, settle pending state, allow the user to retry |
+| generic/API response failure | Show generic failure without exposing raw backend details | Preserve safe input and re-enable the action after failure |
+| pending | Keep the current read request state deterministic | Disable the form/action and use an in-flight ref guard where a rapid double-submit could otherwise race the render |
+
+Read flows use `useApiResource` plus `LoadError` for consistent loading, retry,
+401, 403, network, timeout, and generic failure presentation. Mutation flows
+keep their controlled input state after failure and settle `pending` in
+`finally`. The audited community discussion creation flow now also uses a
+ref-level in-flight guard and distinguishes `403` from `401`; the comment
+composer now makes the same `403` distinction. Backend authorization remains
+authoritative.
+
 ## Validation and limitations
 
 The supported checks are `cd server && npm test`, root `npm test`,
