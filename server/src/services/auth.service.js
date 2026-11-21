@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { User } from "../models/User.js";
 import { ACCOUNT_STATES } from "../domain/account-state.js";
 import { isRestrictionExpired } from "../domain/account-restriction.js";
-import { expireSuspensionIfDue } from "./account-governance.service.js";
+import { expireSuspensionIfDue, purgeStaleSessions } from "./account-governance.service.js";
 import { Session } from "../models/Session.js";
 import { PasswordResetCredential } from "../models/PasswordResetCredential.js";
 import { sendPasswordResetEmail } from "./password-reset-email.js";
@@ -112,6 +112,9 @@ async function prepareTokenPair(userId, gen = 0) {
     tokenHash: "pending", // placeholder — overwritten below once the
     // refresh token (and therefore its hash) is known.
     expiresAt: refreshExpiryDate(),
+    // Bind the session to the credential generation it is issued under.
+    // Absent = 0 (no migration for existing records or users).
+    ...(gen > 0 ? { authGeneration: gen } : {}),
   });
 
   const refreshToken = signRefreshToken({
@@ -311,6 +314,17 @@ export async function login(payload) {
   // token issued before the lift stays invalid (#207).
   const { accessToken, refreshToken } = await issueTokenPair(user._id, credentialGeneration);
 
+  // Reconcile: sessions older than the current generation are already unusable
+  // (refresh rejects them); remove any a crashed or failed cleanup left behind.
+  // Idempotent and best-effort; never affects the login.
+  if (credentialGeneration > 0) {
+    try {
+      await purgeStaleSessions(user._id);
+    } catch (err) {
+      console.error("[auth] stale session reconciliation failed", { name: err?.name });
+    }
+  }
+
   return {
     user: { id: user._id, name: user.name, email: user.email, role: user.role },
     accessToken,
@@ -414,6 +428,15 @@ export async function refresh(rawRefreshToken) {
   const latestState = latestUser.accountState ?? ACCOUNT_STATES.ACTIVE;
   if (latestState !== ACCOUNT_STATES.ACTIVE && latestState !== ACCOUNT_STATES.MUTED) {
     await rejectBlockedState(latestState);
+  }
+
+  // The presented session must belong to the user's CURRENT credential
+  // generation (#217/#219). A restoration bumps the generation in the same
+  // write that restores eligibility, so a pre-suspension session is rejected
+  // here even if no cleanup ever ran (crash-safe). The check uses the same
+  // snapshot (state + version) the reservation below is pinned to.
+  if ((consumed.authGeneration ?? 0) !== (latestUser.authGeneration ?? 0)) {
+    throw refreshFailed("Refresh failed");
   }
 
   // Atomic state/version reservation coordinates refresh issuance with

@@ -21,6 +21,12 @@ when, or how (mutation issues #174–#180), and it stores no governance history
 | `accountRestriction.expiresAt` | Date | Required for `TEMPORARY`; must be absent for `INDEFINITE` |
 | `accountRestriction.safeReason` | trimmed string ≤ 500 | The user-visible reason only. Private moderation notes are never stored here. |
 
+`Session.authGeneration` (#219): the credential generation a refresh session was
+issued under (optional, absent = 0, stored only when non-zero, so existing Session
+records need no migration). `refresh()` accepts a session only when it equals the
+user's current `authGeneration`; session cleanup is bound to a generation. See
+[hard-suspension.md](./hard-suspension.md) ("Restoration and session-cleanup protocol").
+
 Not stored here (by design): actor, internal notes, `previousState`, event
 history, appeal data, deletion-window duration. Those belong to the append-only
 governance event model (#172) or are deferred by ADR-0010.

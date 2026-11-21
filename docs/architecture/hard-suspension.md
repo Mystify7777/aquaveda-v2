@@ -59,6 +59,85 @@ Every change is one conditional atomic update pinned on state **and**
 checked with `validateAccountRecord`. Accounts that pre-date #173 and lack the
 stored fields are handled by the filters (no backfill dependency).
 
+## Restoration and session-cleanup protocol (#217 / #219)
+
+**Problem.** The first version of restoration deleted the account's refresh
+sessions *before* its conditional state update. A stale worker could read an
+expired suspension, pause, lose the race to an Admin lift, and then (after the
+user logged in again) delete the fresh post-restoration session, even though
+its own state update would fail. Simply moving the delete after the update is
+not acceptable either: a crash between the two leaves an ACTIVE account with
+reusable pre-suspension refresh sessions.
+
+**Chosen protocol: sessions carry the credential generation; cleanup is bound
+to a generation; security never depends on cleanup running.**
+
+1. `Session.authGeneration` (optional integer, absent = 0, stored only when
+   non-zero, so existing Session records and users need no migration) records
+   the user's credential generation (`User.authGeneration`, #207) at issuance.
+   `login()` and `refresh()` stamp it.
+2. **Refresh authorization.** `refresh()` rejects (`REFRESH_FAILED`) any session
+   whose generation differs from the user's current generation. The check uses
+   the same snapshot the existing atomic reservation is pinned to (state +
+   `accountStateVersion`), and every restoration bumps both in one write.
+   Consequently a pre-suspension refresh session is unusable the instant the
+   restoring write commits, whether or not any cleanup has run.
+3. **One restoration core** (`restoreAccount`) serves Admin lift, request-path
+   expiry, login-path expiry and the sweep: read -> one conditional atomic
+   update (state, `accountStateVersion`, and for expiry an expired TEMPORARY
+   restriction; `$inc` of the version and, for a suspension, the generation) ->
+   cleanup -> event. Only the actor whose conditional update **wins** proceeds
+   past it; a loser returns (or raises the existing state-race error) having
+   deleted **nothing**.
+4. **Bound cleanup.** The winner deletes only sessions whose generation is
+   `<=` the generation being restored (the value before its own bump; absent
+   counts as 0): `{ userId, authGeneration: { $not: { $gt: restoredGen } } }`.
+   Generations only ever increase, so a session created after the restoration
+   carries a strictly higher generation and **no cleanup, however late,
+   duplicated or stale, can match it**.
+5. **Suspension entry** is bound the same way (`<=` the generation at the
+   suspending write), so a delayed suspension cleanup cannot delete a session
+   created after a later restoration either.
+6. Cleanup is **best-effort and never throws**. It runs after the winning flip
+   and before the audit event, so a cleanup failure neither undoes the
+   restoration nor prevents the event.
+
+**Guarantees.**
+
+| # | Guarantee | Why it holds |
+| --- | --- | --- |
+| G1 | A losing/stale worker never deletes any session | it performs no cleanup unless it won the conditional update |
+| G2 | A session created after a restoration is never deleted by any restoration or suspension cleanup | generation monotonicity + the `<=` bound |
+| G3 | No restoration exposes ACTIVE eligibility with a reusable pre-suspension refresh credential, even if the process crashes between the flip and the cleanup | `refresh()` rejects stale-generation sessions; the restoring write bumps the generation atomically with the state |
+| G4 | Pre-suspension access tokens stay invalid (unchanged from #207) | `gen` claim vs `User.authGeneration` |
+| G5 | One restoration = one transition, one generation bump, one event | idempotency key derived from the new version; conditional update |
+| G6 | MUTE never touches sessions or the generation | `MUTE` has no cleanup and no bump |
+
+**Crash and failure behavior.**
+
+| Failure point | State | Reusable old credentials? | Recovery |
+| --- | --- | --- | --- |
+| before the restoring write | HARD_SUSPENDED | no (blocked) | retry |
+| between the write and cleanup | ACTIVE, gen bumped | **no** (G3) | the stale sessions are garbage; removed by the next login (see below), the next bound cleanup, or the Session TTL |
+| cleanup throws | ACTIVE | **no** | same; the restoration and its event are not affected |
+| after cleanup, before the event | ACTIVE, sessions gone | no | audit gap: see the limitation below (#204) |
+
+**Reconciliation.** `purgeStaleSessions(userId)` deletes sessions older than the
+user's current generation. It is idempotent and monotonicity-safe (a session
+created concurrently has generation `>=` the value read, so it cannot match).
+`login()` runs it opportunistically when the user's generation is non-zero.
+The Session TTL index remains the final backstop.
+
+**Audit limitation (unchanged).** The event write is still a second,
+non-transactional operation behind the shared `recordTransitionEvent` seam; a
+failure after the state change leaves a missing event, never a false one.
+Durable state/event atomicity is #204's scope and is **not** delivered here.
+
+**Testability.** The restoration core and the suspension write expose inert
+hook points (`governanceTestHooks`: `afterRead`, `afterFlip`, `beforeCleanup`),
+unassigned in production, so tests force every interleaving with explicit
+barriers instead of sleeps.
+
 ## Enforcement and sessions
 
 - Every authenticated request goes through the existing database-backed
@@ -69,14 +148,14 @@ stored fields are handled by the filters (no backfill dependency).
   login, refresh and logout are mounted before the block, by #173 design:
   `/auth/me` returns only `{ user, accountState }` so a client can route a
   suspended session to a suspension surface.
-- **At suspension** all refresh sessions are deleted (ADR-0010 §4).
-  Cleanup failure does not undo the suspension: the account is already blocked
-  everywhere and a leftover session is inert (the refresh path rejects and
-  deletes it).
-- **At lift and at expiry** residual sessions are deleted **before**
-  eligibility is restored, so an old session can never be resurrected; a failure
-  aborts the lift (the account stays suspended) and can be retried. The user
-  must log in again (fresh session).
+- **At suspension** the account's existing refresh sessions are deleted
+  (ADR-0010 §4) with the same generation-bound cleanup. Cleanup failure does not
+  undo the suspension: the account is already blocked everywhere and a leftover
+  session is inert.
+- **At lift and at expiry** the restoring write bumps the credential
+  generation, which makes every older refresh session and access token unusable
+  at once; the winner then deletes the stale sessions with a generation-bound
+  cleanup (see the protocol above). The user must log in again (fresh session).
 - Login of a suspended account is `403 ACCOUNT_SUSPENDED`; the browser, JWT
   claims and client timers are never state authority.
 
@@ -181,6 +260,7 @@ state stays committed and no false event exists.
   a review-blocking defect: the first draft let a pre-suspension access token
   work again after a lift).
 - A racing refresh can leave a residual Session document after suspension; it is
-  inert while suspended and purged before restoration.
+  inert while suspended and unusable after restoration (generation mismatch)
+  until a bound cleanup, a login-time purge or the Session TTL removes it.
 - Durable audit consistency: #204. Sweep scheduling, user-facing suspension
   details and appeals: later issues.

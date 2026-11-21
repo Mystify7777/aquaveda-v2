@@ -37,14 +37,37 @@ import {
  *   ACTIVE         --suspend---------> HARD_SUSPENDED   (temporary | indefinite)
  *   HARD_SUSPENDED --lift / expiry---> ACTIVE
  *
- * Sessions (ADR-0010 §4): MUTE never touches sessions. HARD_SUSPENDED
- * invalidates all refresh sessions at the transition; lifting or expiring a
- * suspension invalidates any residual sessions BEFORE restoring eligibility so
- * an old session can never be resurrected; the user must log in again.
+ * Sessions and credentials (ADR-0010 §4; protocol and guarantees in
+ * docs/architecture/hard-suspension.md, "Restoration and session-cleanup
+ * protocol", #217/#219): MUTE never touches sessions or the credential
+ * generation. A suspension restoration bumps `User.authGeneration` in the same
+ * atomic write that restores eligibility; `refresh()` rejects any session whose
+ * generation is not current, so a pre-suspension credential is dead the instant
+ * that write commits. Only the WINNER of the conditional update then deletes
+ * stale sessions, bound to the generation it restored (`<= restoredGen`), so no
+ * stale, delayed or duplicate cleanup can ever match a later session. Cleanup is
+ * best-effort and never throws; security never depends on it running.
  */
 
+/**
+ * Inert test seams (never assigned in production). Tests assign async
+ * functions to force exact interleavings with explicit barriers:
+ *  - afterRead({ phase, mode, label, targetId }): after a restoration's read and
+ *    precondition check, before its conditional update.
+ *  - afterFlip({ phase, ... }): after a winning update, before cleanup.
+ *  - beforeCleanup({ phase, ... }): immediately before session cleanup; may throw
+ *    to simulate cleanup failure.
+ * `phase` is "restore" or "suspend".
+ */
+export const governanceTestHooks = { afterRead: undefined, afterFlip: undefined, beforeCleanup: undefined };
+
+async function runHook(name, ctx) {
+  const hook = governanceTestHooks[name];
+  if (typeof hook === "function") await hook(ctx);
+}
+
 const OBJECT_ID = /^[a-f\d]{24}$/i;
-const STATE_PROJECTION = "accountState accountStateVersion accountRestriction";
+const STATE_PROJECTION = "accountState accountStateVersion accountRestriction authGeneration";
 
 /** Restriction families that share lift/expiry mechanics. */
 const MUTE = Object.freeze({
@@ -126,9 +149,41 @@ function restoreIncrements(cfg) {
   return cfg.bumpsCredentialGeneration ? { accountStateVersion: 1, authGeneration: 1 } : { accountStateVersion: 1 };
 }
 
-/** Remove every refresh session of the account. Throws on failure. */
-async function invalidateRefreshSessions(targetId) {
-  await Session.deleteMany({ userId: targetId });
+/**
+ * Delete the account's sessions bound to credential generations `<= maxGeneration`
+ * (absent counts as 0). Generations only increase, so a session issued after
+ * the restoration that produced `maxGeneration + 1` can never match.
+ */
+function deleteSessionsUpToGeneration(targetId, maxGeneration) {
+  return Session.deleteMany({ userId: targetId, authGeneration: { $not: { $gt: maxGeneration } } });
+}
+
+/** Best-effort, never throws: security does not depend on cleanup (see header). */
+async function cleanupSessions(ctx, targetId, maxGeneration) {
+  try {
+    await runHook("beforeCleanup", { ...ctx, targetId });
+    await deleteSessionsUpToGeneration(targetId, maxGeneration);
+  } catch (err) {
+    console.error("[governance] session cleanup failed (credentials stay invalid by generation)", {
+      target: String(targetId),
+      phase: ctx.phase,
+      name: err?.name,
+    });
+  }
+}
+
+/**
+ * Reconciliation / recovery: delete sessions older than the user's CURRENT
+ * credential generation. Idempotent and monotonicity-safe: a session created
+ * concurrently carries a generation >= the one read here, so it cannot match.
+ */
+export async function purgeStaleSessions(targetId) {
+  requireTargetId(targetId);
+  const user = await User.findById(targetId).select("authGeneration");
+  const generation = user?.authGeneration ?? 0;
+  if (generation <= 0) return { deleted: 0 };
+  const result = await Session.deleteMany({ userId: targetId, authGeneration: { $not: { $gte: generation } } });
+  return { deleted: result.deletedCount ?? 0 };
 }
 
 function toResult(user, event) {
@@ -284,11 +339,11 @@ export async function suspendAccount(actorContext, targetId, input = {}, { now =
   ).select(STATE_PROJECTION);
   if (!updated) throw await diagnoseZeroMatch(targetId);
 
-  try {
-    await invalidateRefreshSessions(targetId);
-  } catch (err) {
-    console.error("[governance] session cleanup failed after suspension", { target: String(targetId), name: err?.name });
-  }
+  // Bound to the generation at this suspending write: a delayed cleanup here can
+  // never delete a session issued after a later restoration (G2).
+  const suspendCtx = { phase: "suspend", mode: "suspend", label: SUSPENSION.label };
+  await runHook("afterFlip", { ...suspendCtx, targetId });
+  await cleanupSessions(suspendCtx, targetId, updated.authGeneration ?? 0);
 
   const { event } = await recordTransitionEvent({
     idempotencyKey: `${GOVERNANCE_ACTIONS.HARD_SUSPEND}:${targetId}:${updated.accountStateVersion}`,
@@ -305,7 +360,76 @@ export async function suspendAccount(actorContext, targetId, input = {}, { now =
   return toResult(updated, event);
 }
 
-// --- lift (admin) ------------------------------------------------------------
+// --- restoration (one protocol for Admin lift, request/login expiry, sweep) ----
+
+/**
+ * The single restoration core. read -> ONE conditional atomic update -> cleanup
+ * -> event. Only the actor whose conditional update wins proceeds past it; a
+ * loser deletes nothing (G1). `mode`:
+ *  - "admin": ADMIN lift; preconditions reported as INVALID_STATE, a lost race
+ *    as the existing state-race/not-found errors.
+ *  - "expiry": SYSTEM; not-due / not-in-state / lost race all return
+ *    `{ lifted: false }`.
+ */
+async function restoreAccount(cfg, targetId, { mode, actorContext = null, reason, now }) {
+  const target = await User.findById(targetId).select(STATE_PROJECTION);
+  const state = target ? (target.accountState ?? ACCOUNT_STATES.ACTIVE) : undefined;
+
+  let expiredAt;
+  if (mode === "expiry") {
+    if (!target || state !== cfg.state || !isRestrictionExpired(target.accountRestriction, now)) {
+      return { lifted: false };
+    }
+    expiredAt = target.accountRestriction.expiresAt;
+  } else {
+    if (!target) throw notFound("Account not found");
+    if (state !== cfg.state) {
+      throw invalidState(`Only a ${cfg.state} account can have its ${cfg.label} lifted`, { accountState: state });
+    }
+  }
+  const version = target.accountStateVersion ?? 0;
+  const ctx = { phase: "restore", mode, label: cfg.label };
+  await runHook("afterRead", { ...ctx, targetId });
+
+  const filter = { _id: targetId, ...stateFilter(cfg.state), ...versionFilter(version) };
+  if (mode === "expiry") {
+    filter["accountRestriction.kind"] = RESTRICTION_KINDS.TEMPORARY;
+    filter["accountRestriction.expiresAt"] = { $lte: now };
+  }
+  const updated = await User.findOneAndUpdate(
+    filter,
+    {
+      $set: { accountState: ACCOUNT_STATES.ACTIVE, accountStateChangedAt: now },
+      $unset: { accountRestriction: "" },
+      $inc: restoreIncrements(cfg),
+    },
+    { new: true },
+  ).select(STATE_PROJECTION);
+
+  if (!updated) {
+    if (mode === "expiry") return { lifted: false }; // lost: no cleanup, no event (G1)
+    throw await diagnoseZeroMatch(targetId);
+  }
+
+  await runHook("afterFlip", { ...ctx, targetId });
+  if (cfg.invalidatesSessionsOnRestore) {
+    // The generation being restored is the value BEFORE this write's bump.
+    await cleanupSessions(ctx, targetId, (updated.authGeneration ?? 1) - 1);
+  }
+
+  const { event } = await recordTransitionEvent({
+    idempotencyKey: `${cfg.liftAction}:${targetId}:${updated.accountStateVersion}`,
+    action: cfg.liftAction,
+    actorType: mode === "admin" ? ACTOR_TYPES.USER : ACTOR_TYPES.SYSTEM,
+    ...(mode === "admin" ? { actor: actorContext.id } : {}),
+    target: targetId,
+    previousState: cfg.state,
+    resultingState: ACCOUNT_STATES.ACTIVE,
+    ...(reason ? { reason } : {}),
+    occurredAt: mode === "admin" ? now : expiredAt,
+  });
+  return mode === "admin" ? toResult(updated, event) : { lifted: true };
+}
 
 async function liftRestriction(cfg, actorContext, targetId, input, now) {
   requireActor(actorContext);
@@ -316,42 +440,7 @@ async function liftRestriction(cfg, actorContext, targetId, input, now) {
   const reason = optionalText(input.reason, "reason", REASON_MAX_LENGTH, errors);
   if (errors.length > 0) throw validationFailed(errors);
 
-  const target = await loadTarget(targetId);
-  if (target.accountState !== cfg.state) {
-    throw invalidState(`Only a ${cfg.state} account can have its ${cfg.label} lifted`, {
-      accountState: target.accountState ?? ACCOUNT_STATES.ACTIVE,
-    });
-  }
-  const version = target.accountStateVersion ?? 0;
-
-  // Residual sessions must be gone BEFORE eligibility is restored (a failure
-  // aborts the lift; the account simply stays restricted and the call can be
-  // retried).
-  if (cfg.invalidatesSessionsOnRestore) await invalidateRefreshSessions(targetId);
-
-  const updated = await User.findOneAndUpdate(
-    { _id: targetId, ...stateFilter(cfg.state), ...versionFilter(version) },
-    {
-      $set: { accountState: ACCOUNT_STATES.ACTIVE, accountStateChangedAt: now },
-      $unset: { accountRestriction: "" },
-      $inc: restoreIncrements(cfg),
-    },
-    { new: true },
-  ).select(STATE_PROJECTION);
-  if (!updated) throw await diagnoseZeroMatch(targetId);
-
-  const { event } = await recordTransitionEvent({
-    idempotencyKey: `${cfg.liftAction}:${targetId}:${updated.accountStateVersion}`,
-    action: cfg.liftAction,
-    actorType: ACTOR_TYPES.USER,
-    actor: actorContext.id,
-    target: targetId,
-    previousState: cfg.state,
-    resultingState: ACCOUNT_STATES.ACTIVE,
-    reason,
-    occurredAt: now,
-  });
-  return toResult(updated, event);
+  return restoreAccount(cfg, targetId, { mode: "admin", actorContext, reason, now });
 }
 
 /** Lift a MUTE early (ADMIN only). The target must currently be MUTED. */
@@ -367,51 +456,14 @@ export function liftSuspension(actorContext, targetId, input = {}, { now = new D
 // --- expiry (server-side) -----------------------------------------------------
 
 /**
- * Persist the lift of a restriction that has expired (SYSTEM actor).
- * Idempotent and race-safe: the conditional filter requires the same version,
- * state, and an expired TEMPORARY restriction, so concurrent callers (many
- * requests, a login, an Admin lift, a sweep) produce at most one transition and
- * one event. `occurredAt` is the restriction's `expiresAt`. INDEFINITE
- * restrictions never match. Returns `{ lifted: boolean }`.
+ * Persist the lift of a restriction that has expired (SYSTEM actor), through the
+ * same restoration core as an Admin lift. Idempotent and race-safe; INDEFINITE
+ * restrictions never match. `occurredAt` is the restriction's `expiresAt`.
+ * Returns `{ lifted: boolean }`.
  */
 async function expireRestrictionIfDue(cfg, targetId, now) {
   requireTargetId(targetId);
-  const target = await User.findById(targetId).select(STATE_PROJECTION);
-  if (!target || target.accountState !== cfg.state) return { lifted: false };
-  const restriction = target.accountRestriction;
-  if (!isRestrictionExpired(restriction, now)) return { lifted: false };
-  const version = target.accountStateVersion ?? 0;
-  const expiredAt = restriction.expiresAt;
-
-  if (cfg.invalidatesSessionsOnRestore) await invalidateRefreshSessions(targetId);
-
-  const updated = await User.findOneAndUpdate(
-    {
-      _id: targetId,
-      ...stateFilter(cfg.state),
-      ...versionFilter(version),
-      "accountRestriction.kind": RESTRICTION_KINDS.TEMPORARY,
-      "accountRestriction.expiresAt": { $lte: now },
-    },
-    {
-      $set: { accountState: ACCOUNT_STATES.ACTIVE, accountStateChangedAt: now },
-      $unset: { accountRestriction: "" },
-      $inc: restoreIncrements(cfg),
-    },
-    { new: true },
-  ).select(STATE_PROJECTION);
-  if (!updated) return { lifted: false }; // another actor already moved the account
-
-  await recordTransitionEvent({
-    idempotencyKey: `${cfg.liftAction}:${targetId}:${updated.accountStateVersion}`,
-    action: cfg.liftAction,
-    actorType: ACTOR_TYPES.SYSTEM,
-    target: targetId,
-    previousState: cfg.state,
-    resultingState: ACCOUNT_STATES.ACTIVE,
-    occurredAt: expiredAt,
-  });
-  return { lifted: true };
+  return restoreAccount(cfg, targetId, { mode: "expiry", now });
 }
 
 export const expireMuteIfDue = (targetId, { now = new Date() } = {}) => expireRestrictionIfDue(MUTE, targetId, now);
