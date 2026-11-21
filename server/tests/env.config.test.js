@@ -14,6 +14,7 @@ import {
   resolveCookieDomain,
   resolveTrustedProxyHops,
   resolveSelfGrantThreshold,
+  resolveFrontendBaseUrl,
 } from "../src/config/env.js";
 
 const VALID_ACCESS_SECRET = "secure-random-access-secret-32-chars-long";
@@ -363,6 +364,7 @@ describe("src/config/env.js — TRUSTED_PROXY_HOPS (Issue #27)", () => {
   it("production requires an explicit decision: unset fails startup validation", () => {
     const prod = baseValidEnv({
       NODE_ENV: "production",
+      FRONTEND_BASE_URL: "https://app.example.com",
       JWT_ACCESS_SECRET: "valid-production-access-auth-key-abcdefghijklmn",
       JWT_REFRESH_SECRET: "valid-production-refresh-auth-key-abcdefghijklmn",
     });
@@ -403,10 +405,104 @@ describe("src/config/env.js — SELF_GRANT_EXPERT_THRESHOLD (ADR-0007)", () => {
     const prod = baseValidEnv({
       NODE_ENV: "production",
       TRUSTED_PROXY_HOPS: "1",
+      FRONTEND_BASE_URL: "https://app.example.com",
       JWT_ACCESS_SECRET: "valid-production-access-auth-key-abcdefghijklmn",
       JWT_REFRESH_SECRET: "valid-production-refresh-auth-key-abcdefghijklmn",
     });
     assert.doesNotThrow(() => validateStartupConfig(prod), "unset is fine in production (a policy default, not a deployment prerequisite)");
     assert.throws(() => validateStartupConfig({ ...prod, SELF_GRANT_EXPERT_THRESHOLD: "x" }), /SELF_GRANT_EXPERT_THRESHOLD/);
+  });
+});
+
+describe("src/config/env.js — resolveFrontendBaseUrl (password-reset link origin)", () => {
+  it("accepts a valid https URL and returns the bare origin", () => {
+    assert.equal(resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "https://app.example.com" }), "https://app.example.com");
+    assert.equal(resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "https://app.example.com/" }), "https://app.example.com");
+    assert.equal(resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "https://app.example.com:4000" }), "https://app.example.com:4000");
+  });
+
+  it("accepts a plain-http URL in non-production (e.g. localhost dev server)", () => {
+    assert.equal(
+      resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "http://localhost:3000" }),
+      "http://localhost:3000"
+    );
+  });
+
+  it("throws when FRONTEND_BASE_URL is absent or blank", () => {
+    assert.throws(() => resolveFrontendBaseUrl({}), /FRONTEND_BASE_URL/);
+    assert.throws(() => resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "   " }), /FRONTEND_BASE_URL/);
+  });
+
+  it("throws when the value is not a valid absolute URL", () => {
+    assert.throws(() => resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "not-a-url" }), /FRONTEND_BASE_URL/);
+    assert.throws(() => resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "ftp://app.example.com" }), /FRONTEND_BASE_URL/);
+  });
+
+  it("throws when the URL carries a non-root path (would produce double-path reset links)", () => {
+    assert.throws(
+      () => resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "https://app.example.com/app" }),
+      /no path component/
+    );
+    assert.throws(
+      () => resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "https://app.example.com/app/" }),
+      /no path component/
+    );
+  });
+
+  it("throws when the URL contains a query string or fragment", () => {
+    assert.throws(
+      () => resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "https://app.example.com?foo=1" }),
+      /FRONTEND_BASE_URL/
+    );
+    assert.throws(
+      () => resolveFrontendBaseUrl({ FRONTEND_BASE_URL: "https://app.example.com#section" }),
+      /FRONTEND_BASE_URL/
+    );
+  });
+
+  it("production: rejects http and loopback addresses", () => {
+    const env = { NODE_ENV: "production" };
+    assert.throws(
+      () => resolveFrontendBaseUrl({ ...env, FRONTEND_BASE_URL: "http://app.example.com" }),
+      /https in production/
+    );
+    assert.throws(
+      () => resolveFrontendBaseUrl({ ...env, FRONTEND_BASE_URL: "https://localhost:3000" }),
+      /loopback/
+    );
+    assert.throws(
+      () => resolveFrontendBaseUrl({ ...env, FRONTEND_BASE_URL: "https://127.0.0.1" }),
+      /loopback/
+    );
+  });
+
+  it("production: accepts a valid https non-loopback origin", () => {
+    assert.doesNotThrow(() =>
+      resolveFrontendBaseUrl({ NODE_ENV: "production", FRONTEND_BASE_URL: "https://app.example.com" })
+    );
+  });
+
+  it("validateStartupConfig: production without FRONTEND_BASE_URL fails fast", () => {
+    const prod = baseValidEnv({
+      NODE_ENV: "production",
+      TRUSTED_PROXY_HOPS: "1",
+      JWT_ACCESS_SECRET: "valid-production-access-auth-key-abcdefghijklmn",
+      JWT_REFRESH_SECRET: "valid-production-refresh-auth-key-abcdefghijklmn",
+    });
+    assert.throws(() => validateStartupConfig(prod), /FRONTEND_BASE_URL/);
+    assert.doesNotThrow(() =>
+      validateStartupConfig({ ...prod, FRONTEND_BASE_URL: "https://app.example.com" })
+    );
+  });
+
+  it("validateStartupConfig: dev/test without FRONTEND_BASE_URL is accepted", () => {
+    assert.doesNotThrow(() => validateStartupConfig(baseValidEnv()));
+  });
+
+  it("validateStartupConfig: a malformed FRONTEND_BASE_URL always fails even in dev", () => {
+    assert.throws(
+      () => validateStartupConfig(baseValidEnv({ FRONTEND_BASE_URL: "not-a-url" })),
+      /FRONTEND_BASE_URL/
+    );
   });
 });

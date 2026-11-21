@@ -39,6 +39,14 @@ specification, not as code to port.
 - `src/models/Session.js` — dedicated refresh-session persistence
 - JWT via `jsonwebtoken`, with HttpOnly access and refresh cookies
 - Zod validation on register/login request bodies
+- Password recovery through `/api/v1/auth/password-reset/request` and
+  `/api/v1/auth/password-reset/confirm`; reset credentials are random,
+  single-use, expire after one hour, and are stored only as SHA-256
+  hashes. Successful resets delete all refresh `Session` records for the
+  user; already-issued access JWTs expire naturally.
+- Reset mail uses SMTP variables below and `FRONTEND_BASE_URL` for its
+  link. In non-production, absent SMTP configuration emits a generic
+  warning without printing a credential or link.
 - `requireActor()` and existing operation-specific service authorization remain the backend contribution boundary
 
 The domain HTTP surface (`src/routes/`) covers Issue, Knowledge, Comment,
@@ -72,6 +80,17 @@ JWT_ACCESS_SECRET=    # required; generate: openssl rand -base64 32
 JWT_REFRESH_SECRET=   # required; distinct from JWT_ACCESS_SECRET; generate: openssl rand -base64 32
 JWT_ACCESS_EXPIRES=15m
 JWT_REFRESH_EXPIRES=7d
+FRONTEND_BASE_URL=http://localhost:3000
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-smtp-username
+SMTP_PASS=your-smtp-password
+SMTP_FROM=AquaVeda <no-reply@example.com>
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX=200
+AUTH_RATE_LIMIT_WINDOW_MS=900000
+AUTH_RATE_LIMIT_MAX=20
 COOKIE_SAME_SITE=none  # locked: frontend/backend are different registrable
                         # domains (genuine cross-site). "none" is mandatory —
                         # "lax"/"strict" would silently drop auth cookies on

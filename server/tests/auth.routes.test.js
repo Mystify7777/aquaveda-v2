@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import http from "node:http";
 
 import { createApp } from "../src/app.js";
-import { User } from "../src/models/User.js";
-import { Session } from "../src/models/Session.js";
 import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.js";
 import { defaultStore } from "../src/middleware/rate-limiter.js";
+import { User } from "../src/models/User.js";
+import { Session } from "../src/models/Session.js";
 
 /**
  * Minimal, dependency-free HTTP test client built on node:http directly.
@@ -786,6 +786,66 @@ describe("POST /api/v1/auth/logout", () => {
     const res = await request("POST", "/api/v1/auth/logout");
     assert.equal(res.status, 200);
     assert.equal(res.json.success, true);
+  });
+});
+
+describe("password reset request routes", () => {
+  it("validates the email and returns the same generic response for known and unknown accounts", async () => {
+    const original = Object.fromEntries(["SMTP_HOST", "SMTP_PORT", "SMTP_SECURE", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"].map((key) => [key, process.env[key]]));
+    for (const key of Object.keys(original)) delete process.env[key];
+    try {
+      const invalid = await request("POST", "/api/v1/auth/password-reset/request", { body: { email: "not-an-email" } });
+      assert.equal(invalid.status, 400);
+      assert.equal(invalid.json.code, "VALIDATION_FAILED");
+
+      await request("POST", "/api/v1/auth/register", { body: registerBody() });
+      const known = await request("POST", "/api/v1/auth/password-reset/request", { body: { email: "test@example.com" } });
+      const unknown = await request("POST", "/api/v1/auth/password-reset/request", { body: { email: "unknown@example.com" } });
+      assert.equal(known.status, 200);
+      assert.deepEqual(known.json, unknown.json);
+      assert.equal(known.json.message, "If an account exists for that email, a reset link will be sent.");
+      assert.equal(JSON.stringify(known.json).includes("token"), false);
+    } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it("rate limits reset requests by IP", async () => {
+    for (let i = 0; i < 5; i++) {
+      const allowed = await request("POST", "/api/v1/auth/password-reset/request", { body: { email: `unknown${i}@example.test` } });
+      assert.equal(allowed.status, 200);
+    }
+    const limited = await request("POST", "/api/v1/auth/password-reset/request", { body: { email: "sixth@example.test" } });
+    assert.equal(limited.status, 429);
+    assert.equal(limited.json.code, "TOO_MANY_REQUESTS");
+  });
+
+  it("validates reset attempts, returns a safe invalid-token error, and rate limits attempts", async () => {
+    const invalidShape = await request("POST", "/api/v1/auth/password-reset/confirm", { body: {} });
+    assert.equal(invalidShape.status, 400);
+    assert.equal(invalidShape.json.code, "VALIDATION_FAILED");
+
+    for (let i = 0; i < 3; i++) {
+      const rejected = await request("POST", "/api/v1/auth/password-reset/confirm", {
+        body: { token: `invalid-${i}`, password: "valid-new-password" },
+      });
+      assert.equal(rejected.status, 400);
+      assert.equal(rejected.json.code, "PASSWORD_RESET_INVALID");
+      assert.match(rejected.json.message, /invalid or has expired/i);
+    }
+    const fifth = await request("POST", "/api/v1/auth/password-reset/confirm", {
+      body: { token: "fifth-invalid", password: "valid-new-password" },
+    });
+    assert.equal(fifth.status, 400);
+    assert.equal(fifth.json.code, "PASSWORD_RESET_INVALID");
+    const limited = await request("POST", "/api/v1/auth/password-reset/confirm", {
+      body: { token: "sixth-invalid", password: "valid-new-password" },
+    });
+    assert.equal(limited.status, 429);
+    assert.equal(limited.json.code, "TOO_MANY_REQUESTS");
   });
 });
 

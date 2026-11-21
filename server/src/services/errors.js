@@ -46,6 +46,7 @@ export const DomainErrorCode = Object.freeze({
   // distinguish these cases from its result without a second, non-atomic
   // diagnostic read this project has deliberately declined to add — see
   // authentication-implementation-plan.md's Phase C correction
+  PASSWORD_RESET_INVALID: "PASSWORD_RESET_INVALID",
 
   ACCOUNT_SUSPENDED: "ACCOUNT_SUSPENDED", // current account state blocks authenticated access
   ACCOUNT_MUTED: "ACCOUNT_MUTED", // current account state is MUTED: authenticated and read-capable, contribution blocked (#174)

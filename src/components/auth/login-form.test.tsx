@@ -40,6 +40,12 @@ describe("LoginForm accessibility regression baseline", () => {
     expect(screen.getByLabelText("Password")).toHaveFocus();
 
     await user.tab();
+    expect(screen.getByRole("button", { name: "Show text entry" })).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveFocus();
+
+    await user.tab();
     expect(screen.getByRole("button", { name: "Sign in" })).toHaveFocus();
 
     await user.tab();

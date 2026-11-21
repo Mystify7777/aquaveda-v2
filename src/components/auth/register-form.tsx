@@ -8,6 +8,7 @@ import { AuthError, getAuthErrorMessage } from "@/components/auth/auth-error";
 import { AuthSubmitButton } from "@/components/auth/auth-submit-button";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/auth/password-input";
 
 export function RegisterForm() {
     const { register } = useAuth();
@@ -15,6 +16,7 @@ export function RegisterForm() {
     const [name, setName] = React.useState("");
     const [email, setEmail] = React.useState("");
     const [password, setPassword] = React.useState("");
+    const [confirmPassword, setConfirmPassword] = React.useState("");
     const [pending, setPending] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
 
@@ -23,10 +25,11 @@ export function RegisterForm() {
         setError(null);
         const normalizedName = name.trim();
         const normalizedEmail = email.trim();
-        if (!normalizedName || !normalizedEmail || !password) {
-            setError("Enter your name, email, and password.");
+        if (!normalizedName || !normalizedEmail || !password || !confirmPassword) {
+            setError("Enter your name, email, password, and password confirmation.");
             return;
         }
+        if (password !== confirmPassword) return;
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
             setError("Enter a valid email address.");
             return;
@@ -52,7 +55,12 @@ export function RegisterForm() {
             {error && <AuthError message={error} />}
             <div className="space-y-2"><label htmlFor="register-name" className="text-sm font-medium">Name</label><Input id="register-name" name="name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required /></div>
             <div className="space-y-2"><label htmlFor="register-email" className="text-sm font-medium">Email</label><Input id="register-email" name="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div>
-            <div className="space-y-2"><label htmlFor="register-password" className="text-sm font-medium">Password</label><Input id="register-password" name="password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /><p className="text-muted-foreground text-xs">Use 8 to 128 characters.</p></div>
+            <div className="space-y-2"><label htmlFor="register-password" className="text-sm font-medium">Password</label><PasswordInput id="register-password" name="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /><p className="text-muted-foreground text-xs">Use 8 to 128 characters.</p></div>
+            <div className="space-y-2">
+                <label htmlFor="register-confirm-password" className="text-sm font-medium">Confirm password</label>
+                <PasswordInput id="register-confirm-password" name="confirmPassword" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} aria-invalid={Boolean(confirmPassword && password !== confirmPassword)} aria-describedby={confirmPassword && password !== confirmPassword ? "register-confirm-password-error" : undefined} required />
+                {confirmPassword && password !== confirmPassword && <p id="register-confirm-password-error" role="alert" aria-live="polite" className="text-destructive text-xs">Passwords do not match.</p>}
+            </div>
             <AuthSubmitButton pending={pending}>Create account</AuthSubmitButton>
             <p className="text-muted-foreground text-center text-sm">Already have an account? <Link href="/auth/login" className="text-primary font-medium hover:underline">Sign in</Link></p>
         </form>
