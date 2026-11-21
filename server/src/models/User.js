@@ -273,6 +273,11 @@ userSchema.index(
   },
 );
 
+// Admin directory ordering (#181): `createdAt DESC, _id DESC` for the unfiltered
+// and role/state-filtered lists. Name-prefix search has no supporting index
+// (docs/architecture/admin-directory.md).
+userSchema.index({ createdAt: -1, _id: -1 }, { name: "user_directory_order" });
+
 // Approved index: unique email (uniqueness comes from `unique: true` above;
 // no separate index() call needed for this one).
 
