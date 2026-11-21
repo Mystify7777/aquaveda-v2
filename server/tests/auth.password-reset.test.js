@@ -176,7 +176,7 @@ describe("password reset — account-state policy", () => {
       const email = `policy-${state.toLowerCase()}@example.test`;
       const user = await createUserWithState(state, email);
       const token = await getTokenForUser(user);
-      const err = await assert.rejects(
+      await assert.rejects(
         resetPassword({ token, password: "probe" }),
         (e) => {
           assert.equal(e.code, "PASSWORD_RESET_INVALID", `state ${state} should give same error code`);
