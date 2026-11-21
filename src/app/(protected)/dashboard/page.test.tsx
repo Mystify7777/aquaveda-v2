@@ -22,40 +22,34 @@ describe("/dashboard page", () => {
   });
 
   it("has one h1 and hands off to the Dashboard view", () => {
-    render(<DashboardPage />);
+    mockUseAuth.mockReturnValue({ status: "authenticated", retryInitialization: vi.fn() });
+    render(<ProtectedLayout><DashboardPage /></ProtectedLayout>);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-view")).toBeInTheDocument();
   });
 
-  describe("route protection (established (protected) layout behavior)", () => {
-    const frame = () => (
-      <ProtectedLayout>
-        <DashboardPage />
-      </ProtectedLayout>
-    );
+  it("anonymous: centers the authentication gate in the Dashboard content region", () => {
+    mockUseAuth.mockReturnValue({ status: "anonymous", retryInitialization: vi.fn() });
+    const { container } = render(<ProtectedLayout><DashboardPage /></ProtectedLayout>);
+    expect(screen.queryByTestId("dashboard-view")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
 
-    it("anonymous: the Dashboard is not rendered and the standard sign-in prompt is", () => {
-      mockUseAuth.mockReturnValue({ status: "anonymous", user: null });
-      render(frame());
-      expect(screen.queryByTestId("dashboard-view")).not.toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
-    });
+    const frame = container.firstElementChild as HTMLElement;
+    expect(frame.className).toContain("min-h-[calc(100dvh-12rem)]");
+    expect(frame.className).toContain("items-center");
+    expect(frame.className).toContain("justify-center");
+    expect(frame.className).toContain("text-center");
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
+    expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/auth/register");
+  });
 
-    it("session failure and an unreachable backend do not render the Dashboard either", () => {
-      for (const status of ["session-failure", "unavailable", "initializing"]) {
-        mockUseAuth.mockReturnValue({ status, user: null });
-        const { unmount } = render(frame());
-        expect(screen.queryByTestId("dashboard-view"), status).not.toBeInTheDocument();
-        unmount();
-      }
-    });
-
-    it("authenticated: the Dashboard renders", () => {
-      mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role: "USER" } });
-      render(frame());
-      expect(screen.getByTestId("dashboard-view")).toBeInTheDocument();
-    });
+  it("session failure and an unreachable backend do not render Dashboard content", () => {
+    for (const status of ["session-failure", "unavailable", "initializing"]) {
+      mockUseAuth.mockReturnValue({ status, retryInitialization: vi.fn() });
+      const { unmount } = render(<ProtectedLayout><DashboardPage /></ProtectedLayout>);
+      expect(screen.queryByTestId("dashboard-view"), status).not.toBeInTheDocument();
+      unmount();
+    }
   });
 });
