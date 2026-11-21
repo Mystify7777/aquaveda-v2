@@ -10,200 +10,124 @@ Accepted.
 
 ## Context
 
-The Learn surface exposes approved Knowledge articles, but article discovery is primarily list/search oriented. The Knowledge model already contains a free-form `region` field, while public reads are restricted to approved content.
+The Learn surface exposes approved Knowledge articles. The current Knowledge model has a single free-form `region` string, but no persisted category or topic tags. Public Learn reads are restricted to approved content.
 
-The product now needs a durable discovery model that can answer three different questions without conflating them:
-
-1. What broad subject does an article belong to?
-2. What specific topics does the article cover?
-3. Which articles are relevant to a geographic region?
-
-The same model should support Learn filtering, article-card navigation, and deterministic related-knowledge discovery.
-
-The current Knowledge moderation lifecycle and approved-only public visibility are already established architecture and must remain unchanged.
+The product needs a durable discovery model that distinguishes broad subject, specific topics, and geographic relevance. It must support Learn filtering, article-card navigation, and deterministic related-knowledge discovery without changing Knowledge moderation.
 
 ## Decision
 
-AquaVeda will introduce a controlled Knowledge taxonomy with three distinct discovery dimensions:
+AquaVeda uses three separate discovery dimensions:
 
-### 1. Category
+1. **Category:** exactly one primary category per Knowledge article.
+2. **Topic tags:** zero or more canonical, reusable topic tags per article.
+3. **Region:** a separate geographic facet; geography is not encoded as a topic tag.
 
-Each article has exactly one primary category.
+The v1 Category and Topic vocabulary is application-owned and source-controlled. No dedicated taxonomy collection and no arbitrary user-created public tags are introduced.
 
-Category represents the article's broad subject area and is intentionally small and curated.
+## Term identity and lifecycle
 
-### 2. Tags / Topics
+Every Category and Topic has a stable immutable slug and a display name.
 
-Each article may have zero or more canonical topic tags.
+- **Active terms** may be assigned to new or revised articles, appear in taxonomy metadata, and be selected as filters.
+- **Retired terms** cannot be newly assigned and are omitted from selectable filter metadata. Existing Knowledge records may retain retired IDs so article meaning and historical records are not silently rewritten.
+- Retired terms remain renderable on existing article cards and detail pages using their canonical display name. They are excluded from filter options and related-knowledge scoring.
+- A display-name correction/rename preserves the stable slug/identity.
+- A semantic replacement or merge requires an explicit migration from old IDs to the chosen canonical replacement. Old IDs remain recognized for rendering during/after migration, become retired aliases, and are not newly selectable.
+- Taxonomy additions, display-name changes, merges, and retirements require a reviewed code PR with vocabulary tests. A change that rewrites persisted references also requires an explicit, idempotent migration.
+- No runtime user/admin taxonomy editing endpoint is part of v1. Any contributor may propose taxonomy changes through a PR; approval follows repository review/merge policy. The PR must document user-facing/content impact.
 
-Tags represent specific concepts discussed by the article and are reusable across articles.
+## Region compatibility and normalization
 
-Tags are controlled vocabulary, not arbitrary user-created strings. Synonyms and duplicate concepts resolve to one canonical term.
+The existing `Knowledge.region` field is a **single free-form string**. V1 keeps one region value per article and does not invent an authoritative geographic hierarchy or silently convert the field to an array.
 
-### 3. Region
+- Preserve the original region display value.
+- Derive a normalized matching key for filtering: Unicode NFKC normalization, trim, locale-independent case-fold/lowercase, and collapse repeated internal whitespace.
+- Do not assume different geographic descriptions refer to the same place. For example, `Bihar` and `Bihar, India` remain distinct unless an explicit, reviewed alias maps them together.
+- Aliases are explicit, source-controlled mappings from known input variants to one canonical matching key. Aliases never overwrite the original display value.
+- Empty/whitespace-only region is unclassified and is not a selectable region facet.
+- Values that cannot safely be mapped remain distinct under their normalized key. Migration reports them; it must not guess.
+- Multi-region articles are out of scope for v1.
 
-Region remains a separate geographic facet.
+A normalized field/index may be added while preserving the original display value. Its exact persistence shape and backfill must be specified and tested before deployment.
 
-Existing region semantics are preserved and will be migrated to the taxonomy-compatible representation only where required by implementation. Geographic values must not be encoded as generic topic tags.
+## Facet composition and search semantics
 
-## Controlled vocabulary
+The public Learn list combines distinct dimensions with **AND**:
 
-The initial implementation will keep the vocabulary application-owned rather than introducing a dedicated taxonomy collection.
+`approved AND category AND topicFacet AND regionFacet AND search`
 
-Each canonical term has:
+Within a facet:
 
-- stable identifier/slug;
-- human-readable name;
-- active/inactive lifecycle as required by the implementation;
-- explicit ownership by the application taxonomy rather than by individual authors.
+- Category is single-select because each article has exactly one primary Category.
+- Multiple selected Topic tags use **OR**: an article matches at least one selected active Topic.
+- Multiple selected Region values use **OR**: an article's single normalized region key matches at least one selected region key.
+- Category, Topic facet, Region facet, and search combine using AND.
+- An empty facet imposes no restriction.
+- Search matches the article `title` or `body` (case-insensitive text matching according to the API implementation) and is combined with metadata facets using AND.
+- Unknown, malformed, or retired Category/Topic filter values are validation failures, not silently ignored. Unknown Region keys are valid filter values that produce no match; this avoids treating user-entered/stale geographic strings as server faults while preserving exact-match semantics.
+- All filters apply only after the mandatory `status = approved` constraint; no query parameter may relax that constraint.
 
-The initial vocabulary should remain deliberately small. Taxonomy expansion, renaming, merging, or retirement is a governed content-model change, not an incidental result of article creation.
+## Learn UX and URL state
 
-## Knowledge representation
+Desktop uses a persistent filter sidebar; mobile uses a responsive drawer/sheet.
 
-Conceptually:
-
-```text
-Knowledge
-├── category: CategoryId
-├── tags: TagId[]
-├── region: RegionId / compatible existing region value
-└── status: existing Knowledge lifecycle
-```
-
-The exact persistence representation, validation boundary, and migration mechanism are implementation concerns and must not introduce a new Knowledge lifecycle.
-
-## Learn discovery
-
-The public Learn surface will support faceted discovery composed with existing search and pagination.
-
-Desktop:
-
-- persistent filter sidebar;
+Learn combines:
+- search;
 - Category facet;
-- Topics/Tags facet;
+- Topic/Tag facet;
 - Region facet;
 - active filter chips;
-- clear-all action;
-- result count.
+- clear-all;
+- result count;
+- pagination.
 
-Mobile:
+Filter state is URL-addressable, shareable, refresh-safe, and browser-history compatible. Article cards expose Category and Topic metadata; term navigation leads to the corresponding filtered Learn view.
 
-- the same filters are presented through a responsive filter drawer/sheet rather than a permanent sidebar.
+## Related Knowledge
 
-Search and filters compose rather than replacing one another.
+Related candidates must:
+- have `status = approved`;
+- exclude the current article;
+- be scored only from active Category/Topic identities and normalized Region keys.
 
-Filtered state is represented in the URL so filtered views are:
+The deterministic score is:
+- same active Category: **+4**;
+- each shared active Topic tag: **+2**, capped at **+6** total;
+- same normalized Region key: **+1**.
 
-- shareable;
-- refresh-safe;
-- browser-history compatible;
-- directly addressable.
-
-## Article-card navigation
-
-Article cards expose the canonical category and topic tags.
-
-Canonical category/tag terms are navigable and lead to the corresponding filtered Learn view.
-
-This makes taxonomy useful both as metadata and as a discovery mechanism.
-
-## Related knowledge
-
-The taxonomy is also the deterministic basis for related-article discovery.
-
-The initial relation signal is:
-
-1. same category;
-2. shared topic tags;
-3. compatible region.
-
-No AI recommendation system is introduced by this ADR.
-
-## Governance rules
-
-- One primary category per article.
-- Tags are canonical and reusable.
-- No arbitrary user-created public taxonomy terms.
-- Duplicate/synonymous terms are merged into a canonical term.
-- Geography is kept separate from generic topics.
-- Categories remain intentionally small.
-- Taxonomy changes are explicit and reviewable.
-- Existing approved-only visibility and Knowledge moderation rules remain authoritative.
+Only candidates with score greater than zero qualify. Sort by score descending, then `updatedAt DESC`, then `_id ASC` as a stable final tie-break. The API returns a bounded number of candidates. Retired terms do not contribute to the score. No AI/LLM ranking is introduced.
 
 ## Options rejected
 
-### Arbitrary free-form tags
-
-Rejected because spelling variants, synonyms, and near-duplicates would rapidly fragment filtering.
-
-### Category-only classification
-
-Rejected because one broad category cannot express the multiple concepts an article may cover.
-
-### Region as a generic tag
-
-Rejected because geography is a distinct discovery dimension and will otherwise contaminate topic semantics.
-
-### Dedicated taxonomy database collection for v1
-
-Rejected because the initial vocabulary is small and application-owned. A separate collection would add lifecycle, API, persistence, and governance complexity before there is evidence that dynamic taxonomy management requires it.
-
-This decision can be revisited if taxonomy management becomes user/admin-editable or materially exceeds application-owned configuration.
-
-### AI-generated taxonomy
-
-Rejected for the initial system. The public filter vocabulary must be deterministic, reviewable, and stable.
-
-### User-followable topics
-
-Deferred. The taxonomy is a discovery mechanism first; personalization/following is a separate product decision.
+- **Arbitrary free-form tags:** rejected because spelling variants and synonyms fragment discovery.
+- **Category-only classification:** rejected because it cannot represent articles spanning multiple concepts.
+- **Region-as-tag:** rejected because geography and subject matter are separate dimensions.
+- **Dedicated taxonomy collections for v1:** rejected because a small application-owned vocabulary does not justify extra persistence/lifecycle complexity.
+- **AI-generated public tags or AI ranking:** rejected for v1 because the discovery vocabulary and ordering must be deterministic and reviewable.
+- **Followable topics/personalization:** deferred as a separate product decision.
 
 ## Consequences
 
 ### Positive
 
-- Learn becomes substantially easier to browse.
-- Multiple discovery dimensions can be combined.
-- URLs can represent meaningful filtered views.
-- Article cards can link into related content.
-- Related knowledge can be implemented deterministically.
-- Taxonomy remains governed rather than becoming an uncontrolled tag pile.
+- predictable reusable taxonomy;
+- composable and shareable discovery;
+- deterministic related content;
+- governed vocabulary changes;
+- no premature taxonomy persistence subsystem.
 
-### Negative
+### Costs
 
-- Existing Knowledge records require migration.
-- Authors/editors need to select category and tags.
-- The application must maintain the controlled vocabulary.
-- Public list queries become more complex than the current approved-only pagination query.
-- Additional indexes and query tests will be required.
-
-## Implementation boundaries
-
-The implementation is intentionally decomposed into small, independently deliverable tasks:
-
-1. taxonomy contract and canonical vocabulary;
-2. Knowledge persistence shape and migration;
-3. create/revise validation and authoring support;
-4. public filtering query contract;
-5. taxonomy metadata read contract;
-6. frontend URL/filter state;
-7. Learn filter sidebar;
-8. article-card taxonomy presentation;
-9. related knowledge;
-10. cross-layer integration and regression coverage.
-
-Backend contract work and frontend state/UI work may proceed in parallel once the API contracts are locked.
+- existing Knowledge records need safe backfill;
+- authoring contracts/UI need taxonomy selection;
+- retirement/merge behavior requires maintenance;
+- public filtering/related queries need targeted indexes and tests;
+- free-form historic region values need conservative normalization and reporting.
 
 ## Compatibility
 
-This ADR does not change:
+This ADR does not change Knowledge lifecycle states, review authority, author/reviewer rules, approved-only public visibility, authentication boundaries, or existing Knowledge route ownership. It extends Knowledge metadata and discovery behavior only.
 
-- Knowledge lifecycle states;
-- review authority;
-- approved-only public visibility;
-- existing author/reviewer rules;
-- authentication boundaries;
-- existing Knowledge route ownership.
+## Implementation boundaries
 
-It extends the metadata and discovery capabilities of the existing Knowledge domain.
+Work is split across issues #228–#240. Backend and frontend work may proceed in parallel only after the canonical vocabulary and the API contracts they consume are locked. Final integration/regression verification is tracked by #239.
