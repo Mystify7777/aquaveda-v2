@@ -10,8 +10,33 @@ import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/lib/api/client";
 import { getKnowledgeArticle } from "@/lib/api/knowledge";
+import { cleanMetadataText, publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "Article" };
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ knowledgeId: string }>;
+}): Promise<Metadata> {
+  const { knowledgeId } = await params;
+  const canonical = `/learn/${encodeURIComponent(knowledgeId)}`;
+
+  try {
+    const article = await getKnowledgeArticle(knowledgeId);
+    return publicPageMetadata({
+      title: article.title,
+      description: cleanMetadataText(article.body),
+      canonical,
+      type: "article",
+    });
+  } catch {
+    return publicPageMetadata({
+      title: "Article",
+      description: "Reviewed environmental knowledge published through AquaVeda.",
+      canonical,
+      type: "article",
+    });
+  }
+}
 
 /**
  * Public Knowledge detail (#51). The backend returns 404 for anything not

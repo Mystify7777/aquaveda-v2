@@ -21,6 +21,7 @@ describe("LoadError", () => {
     const onRetry = vi.fn();
     const { rerender } = render(<LoadError message="m" retryHref="/x" />);
     expect(screen.getByRole("alert")).toHaveTextContent("m");
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "/x");
     expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
 

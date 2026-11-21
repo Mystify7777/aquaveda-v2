@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { LandingMapPreview } from "@/components/landing/landing-map-preview";
@@ -5,7 +6,15 @@ import { LandingParticipation } from "@/components/landing/landing-participation
 import { LandingProductLoop } from "@/components/landing/landing-product-loop";
 import { LandingTrust } from "@/components/landing/landing-trust";
 import { ReportIssueButton } from "@/components/issues/report-issue-button";
+import { publicPageMetadata } from "@/lib/seo";
 import { Button } from "@/components/ui/button";
+
+export const metadata: Metadata = publicPageMetadata({
+  title: "AquaVeda",
+  description:
+    "A civic intelligence platform connecting environmental issues, trusted knowledge, community reporting, and coordinated action.",
+  canonical: "/",
+});
 
 export default function HomePage() {
   return (

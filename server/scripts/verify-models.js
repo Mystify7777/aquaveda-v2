@@ -610,7 +610,7 @@ check("8i. Issue has no resolvedBy/verifiedBy top-level fields", () => {
   assert.equal(Issue.schema.path("verifiedBy"), undefined);
 });
 
-check("8j. Exactly the expected models are registered (five domain models, Session, PasswordResetCredential, and GovernanceEvent audit model)", () => {
+check("8j. Exactly the expected models are registered (five domain models, Session, PasswordResetCredential, and GovernanceEvent audit model per ADR-0010 amendment #172; Recommendation is never persisted)", () => {
   const names = mongoose.modelNames();
   assert.ok(
     !names.includes("Recommendation"),

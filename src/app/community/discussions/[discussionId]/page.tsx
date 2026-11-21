@@ -11,8 +11,33 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/lib/api/client";
 import { getDiscussion } from "@/lib/api/discussions";
 import { formatDate } from "@/lib/format-date";
+import { cleanMetadataText, publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "Discussion" };
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ discussionId: string }>;
+}): Promise<Metadata> {
+  const { discussionId } = await params;
+  const canonical = `/community/discussions/${encodeURIComponent(discussionId)}`;
+
+  try {
+    const discussion = await getDiscussion(discussionId);
+    return publicPageMetadata({
+      title: discussion.title,
+      description: cleanMetadataText(discussion.body),
+      canonical,
+      type: "article",
+    });
+  } catch {
+    return publicPageMetadata({
+      title: "Discussion",
+      description: "Public community discussion on AquaVeda.",
+      canonical,
+      type: "article",
+    });
+  }
+}
 
 function categoryLabel(value: string): string {
   return value.charAt(0) + value.slice(1).toLowerCase();

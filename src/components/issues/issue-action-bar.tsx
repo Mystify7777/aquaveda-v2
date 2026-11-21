@@ -72,6 +72,11 @@ function ActionForm({
           )}
         </div>
       )}
+      {spec.consequence && (
+        <p className="bg-muted/50 text-muted-foreground rounded-md border p-3 text-sm leading-5">
+          {spec.consequence}
+        </p>
+      )}
       {spec.note !== "none" && (
         <div className="space-y-1">
           <label className="text-sm font-medium" htmlFor={`${uid}-note`}>
@@ -214,6 +219,11 @@ export function IssueActionBar({ issueId }: { issueId: string }) {
               key={action}
               type="button"
               variant="outline"
+              className={
+                action === "resolution.fail"
+                  ? "border-warning text-warning hover:bg-warning/10"
+                  : undefined
+              }
               onClick={() => choose(action)}
               disabled={pendingId !== null}
               aria-busy={pendingId === action}

@@ -10,8 +10,34 @@ import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { PaginationNav } from "@/components/ui/pagination-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "Community" };
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}): Promise<Metadata> {
+  const params = await searchParams;
+  const rawPage = Array.isArray(params.page) ? params.page[0] : params.page;
+  const n = Number(rawPage);
+  const page = Number.isInteger(n) && n >= 1 ? n : 1;
+  const rawType = Array.isArray(params.type) ? params.type[0] : params.type;
+  const type = FILTERS.some((filter) => filter.value === rawType) ? rawType : "ALL";
+  const canonical =
+    type === "ALL"
+      ? page === 1
+        ? "/community"
+        : `/community?page=${page}`
+      : page === 1
+        ? `/community?type=${type}`
+        : `/community?page=${page}&type=${type}`;
+
+  return publicPageMetadata({
+    title: "Community",
+    description: "Follow public conversations across AquaVeda's Issues, Knowledge, and Discussions.",
+    canonical,
+  });
+}
 
 type SearchParams = { page?: string | string[]; type?: string | string[] };
 
