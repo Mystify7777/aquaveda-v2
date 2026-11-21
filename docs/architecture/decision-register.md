@@ -1356,3 +1356,22 @@ Recoverable-deletion window and retention duration; MUTE classification of non-c
 - **GOV-M4 — Mute/lift are conditional atomic updates** pinned on state and `accountStateVersion` with `$inc` in the same write; sessions are not invalidated by MUTE (ADR-0010 §4).
 - **GOV-M5 — Event write is a second operation** (no transactions, ADR-0006): retried and idempotent (`${action}:${target}:${version}`); failure leaves a missing event, never a false one. Transaction/outbox options undecided.
 - **GOV-M6 — Admin routes added:** `POST /api/v1/accounts/:userId/mute` and `/mute/lift` (ADMIN, strict bodies, explicit DTOs). Muting Admins/self: no rule invented.
+
+
+## 🔒 Locked — Learn Knowledge Taxonomy and Faceted Discovery (ADR-0011; recorded by #226)
+
+**Status: accepted.** ADR-0011 defines the Knowledge discovery taxonomy and Learn faceted-navigation model. It extends Knowledge metadata and public discovery without changing the existing moderation lifecycle or approved-only visibility boundary.
+
+- **LRN-L1 — One primary category.** Every Knowledge article has exactly one controlled primary category representing its broad subject.
+- **LRN-L2 — Canonical topic tags.** Articles may have zero or more reusable controlled topic tags. Synonyms and duplicates resolve to one canonical term; arbitrary user-created public tags are not supported.
+- **LRN-L3 — Region remains a separate facet.** Geographic classification is not folded into generic topic tags. Existing region semantics are preserved and migrated only as required by implementation.
+- **LRN-L4 — Application-owned vocabulary for v1.** Categories/tags are maintained by application code/configuration rather than a dedicated taxonomy collection. This can be revisited if dynamic taxonomy administration becomes necessary.
+- **LRN-L5 — Public discovery is faceted.** Learn combines search with Category, Topic/Tag, and Region filters, pagination, result counts, active filter chips, and clear-all behavior.
+- **LRN-L6 — Filter state is URL-addressable.** Active filters are represented in the URL so filtered Learn views are shareable, refresh-safe, history-compatible, and directly addressable.
+- **LRN-L7 — Responsive filter presentation.** Desktop uses a persistent sidebar; mobile uses a responsive filter drawer/sheet.
+- **LRN-L8 — Taxonomy is navigable metadata.** Article cards expose canonical category/tags, and canonical terms link to filtered Learn views.
+- **LRN-L9 — Related knowledge is deterministic in v1.** Initial related-article signals are same category, shared topic tags, and compatible region. No AI recommendation system is introduced by this ADR.
+- **LRN-L10 — Governance is explicit.** Taxonomy additions, renames, merges, and retirement are deliberate changes; the system does not silently derive new public facets from article text.
+- **LRN-L11 — Existing Knowledge governance remains authoritative.** Lifecycle states, review authority, approved-only public visibility, author/reviewer rules, and authentication boundaries are unchanged.
+
+Implementation work is split across issues for taxonomy contract, persistence/migration, authoring validation, public query/filtering, taxonomy metadata, frontend URL state, filter UI, card presentation, related knowledge, and cross-layer regression coverage.
