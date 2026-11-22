@@ -1,3 +1,4 @@
+import { restrictedActionMessage } from "@/lib/api/account-restriction";
 import { ApiError } from "@/lib/api/client";
 
 export type ActionFailure = { kind: "session" | "other"; message: string };
@@ -19,6 +20,8 @@ export function toActionFailure(error: unknown, action: "review" | "revise"): Ac
       return { kind: "session", message: "Your session is no longer valid. Sign in again to continue." };
     }
     if (error.code === "VALIDATION_FAILED") return { kind: "other", message: error.message };
+    const restricted = restrictedActionMessage(error);
+    if (restricted) return { kind: "other", message: restricted };
     if (error.status === 403) {
       return {
         kind: "other",

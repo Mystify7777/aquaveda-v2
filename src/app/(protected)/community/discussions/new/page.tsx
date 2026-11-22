@@ -1,5 +1,6 @@
 "use client";
 
+import { restrictedActionMessage } from "@/lib/api/account-restriction";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
@@ -44,7 +45,9 @@ export default function NewDiscussionPage() {
       router.push("/community/discussions/" + encodeURIComponent(discussion._id));
     } catch (error) {
       if (error instanceof ApiError) {
+        const restricted = restrictedActionMessage(error);
         if (error.status === 401) setError("Your session is no longer valid. Sign in again to create a discussion.");
+        else if (restricted) setError(restricted);
         else if (error.status === 403) setError("Your account is not permitted to create discussions.");
         else if (error.code === "VALIDATION_FAILED") setError(error.message);
         else if (error.kind === "network") setError("The service is unreachable right now. Check your connection and try again.");

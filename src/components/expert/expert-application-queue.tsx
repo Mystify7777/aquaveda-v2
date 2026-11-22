@@ -172,6 +172,7 @@ export function ExpertApplicationQueue({ page }: { page: number }) {
           message={loadErrorMessage(resource.error, "Expert applications")}
           onRetry={reload}
           signIn={resource.error.status === 401}
+          error={resource.error}
         />
       )}
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { restrictedActionMessage } from "@/lib/api/account-restriction";
 import * as React from "react";
 import Link from "next/link";
 import { flushSync } from "react-dom";
@@ -45,6 +46,8 @@ function toFailure(error: unknown): SubmitFailure {
     if (error.code === "VALIDATION_FAILED") {
       return { kind: "validation", message: error.message };
     }
+    const restricted = restrictedActionMessage(error);
+    if (restricted) return { kind: "failure", message: restricted };
     if (error.status === 403) {
       return { kind: "failure", message: "Your account is not permitted to report issues." };
     }

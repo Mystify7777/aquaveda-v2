@@ -159,6 +159,21 @@ describe("ProjectCreateForm", () => {
     expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["ACCOUNT_MUTED", /muted/],
+    ["ACCOUNT_SUSPENDED", /suspended/],
+  ])("%s: restriction-specific failure instead of the generic permission message", async (code, pattern) => {
+    const user = userEvent.setup();
+    mockCreateProject.mockRejectedValue(new ApiError("raw backend text", "http", 403, code));
+    render(<ProjectCreateForm />);
+    await fill(user);
+    await user.click(submit());
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(pattern);
+    expect(alert).not.toHaveTextContent(/not permitted to create projects|raw backend text/);
+    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
+  });
+
   it("network failure: unavailable message (not a session message); retry succeeds", async () => {
     const user = userEvent.setup();
     mockCreateProject.mockRejectedValueOnce(new ApiError("Failed to fetch", "network"));

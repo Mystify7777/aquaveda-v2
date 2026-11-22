@@ -118,7 +118,7 @@ document) are not decided here.
 - Whether the muted user should see `expiresAt` / a safe reason in the response.
 - The audit-event gap above.
 - Muting Admins / self-muting: no rule invented; review.
-- Nothing schedules the sweep; the frontend does not yet handle `ACCOUNT_MUTED`.
+- Nothing schedules the sweep; the frontend classifies `ACCOUNT_MUTED` / `ACCOUNT_SUSPENDED` and shows state-specific copy (#248, `src/lib/api/account-restriction.ts`).
 - The version pin in `muteAccount` is defense in depth: the ACTIVE state filter
   already yields a single concurrent winner, and the tests do not isolate the
   pin (an ABA interleaving cannot be forced deterministically).
