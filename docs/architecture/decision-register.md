@@ -1399,3 +1399,10 @@ Recoverable-deletion window and retention duration; MUTE classification of non-c
 - **LRN-L13 — Existing governance.** Lifecycle, review authority, author/reviewer rules, anonymous read boundary, and approved-only visibility remain unchanged.
 
 Implementation contracts are tracked in #228–#240. See ADR-0011 for the exact algorithm, test vectors, Region facet label selection, search verification requirements, and candidate eligibility details.
+
+### Implementation notes — Frontend restricted-account handling (#248; implementation-level)
+
+- **FRS-L1 — Classification is `403` + exact `code`** (`getAccountRestriction`, `src/lib/api/account-restriction.ts`): `ACCOUNT_MUTED` -> `muted`, `ACCOUNT_SUSPENDED` -> `suspended`; a bare 403, other statuses, non-`http` kinds and non-ApiErrors are never restrictions. `ApiError.code` already carried the backend code; no client change. The backend stays the only authority; no state is inferred client-side.
+- **FRS-L2 — One presentation, wired at the existing seams:** `RestrictedAccountNotice` (muted: explanation, reading preserved; suspended: explanation + the existing `useAuth().logout`), `LoadError` (`error` prop) and `loadErrorMessage` for loads, and a branch ahead of the generic-403 branch in every write mapper (comment, report, draft, submit, project, discussion, issue lifecycle, knowledge, Expert) and in login. No restriction detail (reason, expiry, kind) is shown (GOV-M2/GOV-S6); no appeal/recovery path is implied (#176).
+- **FRS-L3 — Contract fixture is recorded, not authored:** `src/test-utils/fixtures/account-restriction-envelopes.json` was recorded from the real Express app on real MongoDB (provenance in the file).
+- **Not done / open:** `/auth/me` already returns `accountState` but the frontend does not consume it, so a suspended session still bootstraps as `authenticated` and discovers suspension per request; routing a suspended session to a dedicated surface at bootstrap is a separate decision. Server-rendered public pages are unaffected (no cookies). `use-location-search` (GET) keeps its generic failure copy.

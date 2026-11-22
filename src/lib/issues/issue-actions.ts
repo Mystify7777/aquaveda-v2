@@ -1,3 +1,4 @@
+import { restrictedActionMessage } from "@/lib/api/account-restriction";
 import { ApiError } from "@/lib/api/client";
 
 /**
@@ -117,6 +118,8 @@ export function describeActionFailure(error: unknown): ActionFailure {
     if (error.status === 401 || error.code === "UNAUTHORIZED") {
       return { ...base, signIn: true, message: "Your session has expired. Sign in to continue." };
     }
+    const restricted = restrictedActionMessage(error);
+    if (restricted) return { ...base, message: restricted };
     if (error.status === 403 || error.code === "FORBIDDEN") {
       return { ...base, reload: true, message: "You no longer have permission to perform this action." };
     }

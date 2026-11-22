@@ -1,3 +1,4 @@
+import { getAccountRestriction } from "@/lib/api/account-restriction";
 import { ApiError } from "@/lib/api/client";
 
 export function getAuthErrorMessage(error: unknown) {
@@ -5,6 +6,7 @@ export function getAuthErrorMessage(error: unknown) {
     if (error.code === "INVALID_CREDENTIALS") return "We could not sign you in with those details.";
     if (error.code === "EMAIL_ALREADY_REGISTERED") return "An account with this email already exists. Try signing in instead.";
     if (error.code === "VALIDATION_FAILED") return error.message;
+    if (getAccountRestriction(error) === "suspended") return "This account is suspended, so you can't sign in right now.";
     if (error.kind === "network") return "The service is unavailable right now. Check your connection and try again.";
     if (error.kind === "response") return "The service returned an unexpected response. Try again.";
     return "We could not complete that request. Try again.";

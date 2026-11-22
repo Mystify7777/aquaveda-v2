@@ -1,0 +1,70 @@
+{
+  "_provenance": "Recorded from the real Express app (createApp) on real MongoDB 7 by running the real mute/suspend services; do not hand-edit. Regenerate if the backend envelope changes.",
+  "muted": {
+    "status": 403,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Account is muted: contribution is temporarily restricted",
+      "code": "ACCOUNT_MUTED"
+    }
+  },
+  "mutedRead": {
+    "status": 200,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": true
+    }
+  },
+  "suspended": {
+    "status": 403,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Account access is suspended",
+      "code": "ACCOUNT_SUSPENDED"
+    }
+  },
+  "suspendedWrite": {
+    "status": 403,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Account access is suspended",
+      "code": "ACCOUNT_SUSPENDED"
+    }
+  },
+  "suspendedLogin": {
+    "status": 403,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Account access is suspended",
+      "code": "ACCOUNT_SUSPENDED"
+    }
+  },
+  "genericForbidden": {
+    "status": 403,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Forbidden: insufficient role privileges",
+      "code": "FORBIDDEN"
+    }
+  },
+  "unauthorized": {
+    "status": 401,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "an authenticated actor is required",
+      "code": "UNAUTHORIZED"
+    }
+  }
+}

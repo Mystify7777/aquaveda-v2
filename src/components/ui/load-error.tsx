@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { RestrictedAccountNotice } from "@/components/auth/restricted-account-notice";
+import { getAccountRestriction, RESTRICTION_NOTICE } from "@/lib/api/account-restriction";
 import { ApiError, isApiTimeout } from "@/lib/api/client";
 
 /** Accessible copy for a failed read. `noun` is plural, e.g. "projects". */
@@ -12,6 +14,11 @@ export function loadErrorMessage(error: ApiError, noun: string): string {
     return "The service is unreachable right now. Check your connection and try again.";
   }
   if (error.status === 401) return "Your session is no longer valid. Sign in again to continue.";
+  const restriction = getAccountRestriction(error);
+  if (restriction) {
+    const { title, message } = RESTRICTION_NOTICE[restriction];
+    return `${title}. ${message}`;
+  }
   if (error.status === 403) return `Your account is not permitted to view ${noun}.`;
   return `We could not load ${noun}. Try again.`;
 }
@@ -27,6 +34,7 @@ export function LoadError({
   retryHref,
   onRetry,
   signIn,
+  error,
 }: {
   message: string;
   /** Optional context-specific heading for surfaces that need stronger hierarchy. */
@@ -34,7 +42,11 @@ export function LoadError({
   retryHref?: string;
   onRetry?: () => void;
   signIn?: boolean;
+  /** The failure behind `message`: an account restriction (muted/suspended) replaces the generic alert. */
+  error?: unknown;
 }) {
+  const restriction = getAccountRestriction(error);
+  if (restriction) return <RestrictedAccountNotice restriction={restriction} />;
   return (
     <div
       role="alert"

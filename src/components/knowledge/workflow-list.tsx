@@ -62,6 +62,7 @@ export function MyKnowledgeList({ page, status }: { page: number; status?: Knowl
           message={loadErrorMessage(resource.error, "your articles")}
           onRetry={reload}
           signIn={resource.error.status === 401}
+          error={resource.error}
         />
       )}
       {resource.status === "success" &&
@@ -131,6 +132,7 @@ export function ReviewQueueList({ page }: { page: number }) {
           message={loadErrorMessage(resource.error, "the review queue")}
           onRetry={reload}
           signIn={resource.error.status === 401}
+          error={resource.error}
         />
       )}
       {resource.status === "success" &&

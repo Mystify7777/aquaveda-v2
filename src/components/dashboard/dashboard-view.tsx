@@ -113,6 +113,7 @@ export function DashboardView() {
         message={loadErrorMessage(resource.error, "your dashboard")}
         onRetry={reload}
         signIn={resource.error.status === 401}
+        error={resource.error}
       />
     );
   }

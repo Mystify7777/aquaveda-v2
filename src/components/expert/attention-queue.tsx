@@ -162,6 +162,7 @@ export function AttentionQueue() {
             message={loadErrorMessage(resource.error, "the Issue attention queue")}
             onRetry={reload}
             signIn={resource.error.status === 401}
+            error={resource.error}
           />
         )}
         {resource.status === "success" &&

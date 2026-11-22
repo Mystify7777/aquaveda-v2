@@ -68,6 +68,7 @@ export function WorkflowArticle({ knowledgeId }: { knowledgeId: string }) {
         message={loadErrorMessage(error, "this article")}
         onRetry={reload}
         signIn={error.status === 401}
+        error={error}
       />
     );
   }

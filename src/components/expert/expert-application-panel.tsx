@@ -119,6 +119,7 @@ export function ExpertApplicationPanel() {
         message={error ? loadErrorMessage(error, "your Expert application") : "We could not load your Expert application. Try again."}
         onRetry={() => void expert.refresh()}
         signIn={error?.status === 401}
+        error={error}
       />
     );
   }

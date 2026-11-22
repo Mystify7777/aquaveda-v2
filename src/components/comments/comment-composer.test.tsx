@@ -165,4 +165,29 @@ describe("CommentComposer", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not post your comment/i);
     expect(box()).toHaveValue("Helpful");
   });
+  it.each([
+    ["ACCOUNT_MUTED", /muted/, /read and browse/],
+    ["ACCOUNT_SUSPENDED", /suspended/, /Sign out/],
+  ])("%s: restriction-specific failure, text is kept, no sign-in prompt", async (code, a, b) => {
+    const user = userEvent.setup();
+    mockCreateComment.mockRejectedValue(new ApiError("raw backend text", "http", 403, code));
+    render(<CommentComposer {...REF} />);
+    await user.type(box(), "Helpful");
+    await user.click(submit());
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(a);
+    expect(alert).toHaveTextContent(b);
+    expect(alert).not.toHaveTextContent(/raw backend text|not permitted/);
+    expect(box()).toHaveValue("Helpful");
+    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
+  });
+
+  it("generic 403 keeps the existing permission message", async () => {
+    const user = userEvent.setup();
+    mockCreateComment.mockRejectedValue(new ApiError("Forbidden", "http", 403, "FORBIDDEN"));
+    render(<CommentComposer {...REF} />);
+    await user.type(box(), "Helpful");
+    await user.click(submit());
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your account is not permitted to post this comment.");
+  });
 });

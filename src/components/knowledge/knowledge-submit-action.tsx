@@ -1,5 +1,6 @@
 "use client";
 
+import { restrictedActionMessage } from "@/lib/api/account-restriction";
 import * as React from "react";
 import Link from "next/link";
 
@@ -21,6 +22,8 @@ function toFailure(error: unknown): Failure {
     if (error.status === 401) {
       return { kind: "session", message: "Your session is no longer valid. Sign in again to submit this draft." };
     }
+    const restricted = restrictedActionMessage(error);
+    if (restricted) return { kind: "other", message: restricted };
     if (error.status === 403) {
       return { kind: "other", message: "Only the author of this draft can submit it for review." };
     }

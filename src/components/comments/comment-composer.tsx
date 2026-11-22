@@ -1,5 +1,6 @@
 "use client";
 
+import { restrictedActionMessage } from "@/lib/api/account-restriction";
 import * as React from "react";
 import Link from "next/link";
 
@@ -40,6 +41,8 @@ function toFailure(error: unknown): SubmitFailure {
         message: "Your session is no longer valid. Sign in again to post this comment.",
       };
     }
+    const restricted = restrictedActionMessage(error);
+    if (restricted) return { kind: "failure", message: restricted };
     if (error.status === 403) {
       return {
         kind: "failure",
