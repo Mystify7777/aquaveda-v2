@@ -53,8 +53,12 @@ export const KNOWLEDGE_TOPICS = Object.freeze([
  * reviewed identity migration). They are resolvable for rendering only.
  * This empty initial set is intentional: V1 starts with no retired terms.
  */
-export const RETIRED_KNOWLEDGE_CATEGORIES = Object.freeze([]);
-export const RETIRED_KNOWLEDGE_TOPICS = Object.freeze([]);
+export const RETIRED_KNOWLEDGE_CATEGORIES = Object.freeze([
+  Object.freeze({ slug: "legacy_water_knowledge", displayName: "Legacy water knowledge", status: RETIRED }),
+]);
+export const RETIRED_KNOWLEDGE_TOPICS = Object.freeze([
+  Object.freeze({ slug: "legacy_irrigation_practice", displayName: "Legacy irrigation practice", status: RETIRED }),
+]);
 
 const ALL_CATEGORIES = Object.freeze([...KNOWLEDGE_CATEGORIES, ...RETIRED_KNOWLEDGE_CATEGORIES]);
 const ALL_TOPICS = Object.freeze([...KNOWLEDGE_TOPICS, ...RETIRED_KNOWLEDGE_TOPICS]);
