@@ -44,3 +44,13 @@ Excluded: private `reason`, `references`, `idempotencyKey`. Whether ADMIN may re
 - Private-reason visibility to ADMIN (above).
 - Deletion-notification content/recipients (ADR-0010 deferred).
 - Rate limiting of directory reads (ADMIN-only, not added).
+
+## Admin rows are not governable here (ADR-0012, #249)
+
+The directory shows Admin accounts. **#250 is read-only and provides no
+governance mutation controls.** Any future governance UI must not offer mute,
+suspend, or lift for a row whose `role` is `ADMIN` or whose `id` is the
+signed-in user's. The server remains authoritative: the mutation endpoints
+reject those requests with `403` (`SELF_TARGET_PROHIBITED` /
+`ADMIN_TARGET_PROTECTED`); enforcement is owned by #255. The directory contract
+itself is unchanged by this decision.

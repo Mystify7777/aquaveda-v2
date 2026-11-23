@@ -227,3 +227,25 @@ Using the authenticated cookie session, verify access to administrative governan
 * **Initial Bootstrap Only**: This procedure is designated exclusively for initial system bootstrap.
 * **No Recovery Backdoor**: If an administrator forgets their password or leaves the organization, do not use this tool to elevate other accounts.
 * **Credential Rotation**: Follow standard operational password reset and secret rotation procedures using authorized platform channels.
+
+---
+
+## 7. Administrative lockout and recovery policy (ADR-0012, #249)
+
+Policy source: [ADR-0012](../adr/ADR-0012-administrator-targeting-and-lockout-protection.md).
+
+* **Admins are not restricted by other Admins.** Admin accounts are muted,
+  suspended, or restored only by an Operator, never through the product.
+* **No usable Admin** (no ADMIN that is ACTIVE or has an expired restriction):
+  run this bootstrap CLI with a **new** `ADMIN_EMAIL`. It creates an independent
+  ADMIN regardless of other Admins' state. This works today.
+* **The `unchanged` outcome (section 5.2) never restores an account.** Re-running
+  the CLI against an existing, restricted ADMIN does not lift the restriction.
+* **Restoring or restricting an existing Admin** needs the Operator
+  restore/restrict tool, which is **not built yet** (ADR-0012 follow-up F2). Until
+  it exists there is no sanctioned procedure for it; do not edit documents by hand.
+* **Never leave the system with no governance-capable Admin.** Create the
+  replacement Admin first, then restrict the old one. Keep at least two Admin
+  accounts and two operators.
+* Every Operator governance action needs a written reason and a change-record
+  identifier, and is audited as `actorType: OPERATOR` once F2 exists.

@@ -491,3 +491,11 @@ No other part of this ADR changes.
 - `docs/architecture/decision-register.md` — "Locked — Account Governance (ADR-0010)", AUTH-L6
 - `docs/vision/product-invariants.md` (Invariants 5, 9, 10)
 - ADR-0004, ADR-0007 §9, ADR-0008, ADR-0009 (COM-L14–L16)
+
+## Update (2026-11-23): Admin as governance target decided by ADR-0012
+
+ADR-0012 (resolves #249) decides what this ADR left open for Admin targets:
+Admins cannot mute, suspend, or lift themselves or other Admins through the
+product; the last governance-capable Admin can never be restricted or removed;
+restricting or restoring an Admin is an out-of-band Operator act. §13's
+capability table is otherwise unchanged. The original text above is retained.

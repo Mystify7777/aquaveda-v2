@@ -252,9 +252,13 @@ state stays committed and no false event exists.
 - MUTED -> HARD_SUSPENDED (escalation) stays rejected as a conservative implementation decision until the governance policy settles it (ADR-0010 leaves it deferred, not prohibited).
 - Private `reason` is required for a suspension: review this implementation
   decision.
-- No rule about suspending Admins or oneself: an Admin can suspend any ACTIVE
-  account including their own, and an indefinite self-suspension locks that
-  Admin out until another Admin lifts it. Review before production.
+- **Historical note (superseded):** this document originally stated that no rule
+  existed about suspending Admins or oneself (an Admin could suspend any ACTIVE
+  account including their own, and an indefinite self-suspension locked that
+  Admin out until another Admin lifted it).
+  **Current policy:** [ADR-0012](../adr/ADR-0012-administrator-targeting-and-lockout-protection.md)
+  (#249): Admins cannot suspend or lift themselves or other Admins. This is
+  **not yet enforced in code**; enforcement is #255.
 - No maximum or minimum suspension duration (none specified).
 - ~~Access-token window~~ **closed** by the credential generation above (it was
   a review-blocking defect: the first draft let a pre-suspension access token

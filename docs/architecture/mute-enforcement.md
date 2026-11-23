@@ -85,7 +85,11 @@ ADMIN only (service-enforced). Strict bodies; responses are explicit DTOs
 (`id`, `accountState`, `accountStateVersion`, `restriction`, `eventId`); the
 private `reason` is never returned. Only an ACTIVE account can be muted (other
 states are `409 INVALID_STATE`: ADR-0010 leaves other transitions deferred).
-No rule is invented about muting Admins or oneself.
+> **Historical note (superseded):** this section originally stated that no rule
+> was invented about muting Admins or oneself.
+> **Current policy:** [ADR-0012](../adr/ADR-0012-administrator-targeting-and-lockout-protection.md)
+> (#249): an Admin cannot mute themselves or another Admin. This is **not yet
+> enforced in code**; enforcement is #255.
 
 Each change is one conditional atomic update pinned on state **and**
 `accountStateVersion` with `$inc` of the version in the same write, and the
@@ -117,7 +121,7 @@ document) are not decided here.
 - Allowlist entries for appeals and deletion/recovery (when built).
 - Whether the muted user should see `expiresAt` / a safe reason in the response.
 - The audit-event gap above.
-- Muting Admins / self-muting: no rule invented; review.
+- ~~Muting Admins / self-muting: no rule invented; review.~~ **Historical (superseded):** decided by [ADR-0012](../adr/ADR-0012-administrator-targeting-and-lockout-protection.md) (#249): prohibited; enforcement #255.
 - Nothing schedules the sweep; the frontend classifies `ACCOUNT_MUTED` / `ACCOUNT_SUSPENDED` and shows state-specific copy (#248, `src/lib/api/account-restriction.ts`).
 - The version pin in `muteAccount` is defense in depth: the ACTIVE state filter
   already yields a single concurrent winner, and the tests do not isolate the
