@@ -104,6 +104,10 @@ const knowledgeSchema = new Schema(
       type: String,
       default: "",
     },
+    regionKey: {
+      type: String,
+      default: "",
+    },
     // Optional at the persistence layer until Issue #230 backfills legacy records.
     // Issue #231 enforces one ACTIVE canonical Category on normal authoring paths.
     category: {

@@ -562,6 +562,7 @@ check("8c. Knowledge has exactly the expected top-level fields", () => {
     "title",
     "body",
     "region",
+    "regionKey",
     "category",
     "topics",
     "status",
