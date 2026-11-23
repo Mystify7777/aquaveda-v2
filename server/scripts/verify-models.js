@@ -562,11 +562,34 @@ check("8c. Knowledge has exactly the expected top-level fields", () => {
     "title",
     "body",
     "region",
+    "category",
+    "topics",
     "status",
     "author",
     "reviewHistory",
   ].sort();
   assert.deepEqual(topLevelFields(Knowledge.schema), expected);
+});
+
+check("8c-1. Knowledge.category is an optional string for legacy migration compatibility", () => {
+  const path = Knowledge.schema.path("category");
+  assert.equal(path.instance, "String");
+  assert.equal(path.isRequired, false);
+  assert.equal(path.options.default, undefined);
+});
+
+check("8c-2. Knowledge.topics is an array of strings defaulting to an empty array", () => {
+  const path = Knowledge.schema.path("topics");
+  assert.equal(path.instance, "Array");
+  assert.equal(path.caster.instance, "String");
+  assert.deepEqual(path.options.default, []);
+  const doc = knowledgeDoc();
+  assert.deepEqual(doc.topics, []);
+});
+
+check("8c-3. Taxonomy persistence adds no speculative indexes", () => {
+  const indexes = Knowledge.schema.indexes().map(([fields]) => fields);
+  assert.deepEqual(indexes, [{ status: 1 }, { author: 1 }]);
 });
 
 check("8d. Comment has exactly the expected top-level fields", () => {
