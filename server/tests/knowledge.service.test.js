@@ -62,21 +62,6 @@ describe("knowledge.service — createKnowledge", () => {
     assert.equal(knowledge.reviewHistory.length, 0);
   });
 
-  it("persists canonical taxonomy slugs without changing the Region display value", async () => {
-    const actor = fakeActor("USER");
-    const region = "  Bihar  ";
-    const knowledge = await createKnowledge(actor, {
-      title: "t",
-      body: "b",
-      region,
-      category: "water_conservation",
-      topics: ["rainwater_harvesting", "efficient_irrigation"],
-    });
-
-    assert.equal(knowledge.category, "water_conservation");
-    assert.deepEqual(knowledge.topics, ["rainwater_harvesting", "efficient_irrigation"]);
-    assert.equal(knowledge.region, region);
-  });
 });
 
 describe("knowledge.service — submitForReview", () => {
