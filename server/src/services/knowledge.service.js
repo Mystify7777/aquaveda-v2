@@ -39,6 +39,18 @@ function wrapMongooseValidationError(err) {
 // identical constant for the full rationale.
 const PUBLIC_ACTOR_FIELDS = "_id name role";
 
+function resolveCanonicalCategory(value) {
+  if (typeof value !== "string") return null;
+  const term = getAssignableCategory(value);
+  return term && value === term.slug ? term : null;
+}
+
+function resolveCanonicalTopic(value) {
+  if (typeof value !== "string") return null;
+  const term = getAssignableTopic(value);
+  return term && value === term.slug ? term : null;
+}
+
 /**
  * createKnowledge(actorContext, payload)
  *
@@ -48,7 +60,7 @@ const PUBLIC_ACTOR_FIELDS = "_id name role";
 export async function createKnowledge(actorContext, payload) {
   requireActor(actorContext);
 
-  const category = getAssignableCategory(payload?.category);
+  const category = resolveCanonicalCategory(payload?.category);
   if (!category) {
     throw new DomainError(
       DomainErrorCode.VALIDATION_FAILED,
@@ -57,11 +69,19 @@ export async function createKnowledge(actorContext, payload) {
     );
   }
 
-  const rawTopics = Array.isArray(payload?.topics) ? payload.topics : [];
+  if (payload?.topics !== undefined && !Array.isArray(payload.topics)) {
+    throw new DomainError(
+      DomainErrorCode.VALIDATION_FAILED,
+      "topics must be an array of canonical taxonomy slugs",
+      { field: "topics" },
+    );
+  }
+
+  const rawTopics = payload?.topics ?? [];
   const topics = [];
   const seenTopics = new Set();
   for (const rawTopic of rawTopics) {
-    const topic = getAssignableTopic(rawTopic);
+    const topic = resolveCanonicalTopic(rawTopic);
     if (!topic) {
       throw new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -342,7 +362,7 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
 
   let categorySlug;
   if (Object.prototype.hasOwnProperty.call(content, "category")) {
-    const category = getAssignableCategory(content.category);
+    const category = resolveCanonicalCategory(content.category);
     if (!category) {
       throw new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -352,7 +372,7 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
     }
     categorySlug = category.slug;
   } else if (knowledge.category !== undefined && knowledge.category !== null) {
-    const existingCategory = getAssignableCategory(knowledge.category);
+    const existingCategory = resolveCanonicalCategory(knowledge.category);
     if (!existingCategory) {
       throw new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -372,10 +392,18 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
 
   let topics;
   if (Object.prototype.hasOwnProperty.call(content, "topics")) {
+    if (!Array.isArray(content.topics)) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        "topics must be an array of canonical taxonomy slugs",
+        { field: "topics" },
+      );
+    }
+
     const seenTopics = new Set();
     topics = [];
     for (const rawTopic of content.topics) {
-      const topic = getAssignableTopic(rawTopic);
+      const topic = resolveCanonicalTopic(rawTopic);
       if (!topic) {
         throw new DomainError(
           DomainErrorCode.VALIDATION_FAILED,
