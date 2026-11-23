@@ -39,6 +39,37 @@ async function makePendingReview(author = fakeActor("USER")) {
   return { knowledge: submitted, author };
 }
 
+describe("Knowledge persistence taxonomy fields (Issue #229)", () => {
+  it("stores canonical slug strings and preserves Region display text verbatim", async () => {
+    const region = "  Bihar  ";
+    const knowledge = await Knowledge.create({
+      title: "Taxonomy persistence",
+      body: "Persistence contract test",
+      region,
+      category: "water_conservation",
+      topics: ["rainwater_harvesting", "efficient_irrigation"],
+      author: fakeObjectId(),
+    });
+
+    assert.equal(knowledge.category, "water_conservation");
+    assert.deepEqual(knowledge.topics, ["rainwater_harvesting", "efficient_irrigation"]);
+    assert.equal(knowledge.region, region);
+  });
+
+  it("keeps legacy documents valid when Category has not yet been backfilled", async () => {
+    const legacy = new Knowledge({
+      title: "Legacy article",
+      body: "No taxonomy fields yet",
+      region: "Bihar",
+      author: fakeObjectId(),
+    });
+
+    assert.equal(legacy.validateSync(), undefined);
+    assert.equal(legacy.category, undefined);
+    assert.deepEqual(legacy.topics, []);
+  });
+});
+
 describe("knowledge.service — createKnowledge", () => {
   it("creates a Knowledge document with status 'draft'", async () => {
     const { knowledge, author } = await makeDraft();
