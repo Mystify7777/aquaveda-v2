@@ -1,7 +1,9 @@
 # Knowledge Taxonomy V1
 
 This document records the application-owned Category and Topic vocabulary
-implemented for Issue #228 under ADR-0011.
+implemented for Issue #228 under ADR-0011. The executable source of truth is
+`server/src/domain/knowledge-taxonomy.js`; this table is checked against it
+by `server/tests/knowledge-taxonomy.test.js`.
 
 ## Category
 
@@ -36,11 +38,17 @@ An article may have zero or more Topic tags.
 | `wastewater_reuse` | Wastewater reuse | ACTIVE |
 | `sanitation` | Sanitation | ACTIVE |
 | `stormwater_management` | Stormwater management | ACTIVE |
-| `water_supply_distribution` | Water supply and distribution | ACTIVE |
-| `water_conservation` | Water conservation | ACTIVE |
+| `water_distribution_networks` | Water distribution networks | ACTIVE |
 | `water_rights` | Water rights | ACTIVE |
 | `community_water_management` | Community water management | ACTIVE |
 | `drought_management` | Drought management | ACTIVE |
+
+The Topic vocabulary intentionally omits `water_conservation` because it is
+already a Category. The former `water_supply_distribution` Topic was
+narrowed to `water_distribution_networks`, which identifies a concrete
+infrastructure subject rather than duplicating the `water_supply` Category.
+Water quality monitoring remains a Topic because it is a narrower activity
+within the broader water-quality Category.
 
 ## Identity and lifecycle
 
@@ -48,20 +56,30 @@ An article may have zero or more Topic tags.
 - Display names may be corrected without changing the slug.
 - ACTIVE terms can be assigned, filtered, exposed through taxonomy metadata,
   and used by related-Knowledge scoring.
-- RETIRED terms remain resolvable for rendering existing records but cannot be
-  newly assigned, exposed as selectable filters, or used for related scoring.
-- Semantic replacement or merge requires an explicit idempotent persisted-data
-  migration.
+- RETIRED terms remain resolvable through rendering lookups using their
+  canonical display name, but cannot be assigned, exposed as selectable filter
+  options, or used for related scoring.
+- The module makes the distinction explicit:
+  - `getCategory` / `getTopic`: resolve known ACTIVE or RETIRED IDs for rendering.
+  - `getAssignableCategory` / `getAssignableTopic`: ACTIVE terms only.
+  - `getActiveCategories` / `getActiveTopics`: selectable metadata/filter terms.
+  - `getCategoryDisplayName` / `getTopicDisplayName`: canonical labels, including retired terms.
+- A semantic replacement or merge requires an explicit idempotent migration
+  for persisted references. A retired slug remains in its original kind's
+  registry for rendering; it is never reassigned to a different meaning.
 - Taxonomy is application-owned and source-controlled. There is no runtime
   mutation API or taxonomy collection in V1.
 
 ## Alias handling
 
-Aliases are explicit source-controlled mappings to canonical slugs. They are
-used only to recognize known historical/synonym spellings; they do not create
-new taxonomy terms.
+Category and Topic aliases are separate source-controlled maps. Each alias
+target is validated against its own kind's canonical registry by tests.
+Aliases use NFKC normalization, trimming, Unicode whitespace collapsing, and
+locale-insensitive lowercasing.
 
-Unknown values are not fuzzy-matched and are not silently accepted.
+Resolvers accept strings only. Null, undefined, non-string, and blank values
+return `null`. Unknown values are not fuzzy-matched and are not silently
+accepted.
 
 ## Region boundary
 
@@ -71,11 +89,10 @@ ADR-0011 and its shared normalization/alias contract.
 
 ## Source basis
 
-The vocabulary is intentionally small and grounded in the existing AquaVeda
-water-domain vocabulary and the original SIH knowledge scope, including water
-reuse, efficient irrigation, rainwater harvesting, and sustainable water
-management. The more specific Topic concepts also align with the existing
-Expert-domain vocabulary where applicable.
+The vocabulary is intentionally focused on AquaVeda's water-domain scope and
+the original SIH problem statement. The initial set prioritizes useful
+discovery dimensions over a target number of terms.
 
-This file and server/src/domain/knowledge-taxonomy.js must be updated together
-for vocabulary changes.
+This file and the executable module must be updated together for vocabulary
+changes. The vocabulary tests enforce both the source-controlled identity
+sets and the absence of rejected near-duplicate terms.
