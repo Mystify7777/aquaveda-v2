@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   CATEGORY_ALIASES,
+  createKnowledgeTaxonomyResolver,
   KNOWLEDGE_CATEGORIES,
   KNOWLEDGE_TOPICS,
   RETIRED_KNOWLEDGE_CATEGORIES,
@@ -88,27 +89,38 @@ test("vocabulary does not contain the rejected near-duplicate Topic concepts", (
   assert.equal(topicSlugs.has("water_distribution_networks"), true);
 });
 
-test("retired entries are retained for rendering and excluded from selectable lists", () => {
-  assert.equal(RETIRED_KNOWLEDGE_CATEGORIES.length > 0, true);
-  assert.equal(RETIRED_KNOWLEDGE_TOPICS.length > 0, true);
-  assert.equal(getActiveCategories().some((term) => term.status === "RETIRED"), false);
-  assert.equal(getActiveTopics().some((term) => term.status === "RETIRED"), false);
+test("production retired registries stay empty until real persisted identities are retired", () => {
+  assert.deepEqual(RETIRED_KNOWLEDGE_CATEGORIES, []);
+  assert.deepEqual(RETIRED_KNOWLEDGE_TOPICS, []);
+});
 
-  for (const term of RETIRED_KNOWLEDGE_CATEGORIES) {
-    assert.equal(getCategory(term.slug), term);
-    assert.equal(getCategoryDisplayName(term.slug), term.displayName);
-    assert.equal(getAssignableCategory(term.slug), null);
-    assert.equal(isActiveCategory(term.slug), false);
-    assert.equal(getActiveCategories().includes(term), false);
-  }
+test("retired fixtures render canonically but cannot be assigned or selected", () => {
+  const retiredCategory = Object.freeze({
+    slug: "fixture_retired_category",
+    displayName: "Fixture retired category",
+    status: "RETIRED",
+  });
+  const retiredTopic = Object.freeze({
+    slug: "fixture_retired_topic",
+    displayName: "Fixture retired topic",
+    status: "RETIRED",
+  });
+  const resolver = createKnowledgeTaxonomyResolver({
+    retiredCategories: [retiredCategory],
+    retiredTopics: [retiredTopic],
+  });
 
-  for (const term of RETIRED_KNOWLEDGE_TOPICS) {
-    assert.equal(getTopic(term.slug), term);
-    assert.equal(getTopicDisplayName(term.slug), term.displayName);
-    assert.equal(getAssignableTopic(term.slug), null);
-    assert.equal(isActiveTopic(term.slug), false);
-    assert.equal(getActiveTopics().includes(term), false);
-  }
+  assert.equal(resolver.getCategory(retiredCategory.slug), retiredCategory);
+  assert.equal(resolver.getCategoryDisplayName(retiredCategory.slug), retiredCategory.displayName);
+  assert.equal(resolver.getAssignableCategory(retiredCategory.slug), null);
+  assert.equal(resolver.isActiveCategory(retiredCategory.slug), false);
+  assert.equal(resolver.getActiveCategories().includes(retiredCategory), false);
+
+  assert.equal(resolver.getTopic(retiredTopic.slug), retiredTopic);
+  assert.equal(resolver.getTopicDisplayName(retiredTopic.slug), retiredTopic.displayName);
+  assert.equal(resolver.getAssignableTopic(retiredTopic.slug), null);
+  assert.equal(resolver.isActiveTopic(retiredTopic.slug), false);
+  assert.equal(resolver.getActiveTopics().includes(retiredTopic), false);
 });
 
 test("null, undefined, non-string, and blank resolver inputs return null", () => {
