@@ -549,6 +549,8 @@ check("11e. Revise with all three fields passes", () => {
   const result = reviseKnowledgeSchema.safeParse({
     title: "Updated title",
     body: "Updated body",
+    category: "agriculture_irrigation",
+    topics: ["efficient_irrigation"],
     region: "Bihar",
   });
   assert.equal(result.success, true);
