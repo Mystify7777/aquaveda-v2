@@ -14,9 +14,10 @@ import { paginationQuerySchema } from "./shared/pagination.js";
 export const createKnowledgeSchema = z.object({
   title: z.string().trim().min(1, "title is required"),
   body: z.string().trim().min(1, "body is required"),
-  // region is a freeform tag (context.md: "region-based tagging"), not a
-  // structured/enumerated geo field — no approved document specifies a
-  // fixed region vocabulary.
+  category: z.string().trim().min(1, "category is required"),
+  topics: z.array(z.string().trim().min(1, "topic must not be empty")).default([]),
+  // region is a freeform display value. The service derives regionKey from
+  // this value server-side; callers never submit a matching key.
   region: z.string().trim().optional(),
 });
 
@@ -103,6 +104,8 @@ export const rejectKnowledgeSchema = z.object({
 export const reviseKnowledgeSchema = z.object({
   title: z.string().trim().min(1, "title must not be empty if provided").optional(),
   body: z.string().trim().min(1, "body must not be empty if provided").optional(),
+  category: z.string().trim().min(1, "category must not be empty if provided").optional(),
+  topics: z.array(z.string().trim().min(1, "topic must not be empty")).optional(),
   region: z.string().trim().optional(),
 });
 
