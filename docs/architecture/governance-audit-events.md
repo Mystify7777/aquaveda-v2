@@ -134,3 +134,11 @@ history are independent; the mutation issues write both, with the event's
 - Whether `User.accountRestriction` should store the originating event id
   (deferred in #171): additive, decided by #174/#175.
 - Database-level write protection (above).
+
+## Operator actions (reserved by ADR-0012, #249)
+
+ADR-0012 reserves a third `actorType`, `OPERATOR` (actor absent, like `SYSTEM`),
+for the out-of-band Operator restriction/restoration of an **Admin** account. It
+is **not implemented** (`ACTOR_TYPES` is still `USER | SYSTEM`); the Operator
+tool follow-up adds it with a required private reason that includes the change
+record identifier. Rejected Admin-targeting requests append no event.
