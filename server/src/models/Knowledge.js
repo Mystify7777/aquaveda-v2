@@ -104,6 +104,16 @@ const knowledgeSchema = new Schema(
       type: String,
       default: "",
     },
+    // Optional at the persistence layer until Issue #230 backfills legacy records.
+    // Issue #231 enforces one ACTIVE canonical Category on normal authoring paths.
+    category: {
+      type: String,
+      trim: true,
+    },
+    topics: {
+      type: [String],
+      default: [],
+    },
     status: {
       type: String,
       enum: KNOWLEDGE_STATUSES,
