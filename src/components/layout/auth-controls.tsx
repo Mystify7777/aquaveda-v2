@@ -22,7 +22,7 @@ export function AuthControls({ mobile = false }: { mobile?: boolean }) {
         return <div className={mobile ? "flex flex-col gap-2" : "flex items-center gap-1"}><Button asChild variant="ghost" size="sm" className={touch}><Link href="/auth/login">Sign in</Link></Button><Button asChild size="sm" className={touch}><Link href="/auth/register">Register</Link></Button></div>;
     }
 
-    if (status !== "authenticated") {
+    if (status !== "authenticated" && status !== "suspended") {
         return <span className="text-muted-foreground text-xs" role="status">Session unavailable</span>;
     }
 
@@ -38,5 +38,5 @@ export function AuthControls({ mobile = false }: { mobile?: boolean }) {
         }
     }
 
-    return <div className={mobile ? "flex flex-col gap-2" : "flex items-center gap-2"}><span className="text-muted-foreground font-mono text-xs" aria-label="Signed-in role">{user?.role}</span><Button variant="outline" size="sm" className={touch} onClick={() => void handleLogout()} disabled={pending} aria-busy={pending}>{pending ? "Signing out..." : "Sign out"}</Button>{error && <AuthError message={error} />}</div>;
+    return <div className={mobile ? "flex flex-col gap-2" : "flex items-center gap-2"}><span className="text-muted-foreground font-mono text-xs" aria-label={status === "suspended" ? "Account status" : "Signed-in role"}>{status === "suspended" ? "Suspended" : user?.role}</span><Button variant="outline" size="sm" className={touch} onClick={() => void handleLogout()} disabled={pending} aria-busy={pending}>{pending ? "Signing out..." : "Sign out"}</Button>{error && <AuthError message={error} />}</div>;
 }

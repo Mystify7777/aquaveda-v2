@@ -29,6 +29,22 @@ function parseAuthUser(value: unknown): AuthUser {
     return { id: value.id, role: value.role };
 }
 
+/**
+ * `/auth/me` additionally reports `accountState` next to the user (#251). Parsed
+ * strictly: a user with a non-string, non-null state is an unusable response.
+ * Other endpoints return no state, so `getAuthUser` only reads it for `/me`.
+ */
+function parseMeUser(data: { user: unknown; accountState?: unknown }): AuthUser | null {
+    if (data.user === null) return null;
+    const user = parseAuthUser(data.user);
+    const { accountState } = data;
+    if (accountState === undefined || accountState === null) return user;
+    if (typeof accountState !== "string") {
+        throw new ApiError("Unexpected authentication response", "response");
+    }
+    return { ...user, accountState };
+}
+
 async function getAuthUser(path: string, init?: RequestInit) {
     const data = await apiRequest<{ user: AuthUser | null }>(
         `${AUTH_PATH}${path}`,
@@ -39,8 +55,10 @@ async function getAuthUser(path: string, init?: RequestInit) {
     return parseAuthUser(data.user);
 }
 
-export function getCurrentUser() {
-    return getAuthUser("/me");
+export async function getCurrentUser() {
+    return parseMeUser(
+        await apiRequest<{ user: unknown; accountState?: unknown }>(`${AUTH_PATH}/me`),
+    );
 }
 
 export function login(payload: LoginPayload) {

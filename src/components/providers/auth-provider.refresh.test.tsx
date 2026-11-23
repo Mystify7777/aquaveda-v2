@@ -16,7 +16,8 @@ vi.mock("@/lib/api/auth", () => ({
   register: vi.fn(),
   logout: () => logoutRequest(),
 }));
-vi.mock("@/lib/auth-state", () => ({
+vi.mock("@/lib/auth-state", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth-state")>()),
   initializeAuthSessionWithRetry: (d: unknown) => initializeAuthSessionWithRetry(d),
 }));
 

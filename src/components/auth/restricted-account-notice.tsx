@@ -16,14 +16,20 @@ import { RESTRICTION_NOTICE, type AccountRestriction } from "@/lib/api/account-r
 export function RestrictedAccountNotice({
   restriction,
   className,
+  variant = "inline",
 }: {
   restriction: AccountRestriction;
   className?: string;
+  /**
+   * `banner` is the persistent, app-wide presentation (#251): a muted notice is a
+   * polite `status`, not an interrupting `alert`. Content and sign-out are shared.
+   */
+  variant?: "inline" | "banner";
 }) {
   const { title, message } = RESTRICTION_NOTICE[restriction];
   return (
     <div
-      role="alert"
+      role={variant === "banner" && restriction === "muted" ? "status" : "alert"}
       data-restriction={restriction}
       className={
         className ?? "border-warning/40 bg-warning/5 space-y-4 rounded-lg border p-5 text-sm sm:p-6"

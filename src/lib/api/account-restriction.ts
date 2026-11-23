@@ -38,7 +38,7 @@ export const RESTRICTION_NOTICE: Readonly<Record<AccountRestriction, { title: st
   },
 };
 
-const ACTION_MESSAGE: Readonly<Record<AccountRestriction, string>> = {
+export const RESTRICTION_ACTION_MESSAGE: Readonly<Record<AccountRestriction, string>> = {
   muted: "Your account is muted, so this action isn't available right now. You can still read and browse.",
   suspended: "Your account is suspended, so this action isn't available. Sign out to keep browsing public pages.",
 };
@@ -46,5 +46,5 @@ const ACTION_MESSAGE: Readonly<Record<AccountRestriction, string>> = {
 /** One-line copy for a failed write, or `null` when the error is not a restriction. */
 export function restrictedActionMessage(error: unknown): string | null {
   const restriction = getAccountRestriction(error);
-  return restriction ? ACTION_MESSAGE[restriction] : null;
+  return restriction ? RESTRICTION_ACTION_MESSAGE[restriction] : null;
 }

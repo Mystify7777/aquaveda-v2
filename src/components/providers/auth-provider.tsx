@@ -9,7 +9,8 @@ import {
     refreshSession,
     register as registerRequest,
 } from "@/lib/api/auth";
-import { initializeAuthSessionWithRetry } from "@/lib/auth-state";
+import type { AccountRestriction } from "@/lib/api/account-restriction";
+import { initializeAuthSessionWithRetry, restrictionForAccountState } from "@/lib/auth-state";
 import type { AuthUser } from "@/lib/api/types";
 
 export type AuthStatus =
@@ -17,11 +18,20 @@ export type AuthStatus =
     | "authenticated"
     | "anonymous"
     | "session-failure"
-    | "unavailable";
+    | "unavailable"
+    // Hard-suspended account recognized from /auth/me (#251). `user` is null: the
+    // normal authenticated application surface is never entered.
+    | "suspended";
 
 type AuthContextValue = {
     status: AuthStatus;
     user: AuthUser | null;
+    /**
+     * `muted` (status stays "authenticated": read access kept, not logged out),
+     * `suspended` (status "suspended"), otherwise null. Derived from /auth/me's
+     * `accountState`; the backend remains the authority (#248 covers per-request codes).
+     */
+    restriction: AccountRestriction | null;
     login: typeof loginRequest;
     register: typeof registerRequest;
     logout: () => Promise<void>;
@@ -34,15 +44,33 @@ const AuthContext = React.createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [status, setStatus] = React.useState<AuthStatus>("initializing");
     const [user, setUser] = React.useState<AuthUser | null>(null);
+    const [restriction, setRestriction] = React.useState<AccountRestriction | null>(null);
     const requestGeneration = React.useRef(0);
     const retryGeneration = React.useRef(0);
     const manualRetryInFlight = React.useRef(false);
     const mounted = React.useRef(false);
 
+    /** Apply a resolved session user; the only place restriction state is derived. */
     const setAuthenticated = React.useCallback((nextUser: AuthUser) => {
+        const next = restrictionForAccountState(nextUser.accountState) as AccountRestriction | null;
+        setRestriction(next);
+        if (next === "suspended") {
+            setUser(null);
+            setStatus("suspended");
+            return null;
+        }
         setUser(nextUser);
         setStatus("authenticated");
         return nextUser;
+    }, []);
+
+    /** login/register/refresh responses carry no accountState: learn it from /me, best effort. */
+    const withAccountState = React.useCallback(async (sessionUser: AuthUser) => {
+        try {
+            return (await getCurrentUser()) ?? sessionUser;
+        } catch {
+            return sessionUser;
+        }
     }, []);
 
     const login = React.useCallback(
@@ -50,10 +78,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const generation = ++requestGeneration.current;
             retryGeneration.current += 1;
             const nextUser = await loginRequest(payload);
-            if (generation === requestGeneration.current) setAuthenticated(nextUser);
+            const resolved = await withAccountState(nextUser);
+            if (generation === requestGeneration.current) setAuthenticated(resolved);
             return nextUser;
         },
-        [setAuthenticated],
+        [setAuthenticated, withAccountState],
     );
 
     const register = React.useCallback(
@@ -74,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await logoutRequest();
         if (generation === requestGeneration.current) {
             setUser(null);
+            setRestriction(null);
             setStatus("anonymous");
         }
     }, []);
@@ -100,6 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setAuthenticated(result.user);
         } else {
             setUser(null);
+            setRestriction(result.status === "suspended" ? "suspended" : null);
             setStatus(result.status as AuthStatus);
         }
     }, [setAuthenticated]);
@@ -138,8 +169,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [runInitialization]);
 
     const value = React.useMemo(
-        () => ({ status, user, login, register, logout, refreshUser, retryInitialization }),
-        [status, user, login, register, logout, refreshUser, retryInitialization],
+        () => ({ status, user, restriction, login, register, logout, refreshUser, retryInitialization }),
+        [status, user, restriction, login, register, logout, refreshUser, retryInitialization],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
