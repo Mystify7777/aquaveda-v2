@@ -43,7 +43,7 @@ async function makeActor(role = "USER", name = `Person ${++seq}`) {
 }
 
 const draftOf = (actor, title = "Drip irrigation") =>
-  createKnowledge(actor, { title, body: `Body of ${title}` });
+  createKnowledge(actor, { title, body: `Body of ${title}`, category: "agriculture_irrigation" });
 
 async function pendingOf(actor, title) {
   const k = await draftOf(actor, title);
