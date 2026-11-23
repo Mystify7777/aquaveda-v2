@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/providers/auth-provider";
+import { RESTRICTION_ACTION_MESSAGE } from "@/lib/api/account-restriction";
 import { cn } from "@/lib/utils";
 
 /**
@@ -49,6 +50,19 @@ export function RequireAuth({
                         <Link href="/auth/register">Register</Link>
                     </Button>
                 </div>
+            </div>
+        );
+    }
+
+    if (status === "suspended") {
+        // Hard-suspended session recognized at bootstrap (#251): never rendered as
+        // signed-in content, and not a "sign in again" problem. The app-wide banner
+        // carries the explanation and the sign-out action.
+        return (
+            <div className={cn("space-y-2", gateClassName)}>
+                <p role="alert" className="text-sm">
+                    {RESTRICTION_ACTION_MESSAGE.suspended}
+                </p>
             </div>
         );
     }

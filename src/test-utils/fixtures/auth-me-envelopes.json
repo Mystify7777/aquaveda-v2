@@ -1,0 +1,60 @@
+{
+  "_provenance": "Recorded from the real Express app (createApp) on real MongoDB 7 by running the real mute/suspend services; do not hand-edit. Regenerate if the /auth/me envelope changes.",
+  "active": {
+    "status": 200,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": true,
+      "data": {
+        "user": {
+          "id": "6b02f41490ea7b1f88ff1b1b",
+          "role": "USER"
+        },
+        "accountState": "ACTIVE"
+      },
+      "message": "OK"
+    }
+  },
+  "muted": {
+    "status": 200,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": true,
+      "data": {
+        "user": {
+          "id": "6b02f41490ea7b1f88ff1b0f",
+          "role": "USER"
+        },
+        "accountState": "MUTED"
+      },
+      "message": "OK"
+    }
+  },
+  "suspended": {
+    "status": 200,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": true,
+      "data": {
+        "user": {
+          "id": "6b02f41490ea7b1f88ff1b15",
+          "role": "USER"
+        },
+        "accountState": "HARD_SUSPENDED"
+      },
+      "message": "OK"
+    }
+  },
+  "anonymous": {
+    "status": 200,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "success": true,
+      "data": {
+        "user": null,
+        "accountState": null
+      },
+      "message": "OK"
+    }
+  }
+}
