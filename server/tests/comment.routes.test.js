@@ -105,7 +105,7 @@ async function makeIssue() {
 }
 
 async function makeKnowledge() {
-  return createKnowledge(fakeActor("USER"), { title: "t", body: "b" });
+  return createKnowledge(fakeActor("USER"), { title: "t", body: "b", category: "other" });
 }
 
 describe("POST /api/v1/comments", () => {
@@ -307,7 +307,7 @@ describe("GET /api/v1/comments (Issue #48 — public read, no auth required)", (
     const { accessToken } = await makeAuthedUser();
     const author = fakeActor("USER");
     const expert = fakeActor("EXPERT");
-    const approved = await createKnowledge(author, { title: "t", body: "b" });
+    const approved = await createKnowledge(author, { title: "t", body: "b", category: "other" });
     await submitForReview(author, approved._id);
     await approve(expert, approved._id);
     await request("POST", "/api/v1/comments", {

@@ -79,6 +79,8 @@ async function main() {
   const article = await createKnowledge(reporterCtx, {
     title: fixtures.knowledgeTitle,
     body: "Collect roof runoff in a covered barrel and filter before use.",
+    category: "water_conservation",
+    topics: ["rainwater_harvesting", "water_treatment"],
   });
   await submitForReview(reporterCtx, String(article._id));
   await approve(expertCtx, String(article._id));
@@ -87,6 +89,8 @@ async function main() {
   const pending = await createKnowledge(reporterCtx, {
     title: fixtures.pendingKnowledgeTitle,
     body: "Route sink and washing-machine outflow to a mulch basin for trees.",
+    category: "water_reuse",
+    topics: ["water_reuse", "wastewater_reuse"],
   });
   await submitForReview(reporterCtx, String(pending._id));
 

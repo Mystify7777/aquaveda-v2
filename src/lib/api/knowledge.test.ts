@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { getKnowledgeList, getKnowledgeArticle } from "@/lib/api/knowledge";
+import { getKnowledgeList, getKnowledgeArticle, getKnowledgeTaxonomy } from "@/lib/api/knowledge";
 
 function mockFetchOnce(body: unknown, ok = true, status = 200) {
   global.fetch = vi.fn().mockResolvedValue({
@@ -65,6 +65,15 @@ describe("getKnowledgeArticle", () => {
   });
 });
 
+describe("getKnowledgeTaxonomy", () => {
+  it("reads the shared ACTIVE vocabulary from the backend", async () => {
+    const data = { categories: [{ slug: "other", displayName: "Other water knowledge" }], topics: [] };
+    mockFetchOnce({ success: true, data, message: "Knowledge taxonomy retrieved" });
+    await expect(getKnowledgeTaxonomy()).resolves.toEqual(data);
+    expect(global.fetch).toHaveBeenCalledWith("https://api.aquaveda.com/api/v1/knowledge/taxonomy", expect.objectContaining({ cache: "no-store" }));
+  });
+});
+
 describe("createKnowledge", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -78,12 +87,12 @@ describe("createKnowledge", () => {
       201,
     );
     const { createKnowledge } = await import("@/lib/api/knowledge");
-    await expect(createKnowledge({ title: "T", body: "B" })).resolves.toMatchObject({ _id: "k-2", status: "draft" });
+    await expect(createKnowledge({ title: "T", body: "B", category: "other", topics: ["water_reuse"] })).resolves.toMatchObject({ _id: "k-2", status: "draft" });
     const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(String(url)).toContain("/api/v1/knowledge");
     expect(init).toMatchObject({
       method: "POST",
-      body: JSON.stringify({ title: "T", body: "B" }),
+      body: JSON.stringify({ title: "T", body: "B", category: "other", topics: ["water_reuse"] }),
     });
     expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });

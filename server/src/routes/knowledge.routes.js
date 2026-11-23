@@ -13,6 +13,7 @@ import {
   getKnowledgeForWorkflow,
 } from "../services/knowledge.service.js";
 import { toPublicKnowledgeDTO } from "../services/knowledge.dto.js";
+import { getActiveCategories, getActiveTopics } from "../domain/knowledge-taxonomy.js";
 import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
 import {
   createKnowledgeSchema,
@@ -52,6 +53,14 @@ import {
  */
 
 export const knowledgeRouter = Router();
+
+/** Read-only ACTIVE authoring vocabulary; must precede /:knowledgeId. */
+knowledgeRouter.get("/taxonomy", (req, res) => {
+  sendSuccess(res, {
+    categories: getActiveCategories().map(({ slug, displayName }) => ({ slug, displayName })),
+    topics: getActiveTopics().map(({ slug, displayName }) => ({ slug, displayName })),
+  }, "Knowledge taxonomy retrieved");
+});
 
 /**
  * GET / — public, approved-only Knowledge list.

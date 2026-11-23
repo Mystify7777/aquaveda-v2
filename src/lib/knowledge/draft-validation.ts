@@ -3,17 +3,23 @@ import type { CreateKnowledgePayload } from "@/lib/api/types/knowledge";
 export interface KnowledgeDraftValues {
   title: string;
   body: string;
+  category: string;
+  topics: string[];
 }
 
-export type KnowledgeDraftField = keyof KnowledgeDraftValues;
+export type KnowledgeDraftField = "title" | "body" | "category";
 export type KnowledgeDraftErrors = Partial<Record<KnowledgeDraftField, string>>;
 
-export const EMPTY_KNOWLEDGE_DRAFT: KnowledgeDraftValues = { title: "", body: "" };
+export const EMPTY_KNOWLEDGE_DRAFT: KnowledgeDraftValues = {
+  title: "",
+  body: "",
+  category: "",
+  topics: [],
+};
 
 /**
- * Advisory frontend-boundary validation mirroring server
- * createKnowledgeSchema (title/body required, trimmed). The backend
- * remains authoritative.
+ * Advisory frontend-boundary validation mirroring the authoring API.
+ * Taxonomy term existence is supplied by the server and revalidated there.
  */
 export function validateKnowledgeDraft(
   values: KnowledgeDraftValues,
@@ -21,8 +27,22 @@ export function validateKnowledgeDraft(
   const title = values.title.trim();
   const body = values.body.trim();
   const errors: KnowledgeDraftErrors = {};
+
   if (!title) errors.title = "Title is required.";
   if (!body) errors.body = "Body is required.";
-  if (errors.title || errors.body) return { ok: false, errors };
-  return { ok: true, payload: { title, body } };
+  if (!values.category) errors.category = "Choose a Category.";
+
+  if (errors.title || errors.body || errors.category) {
+    return { ok: false, errors };
+  }
+
+  return {
+    ok: true,
+    payload: {
+      title,
+      body,
+      category: values.category,
+      ...(values.topics.length > 0 ? { topics: [...new Set(values.topics)] } : {}),
+    },
+  };
 }

@@ -39,56 +39,49 @@ function validationFailed(message, details = {}) {
   return new DomainError(DomainErrorCode.VALIDATION_FAILED, message, details);
 }
 
+function validateCanonicalCategory(value) {
+  const term = getAssignableCategory(value);
+  if (!term || term.slug !== value) {
+    throw validationFailed("category must be an ACTIVE canonical Category slug");
+  }
+  return term.slug;
+}
+
+function normalizeCanonicalTopics(values) {
+  if (!Array.isArray(values)) {
+    throw validationFailed("topics must be an array of ACTIVE canonical Topic slugs");
+  }
+  const result = [];
+  const seen = new Set();
+  for (const value of values) {
+    const term = getAssignableTopic(value);
+    if (!term || term.slug !== value) {
+      throw validationFailed("topics must contain only ACTIVE canonical Topic slugs");
+    }
+    if (!seen.has(term.slug)) {
+      seen.add(term.slug);
+      result.push(term.slug);
+    }
+  }
+  return result;
+}
+
 function normalizeAuthoringTaxonomy(payload, { requireCategory = false } = {}) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw validationFailed("Knowledge authoring payload must be an object");
+  }
   const categoryProvided = Object.hasOwn(payload, "category");
   const topicsProvided = Object.hasOwn(payload, "topics");
-
-  if (requireCategory && !categoryProvided) {
-    throw validationFailed("category is required");
-  }
-
-  let category;
-  if (categoryProvided) {
-    const resolved = getAssignableCategory(payload.category);
-    if (!resolved || resolved.slug !== payload.category) {
-      throw validationFailed("category must be an ACTIVE canonical Category slug");
-    }
-    category = resolved.slug;
-  }
-
-  let topics;
-  if (topicsProvided) {
-    if (!Array.isArray(payload.topics)) {
-      throw validationFailed("topics must be an array of ACTIVE canonical Topic slugs");
-    }
-
-    const normalized = [];
-    const seen = new Set();
-    for (const value of payload.topics) {
-      const resolved = getAssignableTopic(value);
-      if (!resolved || resolved.slug !== value) {
-        throw validationFailed("topics must contain only ACTIVE canonical Topic slugs");
-      }
-      if (!seen.has(resolved.slug)) {
-        seen.add(resolved.slug);
-        normalized.push(resolved.slug);
-      }
-    }
-    topics = normalized;
-  }
-
+  if (requireCategory && !categoryProvided) throw validationFailed("category is required");
   return {
-    ...(categoryProvided ? { category } : {}),
-    ...(topicsProvided ? { topics } : {}),
+    ...(categoryProvided ? { category: validateCanonicalCategory(payload.category) } : {}),
+    ...(topicsProvided ? { topics: normalizeCanonicalTopics(payload.topics) } : {}),
   };
 }
 
 function buildRegionFields(region) {
   const displayValue = typeof region === "string" ? region : "";
-  return {
-    region: displayValue,
-    regionKey: normalizeRegionKey(displayValue),
-  };
+  return { region: displayValue, regionKey: normalizeRegionKey(displayValue) };
 }
 
 // Public-read attribution: name/role only. See issue.service.js's
@@ -327,9 +320,9 @@ export async function reject(actorContext, knowledgeId, feedback) {
 /**
  * revise(actorContext, knowledgeId, updatedContent)
  *
- * rejected -> draft, author-only. Only title/body/region are updatable
- * from `updatedContent` — author, reviewHistory, and status are never
- * accepted from the caller, regardless of what updatedContent contains.
+ * rejected -> draft, author-only. Title/body/region and optional taxonomy
+ * fields may be revised. Author, review history, lifecycle fields, and
+ * regionKey remain server-owned.
  */
 export async function revise(actorContext, knowledgeId, updatedContent) {
   requireActor(actorContext);
@@ -362,6 +355,12 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
   }
 
   const taxonomy = normalizeAuthoringTaxonomy(updatedContent);
+  const effectiveCategory = taxonomy.category ?? knowledge.category;
+  if (effectiveCategory == null) {
+    throw validationFailed("a rejected Knowledge article must have an ACTIVE canonical Category before revision");
+  }
+  validateCanonicalCategory(effectiveCategory);
+
   const allowedFields = {};
   if (typeof updatedContent?.title === "string") {
     allowedFields.title = updatedContent.title;
@@ -370,12 +369,19 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
     allowedFields.body = updatedContent.body;
   }
   if (typeof updatedContent?.region === "string") {
-    Object.assign(allowedFields, buildRegionFields(updatedContent.region));
+    allowedFields.region = updatedContent.region;
   }
+  allowedFields.regionKey = normalizeRegionKey(
+    typeof updatedContent?.region === "string" ? updatedContent.region : knowledge.region,
+  );
   Object.assign(allowedFields, taxonomy);
 
+  const expectedTaxonomy = {
+    category: knowledge.category == null ? { $in: [null] } : knowledge.category,
+    topics: knowledge.topics ?? [],
+  };
   const updated = await Knowledge.findOneAndUpdate(
-    { _id: knowledgeId, status: "rejected" },
+    { _id: knowledgeId, status: "rejected", ...expectedTaxonomy },
     { $set: { ...allowedFields, status: "draft" } },
     { new: true, runValidators: true },
   );

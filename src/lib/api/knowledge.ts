@@ -12,6 +12,7 @@ import type {
   WorkflowKnowledge,
   WorkflowKnowledgeSummary,
   KnowledgeLifecycleResult,
+  KnowledgeTaxonomy,
 } from "./types/knowledge";
 
 export function getKnowledgeList(query?: KnowledgeListQuery) {
@@ -26,6 +27,10 @@ export function getKnowledgeArticle(knowledgeId: string) {
     buildApiUrl(`/api/v1/knowledge/${knowledgeId}`),
     { cache: "no-store" },
   );
+}
+
+export function getKnowledgeTaxonomy() {
+  return apiRequest<KnowledgeTaxonomy>(buildApiUrl("/api/v1/knowledge/taxonomy"), { cache: "no-store" });
 }
 
 export function createKnowledge(payload: CreateKnowledgePayload) {

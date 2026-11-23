@@ -26,7 +26,7 @@ export async function seedIssue(reporter, status = "open") {
 }
 
 export async function seedKnowledge(author, status = "draft") {
-  const k = await createKnowledge(actorOf(author), { title: `Article ${status}`, body: "Seeded" });
+  const k = await createKnowledge(actorOf(author), { title: `Article ${status}`, body: "Seeded", category: "other" });
   if (status !== "draft") await Knowledge.updateOne({ _id: k._id }, { $set: { status } });
   return k;
 }

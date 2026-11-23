@@ -86,7 +86,7 @@ describe("knowledge.service — createKnowledge", () => {
       (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
     );
     await assert.rejects(
-      () => createKnowledge(actor, { title: "t", body: "b" }),
+      () => createKnowledge(actor, { title: "t", body: "b", category: "other" }),
       (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
     );
   });
@@ -314,6 +314,38 @@ describe("knowledge.service — revise", () => {
     assert.equal(revised.regionKey, "bihar");
   });
 
+  it("rejects a title-only revision when an existing legacy Category is missing", async () => {
+    const author = fakeActor("USER");
+    const legacy = await Knowledge.create({
+      title: "Legacy", body: "Legacy body", author: author.id, status: "rejected",
+      reviewHistory: [{ decision: "rejected", reviewer: fakeObjectId(), feedback: "needs taxonomy", timestamp: new Date() }],
+    });
+    await assert.rejects(() => revise(author, legacy._id, { title: "Revised" }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED);
+    const revised = await revise(author, legacy._id, { title: "Revised", category: "other" });
+    assert.equal(revised.category, "other");
+    assert.equal(revised.status, "draft");
+  });
+
+  it("revise ignores attempted lifecycle, author, history, and regionKey fields for direct callers", async () => {
+    const { knowledge, author } = await makeRejected();
+    const history = knowledge.reviewHistory.map((entry) => ({
+      decision: entry.decision, feedback: entry.feedback, reviewer: String(entry.reviewer),
+      timestamp: new Date(entry.timestamp).toISOString(),
+    }));
+    const revised = await revise(author, knowledge._id, {
+      title: "Safe title", category: "other", status: "approved", author: fakeObjectId(),
+      reviewHistory: [], regionKey: "client-key",
+    });
+    assert.equal(revised.status, "draft");
+    assert.equal(String(revised.author), author.id);
+    assert.equal(revised.regionKey, "bihar");
+    assert.deepEqual(revised.reviewHistory.map((entry) => ({
+      decision: entry.decision, feedback: entry.feedback, reviewer: String(entry.reviewer),
+      timestamp: new Date(entry.timestamp).toISOString(),
+    })), history);
+  });
+
   it("revise does NOT append a reviewHistory entry", async () => {
     const { knowledge, author } = await makeRejected();
     const revised = await revise(author, knowledge._id, { title: "t2" });
@@ -400,17 +432,17 @@ describe("listApprovedKnowledge (Issue #48 — public read)", () => {
     const author = fakeActor("USER");
     const expert = fakeActor("EXPERT");
 
-    const draft = await createKnowledge(author, { title: "draft", body: "b" });
+    const draft = await createKnowledge(author, { title: "draft", body: "b", category: "other" });
 
-    const toApprove = await createKnowledge(author, { title: "to-approve", body: "b" });
+    const toApprove = await createKnowledge(author, { title: "to-approve", body: "b", category: "other" });
     await submitForReview(author, toApprove._id);
     await approve(expert, toApprove._id);
 
-    const toReject = await createKnowledge(author, { title: "to-reject", body: "b" });
+    const toReject = await createKnowledge(author, { title: "to-reject", body: "b", category: "other" });
     await submitForReview(author, toReject._id);
     await reject(expert, toReject._id, "needs work");
 
-    const pending = await createKnowledge(author, { title: "pending", body: "b" });
+    const pending = await createKnowledge(author, { title: "pending", body: "b", category: "other" });
     await submitForReview(author, pending._id);
 
     const result = await listApprovedKnowledge();
@@ -425,7 +457,7 @@ describe("listApprovedKnowledge (Issue #48 — public read)", () => {
 
   it("cannot be made to return non-approved content via any query parameter — no status parameter exists", async () => {
     const author = fakeActor("USER");
-    await createKnowledge(author, { title: "draft", body: "b" });
+    await createKnowledge(author, { title: "draft", body: "b", category: "other" });
 
     // listApprovedKnowledge only accepts {page, limit} — passing an
     // arbitrary extra key (as if trying to smuggle a status override)
@@ -439,7 +471,7 @@ describe("listApprovedKnowledge (Issue #48 — public read)", () => {
     const author = fakeActor("USER");
     const expert = fakeActor("EXPERT");
     for (let i = 0; i < 3; i++) {
-      const k = await createKnowledge(author, { title: `k${i}`, body: "b" });
+      const k = await createKnowledge(author, { title: `k${i}`, body: "b", category: "other" });
       await submitForReview(author, k._id);
       await approve(expert, k._id);
     }
@@ -455,7 +487,7 @@ describe("getApprovedKnowledgeById (Issue #48 — public read)", () => {
   it("returns an approved article", async () => {
     const author = fakeActor("USER");
     const expert = fakeActor("EXPERT");
-    const k = await createKnowledge(author, { title: "t", body: "b" });
+    const k = await createKnowledge(author, { title: "t", body: "b", category: "other" });
     await submitForReview(author, k._id);
     await approve(expert, k._id);
 
@@ -465,7 +497,7 @@ describe("getApprovedKnowledgeById (Issue #48 — public read)", () => {
 
   it("throws NOT_FOUND (not FORBIDDEN) for a real but non-approved article — never discloses its existence/state", async () => {
     const author = fakeActor("USER");
-    const draft = await createKnowledge(author, { title: "draft", body: "b" });
+    const draft = await createKnowledge(author, { title: "draft", body: "b", category: "other" });
 
     await assert.rejects(
       () => getApprovedKnowledgeById(draft._id),
@@ -496,7 +528,7 @@ describe("getApprovedKnowledgeById (Issue #48 — public read)", () => {
     });
     const expert = fakeActor("EXPERT");
     const actor = { id: String(user._id), role: "USER" };
-    const k = await createKnowledge(actor, { title: "t", body: "b" });
+    const k = await createKnowledge(actor, { title: "t", body: "b", category: "other" });
     await submitForReview(actor, k._id);
     await approve(expert, k._id);
 

@@ -25,10 +25,13 @@ export interface KnowledgeArticle {
 
 export type KnowledgeListQuery = PaginationQuery;
 
-/** Body of POST /api/v1/knowledge. `region` is intentionally not modeled (semantics undefined). */
+/** Canonical authoring payload for POST /api/v1/knowledge. */
 export interface CreateKnowledgePayload {
   title: string;
   body: string;
+  region?: string;
+  category: string;
+  topics?: string[];
 }
 
 /**
@@ -45,11 +48,17 @@ export type CreatedKnowledgeDraft = Pick<KnowledgeArticle, "_id" | "title" | "st
  */
 export type KnowledgeLifecycleResult = Pick<KnowledgeArticle, "_id" | "title" | "status">;
 
-/** Body of POST /api/v1/knowledge/:id/revise. `region` is intentionally not modeled. */
+/** Partial authoring payload for POST /api/v1/knowledge/:id/revise. */
 export interface ReviseKnowledgePayload {
-  title: string;
-  body: string;
+  title?: string;
+  body?: string;
+  region?: string;
+  category?: string;
+  topics?: string[];
 }
+
+export interface KnowledgeTaxonomyTerm { slug: string; displayName: string; }
+export interface KnowledgeTaxonomy { categories: KnowledgeTaxonomyTerm[]; topics: KnowledgeTaxonomyTerm[]; }
 
 // --- Authenticated workflow reads (Issue #74) ---------------------------
 

@@ -8,9 +8,10 @@ import { KnowledgeDraftForm } from "@/components/knowledge/knowledge-draft-form"
 import { ApiError } from "@/lib/api/client";
 
 const mockCreateKnowledge = vi.fn();
+const mockGetKnowledgeTaxonomy = vi.fn();
 const mockUseAuth = vi.fn();
 
-vi.mock("@/lib/api/knowledge", () => ({ createKnowledge: (p: unknown) => mockCreateKnowledge(p) }));
+vi.mock("@/lib/api/knowledge", () => ({ createKnowledge: (p: unknown) => mockCreateKnowledge(p), getKnowledgeTaxonomy: () => mockGetKnowledgeTaxonomy() }));
 vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => mockUseAuth() }));
 
 const CREATED = { _id: "k1", title: "Drip irrigation", status: "draft" };
@@ -18,6 +19,7 @@ const CREATED = { _id: "k1", title: "Drip irrigation", status: "draft" };
 async function fill(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/^title/i), "Drip irrigation");
   await user.type(screen.getByLabelText(/^body/i), "Steps to set it up");
+  await user.selectOptions(screen.getByLabelText(/^category/i), "agriculture_irrigation");
 }
 
 const submit = () => screen.getByRole("button", { name: "Save draft" });
@@ -25,13 +27,18 @@ const submit = () => screen.getByRole("button", { name: "Save draft" });
 describe("KnowledgeDraftForm", () => {
   beforeEach(() => {
     mockCreateKnowledge.mockReset();
+    mockGetKnowledgeTaxonomy.mockReset();
+    mockGetKnowledgeTaxonomy.mockResolvedValue({ categories: [{ slug: "agriculture_irrigation", displayName: "Agriculture and irrigation" }, { slug: "other", displayName: "Other water knowledge" }], topics: [{ slug: "rainwater_harvesting", displayName: "Rainwater harvesting" }, { slug: "efficient_irrigation", displayName: "Efficient irrigation" }] });
     mockUseAuth.mockReturnValue({ status: "authenticated" });
   });
 
-  it("idle: renders labelled title/body fields and an enabled submit, with no region field", () => {
+  it("idle: renders labelled title/body/taxonomy fields and no region field", async () => {
     render(<KnowledgeDraftForm />);
+    await screen.findByRole("option", { name: "Agriculture and irrigation" });
     expect(screen.getByLabelText(/^title/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^body/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^category/i)).toBeInTheDocument();
+    expect(screen.getByText(/Topics \(optional\)/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/region/i)).not.toBeInTheDocument();
     expect(submit()).toBeEnabled();
   });
@@ -54,7 +61,7 @@ describe("KnowledgeDraftForm", () => {
     await fill(user);
     await user.click(submit());
     expect(mockCreateKnowledge).toHaveBeenCalledTimes(1);
-    expect(mockCreateKnowledge).toHaveBeenCalledWith({ title: "Drip irrigation", body: "Steps to set it up" });
+    expect(mockCreateKnowledge).toHaveBeenCalledWith({ title: "Drip irrigation", body: "Steps to set it up", category: "agriculture_irrigation" });
     expect(await screen.findByText("Draft saved")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(/not been submitted for review/i);
     await user.click(screen.getByRole("button", { name: "Write another" }));

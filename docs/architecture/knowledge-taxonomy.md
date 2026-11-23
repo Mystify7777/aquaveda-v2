@@ -138,6 +138,16 @@ an opaque model or LLM decision. The audit report exposes fallback Category
 usage, proposed assignments, rewrites, and unresolved taxonomy identities
 before mutation.
 
+## Authoring validation (#231)
+
+- Create requires exactly one ACTIVE canonical Category slug.
+- Topic assignments are optional; each supplied value must be an ACTIVE canonical Topic slug. Duplicate Topic slugs are removed deterministically while preserving first-selected order.
+- Revise remains partial. Supplied Category/Topic values use the same ACTIVE canonical validation as create. A rejected legacy record without an ACTIVE Category must receive one before returning to draft.
+- Unknown and retired identities cannot be assigned through authoring. Historical values remain renderable; the separate #230 data migration is not run by this issue.
+- `region` remains a free-form display value. `regionKey` is never accepted from a caller; create and revise derive it server-side from the effective display Region through `region-normalization.js`.
+- Author, lifecycle status, and review history remain server-owned. Existing submit, approve, and reject moderation transitions are unchanged.
+- Public read-only `GET /api/v1/knowledge/taxonomy` exposes ACTIVE `slug`/`displayName` pairs from the backend registry. The draft form consumes this endpoint rather than maintaining a second vocabulary.
+
 ## Region boundary
 
 Region is not a Category or Topic. The existing single free-form

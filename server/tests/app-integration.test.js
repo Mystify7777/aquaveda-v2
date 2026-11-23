@@ -185,7 +185,7 @@ describe("full app router mounting (Phase 7)", () => {
   it("reaches knowledgeRouter through the fully-assembled app", async () => {
     const res = await request("POST", "/api/v1/knowledge", {
       headers: { Origin: ALLOWED_ORIGIN },
-      body: { title: "x", body: "y" },
+      body: { title: "x", body: "y", category: "other" },
     });
     assert.equal(res.status, 401);
     assert.equal(res.json.code, "UNAUTHORIZED");

@@ -28,7 +28,7 @@ async function makeIssue() {
 }
 
 async function makeKnowledge() {
-  return createKnowledge(fakeActor("USER"), { title: "t", body: "b" });
+  return createKnowledge(fakeActor("USER"), { title: "t", body: "b", category: "other" });
 }
 
 describe("comment.service — createComment", () => {
@@ -330,7 +330,7 @@ describe("getCommentThread (Issue #48 — public read)", () => {
 
   it("REGRESSION (Issue #48 review): a WIKI thread on a pending_review Knowledge article is not publicly readable", async () => {
     const author = fakeActor("USER");
-    const pending = await createKnowledge(author, { title: "t", body: "b" });
+    const pending = await createKnowledge(author, { title: "t", body: "b", category: "other" });
     await submitForReview(author, pending._id);
     await createComment(author, {
       refType: "WIKI",
@@ -347,7 +347,7 @@ describe("getCommentThread (Issue #48 — public read)", () => {
   it("REGRESSION (Issue #48 review): a WIKI thread on a rejected Knowledge article is not publicly readable", async () => {
     const author = fakeActor("USER");
     const expert = fakeActor("EXPERT");
-    const rejected = await createKnowledge(author, { title: "t", body: "b" });
+    const rejected = await createKnowledge(author, { title: "t", body: "b", category: "other" });
     await submitForReview(author, rejected._id);
     await reject(expert, rejected._id, "needs work");
     await createComment(author, {
@@ -365,7 +365,7 @@ describe("getCommentThread (Issue #48 — public read)", () => {
   it("REGRESSION (Issue #48 review): a WIKI thread on an approved Knowledge article IS publicly readable", async () => {
     const author = fakeActor("USER");
     const expert = fakeActor("EXPERT");
-    const approved = await createKnowledge(author, { title: "t", body: "b" });
+    const approved = await createKnowledge(author, { title: "t", body: "b", category: "other" });
     await submitForReview(author, approved._id);
     await approve(expert, approved._id);
     await createComment(author, {

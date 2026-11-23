@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/client";
-import { createKnowledge } from "@/lib/api/knowledge";
+import { createKnowledge, getKnowledgeTaxonomy } from "@/lib/api/knowledge";
 import { KnowledgeFormField as Field } from "@/components/knowledge/knowledge-form-field";
 import { KnowledgeSubmitAction } from "@/components/knowledge/knowledge-submit-action";
-import type { CreatedKnowledgeDraft, KnowledgeLifecycleResult } from "@/lib/api/types/knowledge";
+import type { CreatedKnowledgeDraft, KnowledgeLifecycleResult, KnowledgeTaxonomy } from "@/lib/api/types/knowledge";
 import {
   EMPTY_KNOWLEDGE_DRAFT,
   validateKnowledgeDraft,
@@ -55,7 +55,7 @@ function toFailure(error: unknown): SubmitFailure {
   return { kind: "failure", message: "We could not save your draft. Try again." };
 }
 
-const FIELD_ORDER: KnowledgeDraftField[] = ["title", "body"];
+const FIELD_ORDER: KnowledgeDraftField[] = ["title", "body", "category"];
 
 /**
  * Draft creation only. Auth gating is the route's job ((protected) layout →
@@ -68,6 +68,9 @@ export function KnowledgeDraftForm() {
   const [pending, setPending] = React.useState(false);
   const [created, setCreated] = React.useState<CreatedKnowledgeDraft | null>(null);
   const [submitted, setSubmitted] = React.useState<KnowledgeLifecycleResult | null>(null);
+  const [taxonomy, setTaxonomy] = React.useState<KnowledgeTaxonomy | null>(null);
+  const [taxonomyLoading, setTaxonomyLoading] = React.useState(true);
+  const [taxonomyFailed, setTaxonomyFailed] = React.useState(false);
 
   // Ref guard: `pending` state lags a render, so rapid double submits could both pass a state check.
   const inFlight = React.useRef(false);
@@ -75,8 +78,23 @@ export function KnowledgeDraftForm() {
   const successRef = React.useRef<HTMLHeadingElement>(null);
 
   React.useEffect(() => {
+    let active = true;
+    getKnowledgeTaxonomy()
+      .then((result) => { if (active) { setTaxonomy(result); setTaxonomyFailed(false); } })
+      .catch(() => { if (active) setTaxonomyFailed(true); })
+      .finally(() => { if (active) setTaxonomyLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  React.useEffect(() => {
     if (created) successRef.current?.focus();
   }, [created]);
+
+  function retryTaxonomy() {
+    setTaxonomyLoading(true);
+    setTaxonomyFailed(false);
+    getKnowledgeTaxonomy().then(setTaxonomy).catch(() => setTaxonomyFailed(true)).finally(() => setTaxonomyLoading(false));
+  }
 
   function setField(field: KnowledgeDraftField, value: string) {
     setValues((v) => ({ ...v, [field]: value }));
@@ -88,6 +106,7 @@ export function KnowledgeDraftForm() {
     if (inFlight.current) return;
 
     setFailure(null);
+    if (!taxonomy || taxonomyLoading || taxonomyFailed) return;
     const result = validateKnowledgeDraft(values);
     if (!result.ok) {
       setFieldErrors(result.errors);
@@ -160,7 +179,9 @@ export function KnowledgeDraftForm() {
         </div>
       )}
 
-      <fieldset disabled={pending} className="space-y-4">
+      {taxonomyLoading && <p role="status" className="text-muted-foreground text-sm">Loading Category and Topic options…</p>}
+      {taxonomyFailed && <div role="alert" className="space-y-2 text-sm"><p>Category and Topic options could not be loaded. Retry before saving.</p><Button type="button" variant="outline" size="sm" onClick={retryTaxonomy}>Retry taxonomy load</Button></div>}
+      <fieldset disabled={pending || taxonomyLoading || taxonomyFailed || !taxonomy} className="space-y-4">
         <Field id="draft-title" label="Title" error={fieldErrors.title}>
           <Input
             id="draft-title"
@@ -175,6 +196,18 @@ export function KnowledgeDraftForm() {
           />
         </Field>
 
+        <Field id="draft-category" label="Category" error={fieldErrors.category}>
+          <select id="draft-category" value={values.category} onChange={(event) => setField("category", event.target.value)} aria-invalid={!!fieldErrors.category} aria-describedby={fieldErrors.category ? "draft-category-error" : undefined} aria-required="true" className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm">
+            <option value="">Choose a Category</option>
+            {taxonomy?.categories.map((term) => <option key={term.slug} value={term.slug}>{term.displayName}</option>)}
+          </select>
+        </Field>
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Topics (optional)</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {taxonomy?.topics.map((term) => <label key={term.slug} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={values.topics.includes(term.slug)} onChange={(event) => setValues((current) => ({...current, topics: event.target.checked ? [...current.topics, term.slug] : current.topics.filter((slug) => slug !== term.slug)}))} />{term.displayName}</label>)}
+          </div>
+        </fieldset>
         <Field id="draft-body" label="Body" error={fieldErrors.body}>
           <Textarea
             id="draft-body"
@@ -191,7 +224,7 @@ export function KnowledgeDraftForm() {
         </Field>
       </fieldset>
 
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button type="submit" className="w-full" disabled={pending || taxonomyLoading || taxonomyFailed || !taxonomy}>
         {pending ? "Saving..." : "Save draft"}
       </Button>
     </form>

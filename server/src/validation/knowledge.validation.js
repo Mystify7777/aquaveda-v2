@@ -4,13 +4,11 @@ import { paginationQuerySchema } from "./shared/pagination.js";
 import { getAssignableCategory, getAssignableTopic } from "../domain/knowledge-taxonomy.js";
 
 /**
- * Knowledge request-shape validation.
+ * Knowledge authoring validation.
  *
- * `createKnowledgeSchema` covers both draft creation and revision after
- * rejection (ADR-0004: `rejected -> draft` reuses the same entity and the
- * same content shape — there is no separate "revision" DTO because the
- * domain doesn't have a separate revision entity, see ADR-0005 §2's
- * rejection of a Submission/Version concept).
+ * Create requires one ACTIVE canonical Category. Revision remains partial,
+ * but supplied taxonomy fields use the same ACTIVE canonical checks.
+ * Services enforce the same rules for non-HTTP callers.
  */
 function activeCanonicalCategory(value) {
   const term = getAssignableCategory(value);

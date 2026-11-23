@@ -10,6 +10,7 @@ import { User } from "../src/models/User.js";
 import { register } from "../src/services/auth.service.js";
 import { setupTestDb, teardownTestDb, clearCollections } from "./helpers/testDb.js";
 import { promoteToExpertViaLifecycle } from "./helpers/expert.js";
+import { getActiveCategories, getActiveTopics } from "../src/domain/knowledge-taxonomy.js";
 
 /**
  * Focused HTTP tests for knowledge.routes.js.
@@ -110,12 +111,21 @@ async function makeDraft(accessToken) {
   return res.json.data;
 }
 
+describe("GET /api/v1/knowledge/taxonomy", () => {
+  it("returns only backend ACTIVE taxonomy terms", async () => {
+    const res = await request("GET", "/api/v1/knowledge/taxonomy");
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json.data.categories, getActiveCategories().map(({ slug, displayName }) => ({ slug, displayName })));
+    assert.deepEqual(res.json.data.topics, getActiveTopics().map(({ slug, displayName }) => ({ slug, displayName })));
+  });
+});
+
 describe("POST /api/v1/knowledge", () => {
   it("201s and returns the created draft in the complete canonical envelope (ROUTE-L6)", async () => {
     const { accessToken } = await makeAuthedUser("USER");
     const res = await request("POST", "/api/v1/knowledge", {
       cookies: authCookie(accessToken),
-      body: { title: "Drip irrigation basics", body: "How to set up drip irrigation." },
+      body: { title: "Drip irrigation basics", body: "How to set up drip irrigation.", category: "agriculture_irrigation" },
     });
 
     assert.equal(res.status, 201);
@@ -166,7 +176,7 @@ describe("POST /api/v1/knowledge", () => {
 
   it("401s for an anonymous request", async () => {
     const res = await request("POST", "/api/v1/knowledge", {
-      body: { title: "x", body: "y" },
+      body: { title: "x", body: "y", category: "other" },
     });
     assert.equal(res.status, 401);
     assert.equal(res.json.code, "UNAUTHORIZED");
