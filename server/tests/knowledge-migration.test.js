@@ -8,6 +8,7 @@ import {
   MIGRATION_TOPIC_RULES,
   PERSISTED_CATEGORY_REWRITES,
   PERSISTED_TOPIC_REWRITES,
+  validatePersistedRewriteMap,
 } from "../src/domain/knowledge-migration.js";
 
 test("migration classification is deterministic and produces valid taxonomy identities", () => {
@@ -127,21 +128,76 @@ test("migration rewrites explicitly mapped persisted identities and remains idem
   assert.deepEqual(PERSISTED_CATEGORY_REWRITES, {});
   assert.deepEqual(PERSISTED_TOPIC_REWRITES, {});
 
-  const result = buildKnowledgeMigrationPatch({
-    category: null,
-    topics: null,
-    region: "Bihar",
-    regionKey: null,
-    title: "Water supply",
-    body: "Piped water distribution",
-  });
+  const rewriteOptions = {
+    categoryRewrites: { legacy_quality: "water_quality" },
+    topicRewrites: { legacy_treatment: "water_treatment" },
+  };
 
-  assert.equal(result.rewrites.length, 0);
+  const result = buildKnowledgeMigrationPatch(
+    {
+      category: "legacy_quality",
+      topics: ["legacy_treatment", "water_quality_monitoring"],
+      region: "Bihar",
+      regionKey: null,
+      title: "Water treatment",
+      body: "Filtration",
+    },
+    rewriteOptions,
+  );
+
   assert.deepEqual(result.set, {
-    category: "water_supply",
-    topics: ["water_distribution_networks"],
+    category: "water_quality",
+    topics: ["water_treatment", "water_quality_monitoring"],
     regionKey: "bihar",
   });
+  assert.deepEqual(result.rewrites, [
+    { field: "category", from: "legacy_quality", to: "water_quality" },
+    { field: "topics", from: "legacy_treatment", to: "water_treatment" },
+  ]);
+  assert.deepEqual(result.issues, []);
+
+  const rerun = buildKnowledgeMigrationPatch(
+    {
+      category: "water_quality",
+      topics: ["water_treatment", "water_quality_monitoring"],
+      region: "Bihar",
+      regionKey: "bihar",
+      title: "Water treatment",
+      body: "Filtration",
+    },
+    rewriteOptions,
+  );
+
+  assert.deepEqual(rerun.set, {});
+  assert.deepEqual(rerun.rewrites, []);
+  assert.deepEqual(rerun.issues, []);
+});
+
+test("persisted rewrite validation rejects inactive targets, active sources, and chains", () => {
+  assert.throws(
+    () => validatePersistedRewriteMap(
+      { legacy: "missing" },
+      new Set(["water_quality"]),
+      "Category",
+    ),
+    /target is not ACTIVE/,
+  );
+  assert.throws(
+    () => validatePersistedRewriteMap(
+      { water_quality: "other" },
+      new Set(["water_quality", "other"]),
+      "Category",
+    ),
+    /cannot be a rewrite source/,
+  );
+  assert.throws(
+    () => validatePersistedRewriteMap(
+      { legacy: "middle", middle: "water_quality" },
+      new Set(["water_quality"]),
+      "Category",
+    ),
+    /chain\/cycle/,
+  );
 });
 
 test("rewrite registry is explicit source-controlled infrastructure", () => {

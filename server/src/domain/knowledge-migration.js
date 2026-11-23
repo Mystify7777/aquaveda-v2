@@ -52,7 +52,7 @@ const activeTopicSlugs = new Set(
   KNOWLEDGE_TOPICS.filter((term) => term.status === "ACTIVE").map((term) => term.slug),
 );
 
-function validateRewriteMap(rewrites, activeSlugs, kind) {
+export function validatePersistedRewriteMap(rewrites, activeSlugs, kind) {
   for (const [source, target] of Object.entries(rewrites)) {
     if (!source || !target || source === target) {
       throw new Error(`Invalid ${kind} persisted rewrite: ${source} -> ${target}`);
@@ -69,8 +69,8 @@ function validateRewriteMap(rewrites, activeSlugs, kind) {
   }
 }
 
-validateRewriteMap(PERSISTED_CATEGORY_REWRITES, activeCategorySlugs, "Category");
-validateRewriteMap(PERSISTED_TOPIC_REWRITES, activeTopicSlugs, "Topic");
+validatePersistedRewriteMap(PERSISTED_CATEGORY_REWRITES, activeCategorySlugs, "Category");
+validatePersistedRewriteMap(PERSISTED_TOPIC_REWRITES, activeTopicSlugs, "Topic");
 
 function scoreText(text, terms) {
   return terms.reduce((score, term) => score + (text.includes(term) ? 1 : 0), 0);
@@ -114,7 +114,13 @@ function rewritePersistedSlug(value, rewrites) {
     : value;
 }
 
-export function buildKnowledgeMigrationPatch(document) {
+export function buildKnowledgeMigrationPatch(
+  document,
+  {
+    categoryRewrites = PERSISTED_CATEGORY_REWRITES,
+    topicRewrites = PERSISTED_TOPIC_REWRITES,
+  } = {},
+) {
   const classification = classifyKnowledgeDocument(document);
   const set = {};
   const issues = [];
@@ -123,7 +129,7 @@ export function buildKnowledgeMigrationPatch(document) {
   if (document.category == null) {
     set.category = classification.category;
   } else if (!activeCategorySlugs.has(document.category)) {
-    const replacement = rewritePersistedSlug(document.category, PERSISTED_CATEGORY_REWRITES);
+    const replacement = rewritePersistedSlug(document.category, categoryRewrites);
 
     if (replacement !== document.category) {
       set.category = replacement;
@@ -149,7 +155,7 @@ export function buildKnowledgeMigrationPatch(document) {
         continue;
       }
 
-      const replacement = rewritePersistedSlug(slug, PERSISTED_TOPIC_REWRITES);
+      const replacement = rewritePersistedSlug(slug, topicRewrites);
       if (replacement !== slug) {
         rewrittenTopics.push(replacement);
         rewrites.push({
