@@ -87,6 +87,36 @@ Resolvers accept strings only. Null, undefined, non-string, and blank values
 return `null`. Unknown values are not fuzzy-matched and are not silently
 accepted.
 
+## Migration contract (#230)
+
+Existing Knowledge records are backfilled by the migration script
+`server/scripts/migrate-knowledge-taxonomy.js`.
+
+- Category/Topic classification is deterministic and source-controlled in
+  `server/src/domain/knowledge-migration.js`.
+- Every legacy record receives a valid Category; records with no narrower
+  signal use the canonical `other` Category rather than remaining
+  unclassified.
+- Topic assignment is zero-or-more and is derived from explicit content
+  signals. No Topic is invented from geography.
+- Existing valid Category/Topic values are never overwritten.
+- Existing unknown/retired values are reported rather than silently rewritten.
+  A semantic taxonomy rewrite requires an explicit reviewed migration.
+- Region display text is never modified. `regionKey` is generated only when
+  missing through the shared ADR-0011 normalization utility.
+- Blank Region values are reported separately. Non-blank normalized Region
+  keys remain distinct unless a reviewed explicit alias exists.
+- The migration uses native MongoDB updates that set only the new metadata
+  fields, so lifecycle state, author, timestamps, and review history are not
+  touched.
+- The command is dry-run by default; `--apply` is required for mutation.
+- Re-running the migration is idempotent because populated metadata is not
+  overwritten.
+
+The classification rules are intentionally reviewable source code rather than
+an opaque model or LLM decision. Migration output reports fallback Category
+usage and unresolved Region keys before mutation.
+
 ## Region boundary
 
 Region is not a Category or Topic. The existing single free-form
