@@ -105,7 +105,7 @@ function authCookie(accessToken) {
 async function makeDraft(accessToken) {
   const res = await request("POST", "/api/v1/knowledge", {
     cookies: authCookie(accessToken),
-    body: { title: "Drip irrigation basics", body: "How to set up drip irrigation." },
+    body: { title: "Drip irrigation basics", body: "How to set up drip irrigation.", category: "agriculture_irrigation" },
   });
   return res.json.data;
 }
@@ -130,11 +130,38 @@ describe("POST /api/v1/knowledge", () => {
     const { accessToken } = await makeAuthedUser("USER");
     const res = await request("POST", "/api/v1/knowledge", {
       cookies: authCookie(accessToken),
-      body: { title: "Drip irrigation basics" },
+      body: { title: "Drip irrigation basics", category: "agriculture_irrigation" },
     });
 
     assert.equal(res.status, 400);
     assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("400s for missing, unknown, or non-canonical taxonomy values", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    for (const body of [
+      { title: "x", body: "y" },
+      { title: "x", body: "y", category: "unknown" },
+      { title: "x", body: "y", category: "water quality" },
+      { title: "x", body: "y", category: "other", topics: ["retired-topic"] },
+    ]) {
+      const res = await request("POST", "/api/v1/knowledge", {
+        cookies: authCookie(accessToken), body,
+      });
+      assert.equal(res.status, 400);
+      assert.equal(res.json.code, "VALIDATION_FAILED");
+    }
+  });
+
+  it("400s when callers attempt to provide lifecycle, authorship, history, or regionKey fields", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    for (const field of ["status", "author", "reviewHistory", "regionKey"]) {
+      const res = await request("POST", "/api/v1/knowledge", {
+        cookies: authCookie(accessToken),
+        body: { title: "x", body: "y", category: "other", [field]: "attacker" },
+      });
+      assert.equal(res.status, 400, field);
+    }
   });
 
   it("401s for an anonymous request", async () => {
@@ -324,6 +351,39 @@ describe("POST /api/v1/knowledge/:knowledgeId/revise", () => {
     assert.equal(res.status, 200);
     assert.equal(res.json.data.title, "Drip irrigation basics, revised");
     assert.equal(res.json.data.status, "draft");
+  });
+
+  it("validates taxonomy on revise and rejects attempted lifecycle changes", async () => {
+    const author = await makeAuthedUser("USER");
+    const expert = await makeAuthedUser("EXPERT");
+    const draft = await makeDraft(author.accessToken);
+    await request("POST", `/api/v1/knowledge/${draft._id}/submit`, { cookies: authCookie(author.accessToken) });
+    await request("POST", `/api/v1/knowledge/${draft._id}/reject`, { cookies: authCookie(expert.accessToken), body: { feedback: "needs work" } });
+
+    for (const body of [
+      { category: "retired-category" },
+      { topics: ["retired-topic"] },
+      { status: "approved" },
+      { author: "507f1f77bcf86cd799439011" },
+      { reviewHistory: [] },
+      { regionKey: "spoofed" },
+    ]) {
+      const res = await request("POST", `/api/v1/knowledge/${draft._id}/revise`, {
+        cookies: authCookie(author.accessToken), body,
+      });
+      assert.equal(res.status, 400);
+      assert.equal(res.json.code, "VALIDATION_FAILED");
+    }
+
+    const success = await request("POST", `/api/v1/knowledge/${draft._id}/revise`, {
+      cookies: authCookie(author.accessToken),
+      body: { category: "water_quality", topics: ["water_treatment", "water_treatment"], region: "  Bihar  " },
+    });
+    assert.equal(success.status, 200);
+    assert.equal(success.json.data.category, "water_quality");
+    assert.deepEqual(success.json.data.topics, ["water_treatment"]);
+    assert.equal(success.json.data.region, "  Bihar  ");
+    assert.equal(success.json.data.regionKey, "bihar");
   });
 
   it("409s with INVALID_STATE when the Knowledge is not in rejected status", async () => {

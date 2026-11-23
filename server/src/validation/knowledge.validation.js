@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { paginationQuerySchema } from "./shared/pagination.js";
+import { getAssignableCategory, getAssignableTopic } from "../domain/knowledge-taxonomy.js";
 
 /**
  * Knowledge request-shape validation.
@@ -11,14 +12,31 @@ import { paginationQuerySchema } from "./shared/pagination.js";
  * domain doesn't have a separate revision entity, see ADR-0005 §2's
  * rejection of a Submission/Version concept).
  */
+function activeCanonicalCategory(value) {
+  const term = getAssignableCategory(value);
+  return term !== null && term.slug === value;
+}
+
+function activeCanonicalTopic(value) {
+  const term = getAssignableTopic(value);
+  return term !== null && term.slug === value;
+}
+
+const categoryField = z.string().refine(
+  activeCanonicalCategory,
+  "category must be an ACTIVE canonical Category slug",
+);
+const topicListField = z.array(
+  z.string().refine(activeCanonicalTopic, "topics must contain ACTIVE canonical Topic slugs"),
+).optional();
+
 export const createKnowledgeSchema = z.object({
   title: z.string().trim().min(1, "title is required"),
   body: z.string().trim().min(1, "body is required"),
-  // region is a freeform tag (context.md: "region-based tagging"), not a
-  // structured/enumerated geo field — no approved document specifies a
-  // fixed region vocabulary.
-  region: z.string().trim().optional(),
-});
+  region: z.string().optional(),
+  category: categoryField,
+  topics: topicListField,
+}).strict();
 
 /**
  * Knowledge review-decision request shape.
@@ -103,8 +121,10 @@ export const rejectKnowledgeSchema = z.object({
 export const reviseKnowledgeSchema = z.object({
   title: z.string().trim().min(1, "title must not be empty if provided").optional(),
   body: z.string().trim().min(1, "body must not be empty if provided").optional(),
-  region: z.string().trim().optional(),
-});
+  region: z.string().optional(),
+  category: categoryField.optional(),
+  topics: topicListField,
+}).strict();
 
 /**
  * Public Knowledge list query shape (Issue #48).

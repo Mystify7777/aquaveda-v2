@@ -12,6 +12,8 @@ import {
 } from "./errors.js";
 import { requireActor, requireRole } from "./authorization.js";
 import { toWorkflowKnowledgeDTO, toWorkflowKnowledgeSummaryDTO } from "./knowledge.dto.js";
+import { getAssignableCategory, getAssignableTopic } from "../domain/knowledge-taxonomy.js";
+import { normalizeRegionKey } from "../domain/region-normalization.js";
 
 /**
  * Knowledge domain service.
@@ -33,6 +35,62 @@ function wrapMongooseValidationError(err) {
   return err;
 }
 
+function validationFailed(message, details = {}) {
+  return new DomainError(DomainErrorCode.VALIDATION_FAILED, message, details);
+}
+
+function normalizeAuthoringTaxonomy(payload, { requireCategory = false } = {}) {
+  const categoryProvided = Object.hasOwn(payload, "category");
+  const topicsProvided = Object.hasOwn(payload, "topics");
+
+  if (requireCategory && !categoryProvided) {
+    throw validationFailed("category is required");
+  }
+
+  let category;
+  if (categoryProvided) {
+    const resolved = getAssignableCategory(payload.category);
+    if (!resolved || resolved.slug !== payload.category) {
+      throw validationFailed("category must be an ACTIVE canonical Category slug");
+    }
+    category = resolved.slug;
+  }
+
+  let topics;
+  if (topicsProvided) {
+    if (!Array.isArray(payload.topics)) {
+      throw validationFailed("topics must be an array of ACTIVE canonical Topic slugs");
+    }
+
+    const normalized = [];
+    const seen = new Set();
+    for (const value of payload.topics) {
+      const resolved = getAssignableTopic(value);
+      if (!resolved || resolved.slug !== value) {
+        throw validationFailed("topics must contain only ACTIVE canonical Topic slugs");
+      }
+      if (!seen.has(resolved.slug)) {
+        seen.add(resolved.slug);
+        normalized.push(resolved.slug);
+      }
+    }
+    topics = normalized;
+  }
+
+  return {
+    ...(categoryProvided ? { category } : {}),
+    ...(topicsProvided ? { topics } : {}),
+  };
+}
+
+function buildRegionFields(region) {
+  const displayValue = typeof region === "string" ? region : "";
+  return {
+    region: displayValue,
+    regionKey: normalizeRegionKey(displayValue),
+  };
+}
+
 // Public-read attribution: name/role only. See issue.service.js's
 // identical constant for the full rationale.
 const PUBLIC_ACTOR_FIELDS = "_id name role";
@@ -40,17 +98,21 @@ const PUBLIC_ACTOR_FIELDS = "_id name role";
 /**
  * createKnowledge(actorContext, payload)
  *
- * payload: { title, body, region? } — never accepts status, author, or
- * reviewHistory from the caller.
+ * payload: { title, body, region?, category, topics? }.
+ * Lifecycle, author, review history, and regionKey are always server-owned.
  */
 export async function createKnowledge(actorContext, payload) {
   requireActor(actorContext);
+
+  const taxonomy = normalizeAuthoringTaxonomy(payload, { requireCategory: true });
+  const regionFields = buildRegionFields(payload.region);
 
   try {
     const knowledge = await Knowledge.create({
       title: payload.title,
       body: payload.body,
-      region: payload.region,
+      ...regionFields,
+      ...taxonomy,
       author: actorContext.id,
       status: "draft",
       reviewHistory: [],
@@ -299,16 +361,18 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
     );
   }
 
+  const taxonomy = normalizeAuthoringTaxonomy(updatedContent);
   const allowedFields = {};
-  if (updatedContent && typeof updatedContent.title === "string") {
+  if (typeof updatedContent?.title === "string") {
     allowedFields.title = updatedContent.title;
   }
-  if (updatedContent && typeof updatedContent.body === "string") {
+  if (typeof updatedContent?.body === "string") {
     allowedFields.body = updatedContent.body;
   }
-  if (updatedContent && typeof updatedContent.region === "string") {
-    allowedFields.region = updatedContent.region;
+  if (typeof updatedContent?.region === "string") {
+    Object.assign(allowedFields, buildRegionFields(updatedContent.region));
   }
+  Object.assign(allowedFields, taxonomy);
 
   const updated = await Knowledge.findOneAndUpdate(
     { _id: knowledgeId, status: "rejected" },

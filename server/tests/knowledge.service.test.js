@@ -29,6 +29,7 @@ async function makeDraft(author = fakeActor("USER")) {
   const knowledge = await createKnowledge(author, {
     title: "Drip irrigation basics",
     body: "How to set up a low-cost system",
+    category: "agriculture_irrigation",
   });
   return { knowledge, author };
 }
@@ -78,6 +79,54 @@ describe("knowledge.service — createKnowledge", () => {
     assert.equal(knowledge.reviewHistory.length, 0);
   });
 
+  it("requires exactly one active canonical Category", async () => {
+    const actor = fakeActor("USER");
+    await assert.rejects(
+      () => createKnowledge(actor, { title: "t", body: "b", category: "unknown" }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+    await assert.rejects(
+      () => createKnowledge(actor, { title: "t", body: "b" }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+
+  it("rejects non-canonical Category aliases and Topic values", async () => {
+    const actor = fakeActor("USER");
+    await assert.rejects(
+      () => createKnowledge(actor, { title: "t", body: "b", category: "water quality" }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+    await assert.rejects(
+      () => createKnowledge(actor, { title: "t", body: "b", category: "water_quality", topics: ["retired-topic"] }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+
+  it("accepts zero Topics and deterministically deduplicates active canonical Topics", async () => {
+    const actor = fakeActor("USER");
+    const withoutTopics = await createKnowledge(actor, {
+      title: "No topics", body: "Body", category: "other",
+    });
+    assert.deepEqual(withoutTopics.topics, []);
+
+    const withTopics = await createKnowledge(actor, {
+      title: "Rain", body: "Body", category: "water_conservation",
+      topics: ["rainwater_harvesting", "efficient_irrigation", "rainwater_harvesting"],
+    });
+    assert.deepEqual(withTopics.topics, ["rainwater_harvesting", "efficient_irrigation"]);
+  });
+
+  it("normalizes Region matching keys server-side while preserving display text and ignores supplied keys", async () => {
+    const actor = fakeActor("USER");
+    const region = "  BIHAR  ";
+    const knowledge = await createKnowledge(actor, {
+      title: "t", body: "b", category: "other", region, regionKey: "attacker-value",
+    });
+    assert.equal(knowledge.region, region);
+    assert.equal(knowledge.regionKey, "bihar");
+  });
+
   it("ignores caller-supplied status/reviewHistory/author", async () => {
     const actor = fakeActor("USER");
     const other = fakeObjectId();
@@ -87,6 +136,7 @@ describe("knowledge.service — createKnowledge", () => {
       status: "approved",
       author: other,
       reviewHistory: [{ decision: "approved", reviewer: other }],
+      category: "other",
     });
     assert.equal(knowledge.status, "draft");
     assert.equal(String(knowledge.author), actor.id);
@@ -237,6 +287,33 @@ describe("knowledge.service — revise", () => {
     assert.equal(revised.body, "Improved body");
   });
 
+  it("revision validates Category and Topics with the same active-term rules and deduplicates", async () => {
+    const { knowledge, author } = await makeRejected();
+    await assert.rejects(
+      () => revise(author, knowledge._id, { category: "unknown" }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+    await assert.rejects(
+      () => revise(author, knowledge._id, { topics: ["retired-topic"] }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+
+    const revised = await revise(author, knowledge._id, {
+      category: "water_quality",
+      topics: ["water_treatment", "water_treatment", "water_quality_monitoring"],
+    });
+    assert.equal(revised.category, "water_quality");
+    assert.deepEqual(revised.topics, ["water_treatment", "water_quality_monitoring"]);
+  });
+
+  it("revision regenerates regionKey from the updated display Region", async () => {
+    const { knowledge, author } = await makeRejected();
+    const region = "  Bihar  ";
+    const revised = await revise(author, knowledge._id, { region, regionKey: "spoofed" });
+    assert.equal(revised.region, region);
+    assert.equal(revised.regionKey, "bihar");
+  });
+
   it("revise does NOT append a reviewHistory entry", async () => {
     const { knowledge, author } = await makeRejected();
     const revised = await revise(author, knowledge._id, { title: "t2" });
@@ -271,6 +348,7 @@ describe("knowledge.service — revise", () => {
     const revised = await revise(author, knowledge._id, {
       title: "t",
       author: intruder,
+      category: "other",
     });
     assert.equal(String(revised.author), author.id);
   });
