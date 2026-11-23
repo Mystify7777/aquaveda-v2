@@ -574,7 +574,8 @@ check("8c. Knowledge has exactly the expected top-level fields", () => {
 check("8c-1. Knowledge.category is an optional string for legacy migration compatibility", () => {
   const path = Knowledge.schema.path("category");
   assert.equal(path.instance, "String");
-  assert.equal(path.isRequired, false);
+  assert.equal(path.isRequired, undefined);
+  assert.equal(path.options.required, undefined);
   assert.equal(path.options.default, undefined);
 });
 
