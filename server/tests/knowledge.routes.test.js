@@ -105,7 +105,12 @@ function authCookie(accessToken) {
 async function makeDraft(accessToken) {
   const res = await request("POST", "/api/v1/knowledge", {
     cookies: authCookie(accessToken),
-    body: { title: "Drip irrigation basics", body: "How to set up drip irrigation.", category: "agriculture_irrigation", topics: ["efficient_irrigation"] },
+    body: {
+        title: "Drip irrigation basics",
+        body: "How to set up drip irrigation.",
+        category: "agriculture_irrigation",
+        topics: ["efficient_irrigation"],
+      },
   });
   return res.json.data;
 }
@@ -131,6 +136,33 @@ describe("POST /api/v1/knowledge", () => {
     const res = await request("POST", "/api/v1/knowledge", {
       cookies: authCookie(accessToken),
       body: { title: "Drip irrigation basics" },
+    });
+
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("400s with VALIDATION_FAILED when Category is missing", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    const res = await request("POST", "/api/v1/knowledge", {
+      cookies: authCookie(accessToken),
+      body: { title: "Drip irrigation basics", body: "How to set it up." },
+    });
+
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+
+  it("400s with VALIDATION_FAILED for a non-canonical Category", async () => {
+    const { accessToken } = await makeAuthedUser("USER");
+    const res = await request("POST", "/api/v1/knowledge", {
+      cookies: authCookie(accessToken),
+      body: {
+        title: "Drip irrigation basics",
+        body: "How to set it up.",
+        category: "water conservation",
+        topics: [],
+      },
     });
 
     assert.equal(res.status, 400);
