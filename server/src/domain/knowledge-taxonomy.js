@@ -1,18 +1,16 @@
 /**
  * Knowledge taxonomy contract (Issue #228 / ADR-0011).
  *
- * This module is the single backend source of truth for the V1 Category and
- * Topic vocabulary. Slugs are stable persisted/API identities. Display names
- * are presentation copy and may be corrected without changing the slug.
+ * One authoritative, source-controlled vocabulary for Category and Topic.
+ * Slugs are stable persisted identities; display names may be corrected.
+ * Region is a separate geographic dimension and is not represented here.
  *
- * Category is exactly one primary subject area per article.
- * Topics are reusable secondary concepts and may be assigned zero or more.
+ * API responsibilities are deliberately distinct:
+ * - getCategory/getTopic resolve ACTIVE and RETIRED terms for rendering.
+ * - getAssignableCategory/getAssignableTopic resolve ACTIVE terms only.
+ * - getActiveCategories/getActiveTopics supply selectable metadata/filter terms.
  *
- * Region is deliberately excluded: it is a separate free-form geographic
- * dimension governed by ADR-0011 and its own normalization utility.
- *
- * Taxonomy changes are source-controlled. Do not add runtime taxonomy
- * mutation endpoints or a database taxonomy collection.
+ * No fuzzy matching, runtime vocabulary mutation, or taxonomy collection.
  */
 
 const ACTIVE = "ACTIVE";
@@ -20,14 +18,6 @@ const RETIRED = "RETIRED";
 
 export const TAXONOMY_STATUSES = Object.freeze([ACTIVE, RETIRED]);
 
-/**
- * Initial V1 vocabulary is intentionally small.
- *
- * The broad categories are derived from AquaVeda's existing water-domain
- * vocabulary and the original SIH knowledge scope. Topics retain the more
- * specific concepts already represented by the product's Expert taxonomy and
- * SIH problem statement.
- */
 export const KNOWLEDGE_CATEGORIES = Object.freeze([
   Object.freeze({ slug: "water_conservation", displayName: "Water conservation", status: ACTIVE }),
   Object.freeze({ slug: "water_supply", displayName: "Water supply and distribution", status: ACTIVE }),
@@ -52,55 +42,99 @@ export const KNOWLEDGE_TOPICS = Object.freeze([
   Object.freeze({ slug: "wastewater_reuse", displayName: "Wastewater reuse", status: ACTIVE }),
   Object.freeze({ slug: "sanitation", displayName: "Sanitation", status: ACTIVE }),
   Object.freeze({ slug: "stormwater_management", displayName: "Stormwater management", status: ACTIVE }),
-  Object.freeze({ slug: "water_supply_distribution", displayName: "Water supply and distribution", status: ACTIVE }),
-  Object.freeze({ slug: "water_conservation", displayName: "Water conservation", status: ACTIVE }),
+  Object.freeze({ slug: "water_distribution_networks", displayName: "Water distribution networks", status: ACTIVE }),
   Object.freeze({ slug: "water_rights", displayName: "Water rights", status: ACTIVE }),
   Object.freeze({ slug: "community_water_management", displayName: "Community water management", status: ACTIVE }),
   Object.freeze({ slug: "drought_management", displayName: "Drought management", status: ACTIVE }),
 ]);
 
 /**
- * Explicit human-readable legacy/synonym spellings map to stable canonical
- * slugs. Canonical slugs resolve to themselves.
+ * Retired records remain in the source registry forever (or until an explicit,
+ * reviewed identity migration). They are resolvable for rendering only.
+ * This empty initial set is intentional: V1 starts with no retired terms.
  */
-export const TAXONOMY_ALIASES = Object.freeze({
+export const RETIRED_KNOWLEDGE_CATEGORIES = Object.freeze([]);
+export const RETIRED_KNOWLEDGE_TOPICS = Object.freeze([]);
+
+const ALL_CATEGORIES = Object.freeze([...KNOWLEDGE_CATEGORIES, ...RETIRED_KNOWLEDGE_CATEGORIES]);
+const ALL_TOPICS = Object.freeze([...KNOWLEDGE_TOPICS, ...RETIRED_KNOWLEDGE_TOPICS]);
+
+/**
+ * Alias maps are taxonomy-kind-specific. A Category alias can never resolve
+ * through the Topic resolver, even if a future slug is reused in both kinds.
+ *
+ * Keys are normalized human-readable aliases. Values must be canonical slugs
+ * from the corresponding registry. Canonical slugs resolve without aliases.
+ */
+export const CATEGORY_ALIASES = Object.freeze({
   "water saving": "water_conservation",
   "water-saving": "water_conservation",
   "water conservation": "water_conservation",
+  "water supply and distribution": "water_supply",
+  "water supply & distribution": "water_supply",
+  "water quality": "water_quality",
+  "ground water": "groundwater",
+  "waste water and sanitation": "wastewater_sanitation",
+  "agriculture and irrigation": "agriculture_irrigation",
+  "flooding and drainage": "flood_drainage",
+  "policy and governance": "water_governance",
+});
+
+export const TOPIC_ALIASES = Object.freeze({
   "rain water harvesting": "rainwater_harvesting",
   "rain-water harvesting": "rainwater_harvesting",
   "rainwater collection": "rainwater_harvesting",
-  "efficient water use": "water_conservation",
   "waste water reuse": "wastewater_reuse",
   "waste-water reuse": "wastewater_reuse",
-  "water supply & distribution": "water_supply_distribution",
   "ground water recharge": "groundwater_recharge",
   "ground-water recharge": "groundwater_recharge",
+  "water quality testing": "water_quality_monitoring",
+  "water treatment methods": "water_treatment",
+  "storm water management": "stormwater_management",
+  "drought response": "drought_management",
 });
 
-const CATEGORY_BY_SLUG = new Map(KNOWLEDGE_CATEGORIES.map((term) => [term.slug, term]));
-const TOPIC_BY_SLUG = new Map(KNOWLEDGE_TOPICS.map((term) => [term.slug, term]));
+const CATEGORY_BY_SLUG = new Map(ALL_CATEGORIES.map((term) => [term.slug, term]));
+const TOPIC_BY_SLUG = new Map(ALL_TOPICS.map((term) => [term.slug, term]));
 
 function normalizeAliasKey(value) {
-  return String(value)
-    .normalize("NFKC")
-    .trim()
-    .replace(/\s+/gu, " ")
-    .toLowerCase();
+  if (typeof value !== "string") return null;
+
+  const key = value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLowerCase();
+  return key.length > 0 ? key : null;
 }
 
-function resolveFromRegistry(registry, value) {
+function resolveFromRegistry(registry, aliases, value) {
   const key = normalizeAliasKey(value);
-  const canonicalSlug = TAXONOMY_ALIASES[key] ?? key;
+  if (key === null) return null;
+
+  const canonicalSlug = aliases[key] ?? key;
   return registry.get(canonicalSlug) ?? null;
 }
 
-export function getCategory(slugOrAlias) {
-  return resolveFromRegistry(CATEGORY_BY_SLUG, slugOrAlias);
+function resolveAssignable(registry, aliases, value) {
+  const term = resolveFromRegistry(registry, aliases, value);
+  return term?.status === ACTIVE ? term : null;
 }
 
+/** Resolve active or retired Category identity for rendering. */
+export function getCategory(slugOrAlias) {
+  return resolveFromRegistry(CATEGORY_BY_SLUG, CATEGORY_ALIASES, slugOrAlias);
+}
+
+/** Resolve active or retired Topic identity for rendering. */
 export function getTopic(slugOrAlias) {
-  return resolveFromRegistry(TOPIC_BY_SLUG, slugOrAlias);
+  return resolveFromRegistry(TOPIC_BY_SLUG, TOPIC_ALIASES, slugOrAlias);
+}
+
+/** Resolve only an ACTIVE Category, safe for new/revised article assignment. */
+export function getAssignableCategory(slugOrAlias) {
+  return resolveAssignable(CATEGORY_BY_SLUG, CATEGORY_ALIASES, slugOrAlias);
+}
+
+/** Resolve only an ACTIVE Topic, safe for new/revised article assignment. */
+export function getAssignableTopic(slugOrAlias) {
+  return resolveAssignable(TOPIC_BY_SLUG, TOPIC_ALIASES, slugOrAlias);
 }
 
 export function isActiveTaxonomyTerm(term) {
@@ -116,13 +150,19 @@ export function getActiveTopics() {
 }
 
 export function isActiveCategory(slugOrAlias) {
-  return isActiveTaxonomyTerm(getCategory(slugOrAlias));
+  return getAssignableCategory(slugOrAlias) !== null;
 }
 
 export function isActiveTopic(slugOrAlias) {
-  return isActiveTaxonomyTerm(getTopic(slugOrAlias));
+  return getAssignableTopic(slugOrAlias) !== null;
 }
 
-export function getRetiredTaxonomyTerms(terms) {
-  return terms.filter((term) => term?.status === RETIRED);
+/** Return the canonical display name for any known Category identity. */
+export function getCategoryDisplayName(slugOrAlias) {
+  return getCategory(slugOrAlias)?.displayName ?? null;
+}
+
+/** Return the canonical display name for any known Topic identity. */
+export function getTopicDisplayName(slugOrAlias) {
+  return getTopic(slugOrAlias)?.displayName ?? null;
 }
