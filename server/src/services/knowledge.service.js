@@ -11,6 +11,8 @@ import {
   DomainErrorCode,
 } from "./errors.js";
 import { requireActor, requireRole } from "./authorization.js";
+import { getAssignableCategory, getAssignableTopic } from "../domain/knowledge-taxonomy.js";
+import { normalizeRegionKey } from "../domain/region-normalization.js";
 import { toWorkflowKnowledgeDTO, toWorkflowKnowledgeSummaryDTO } from "./knowledge.dto.js";
 
 /**
@@ -46,11 +48,44 @@ const PUBLIC_ACTOR_FIELDS = "_id name role";
 export async function createKnowledge(actorContext, payload) {
   requireActor(actorContext);
 
+  const category = getAssignableCategory(payload?.category);
+  if (!category) {
+    throw new DomainError(
+      DomainErrorCode.VALIDATION_FAILED,
+      "category must be an active canonical taxonomy value",
+      { field: "category" },
+    );
+  }
+
+  const rawTopics = Array.isArray(payload?.topics) ? payload.topics : [];
+  const topics = [];
+  const seenTopics = new Set();
+  for (const rawTopic of rawTopics) {
+    const topic = getAssignableTopic(rawTopic);
+    if (!topic) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        "topics must contain only active canonical taxonomy values",
+        { field: "topics", value: rawTopic },
+      );
+    }
+    if (!seenTopics.has(topic.slug)) {
+      seenTopics.add(topic.slug);
+      topics.push(topic.slug);
+    }
+  }
+
+  const region = typeof payload?.region === "string" ? payload.region : "";
+  const regionKey = normalizeRegionKey(region);
+
   try {
     const knowledge = await Knowledge.create({
       title: payload.title,
       body: payload.body,
-      region: payload.region,
+      region,
+      regionKey,
+      category: category.slug,
+      topics,
       author: actorContext.id,
       status: "draft",
       reviewHistory: [],
@@ -299,19 +334,82 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
     );
   }
 
+  const content = updatedContent ?? {};
   const allowedFields = {};
-  if (updatedContent && typeof updatedContent.title === "string") {
-    allowedFields.title = updatedContent.title;
+
+  if (typeof content.title === "string") allowedFields.title = content.title;
+  if (typeof content.body === "string") allowedFields.body = content.body;
+
+  let categorySlug;
+  if (Object.prototype.hasOwnProperty.call(content, "category")) {
+    const category = getAssignableCategory(content.category);
+    if (!category) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        "category must be an active canonical taxonomy value",
+        { field: "category" },
+      );
+    }
+    categorySlug = category.slug;
+  } else if (knowledge.category !== undefined && knowledge.category !== null) {
+    const existingCategory = getAssignableCategory(knowledge.category);
+    if (!existingCategory) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        "existing Knowledge category is not an active canonical taxonomy value; provide a valid category",
+        { field: "category", existingValue: knowledge.category },
+      );
+    }
+    categorySlug = existingCategory.slug;
+  } else {
+    throw new DomainError(
+      DomainErrorCode.VALIDATION_FAILED,
+      "category is required when revising a legacy Knowledge record without one",
+      { field: "category" },
+    );
   }
-  if (updatedContent && typeof updatedContent.body === "string") {
-    allowedFields.body = updatedContent.body;
+  allowedFields.category = categorySlug;
+
+  let topics;
+  if (Object.prototype.hasOwnProperty.call(content, "topics")) {
+    const seenTopics = new Set();
+    topics = [];
+    for (const rawTopic of content.topics) {
+      const topic = getAssignableTopic(rawTopic);
+      if (!topic) {
+        throw new DomainError(
+          DomainErrorCode.VALIDATION_FAILED,
+          "topics must contain only active canonical taxonomy values",
+          { field: "topics", value: rawTopic },
+        );
+      }
+      if (!seenTopics.has(topic.slug)) {
+        seenTopics.add(topic.slug);
+        topics.push(topic.slug);
+      }
+    }
+  } else {
+    topics = Array.isArray(knowledge.topics) ? [...knowledge.topics] : [];
   }
-  if (updatedContent && typeof updatedContent.region === "string") {
-    allowedFields.region = updatedContent.region;
-  }
+  allowedFields.topics = topics;
+
+  const region = typeof content.region === "string" ? content.region : (knowledge.region ?? "");
+  allowedFields.region = region;
+  allowedFields.regionKey = normalizeRegionKey(region);
+
+  const observedFilter = {
+    _id: knowledgeId,
+    status: "rejected",
+    category:
+      knowledge.category === undefined
+        ? { $exists: false }
+        : knowledge.category,
+    topics: Array.isArray(knowledge.topics) ? knowledge.topics : [],
+    region: knowledge.region ?? "",
+  };
 
   const updated = await Knowledge.findOneAndUpdate(
-    { _id: knowledgeId, status: "rejected" },
+    observedFilter,
     { $set: { ...allowedFields, status: "draft" } },
     { new: true, runValidators: true },
   );
@@ -325,8 +423,14 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
     );
   }
   throw stateRace(
-    `Knowledge ${knowledgeId} status changed before revision could be applied`,
-    { expectedStatus: "rejected", targetStatus: "draft" },
+    `Knowledge ${knowledgeId} changed before revision could be applied`,
+    {
+      expectedStatus: "rejected",
+      targetStatus: "draft",
+      expectedCategory: knowledge.category ?? null,
+      expectedTopics: Array.isArray(knowledge.topics) ? knowledge.topics : [],
+      expectedRegion: knowledge.region ?? "",
+    },
   );
 }
 
