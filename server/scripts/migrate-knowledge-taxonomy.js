@@ -123,10 +123,18 @@ export async function migrateKnowledgeTaxonomy({
     }
 
     const reviewRecord = buildReviewRecord(document, patch);
-    reviewRecords.push(reviewRecord);
+
+    if (collectReviewRecords) {
+      reviewRecords.push(reviewRecord);
+    }
 
     if (reportFile) {
-      await appendFile(reportFile, `${JSON.stringify(reviewRecord)}\n`);
+      reportLines.push(JSON.stringify(reviewRecord));
+
+      if (reportLines.length >= BATCH_SIZE) {
+        await appendFile(reportFile, reportLines.join("\n") + "\n");
+        reportLines.length = 0;
+      }
     }
 
     if (apply && Object.keys(patch.set).length > 0) {
@@ -146,7 +154,7 @@ export async function migrateKnowledgeTaxonomy({
   }
 
   if (reportFile && reportLines.length > 0) {
-    await appendFile(reportFile, reportLines.join("\\n") + "\\n");
+    await appendFile(reportFile, reportLines.join("\n") + "\n");
   }
 
   if (apply && operations.length > 0) {
