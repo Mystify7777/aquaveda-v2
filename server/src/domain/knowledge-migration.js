@@ -2,6 +2,7 @@ import {
   KNOWLEDGE_CATEGORIES,
   KNOWLEDGE_TOPICS,
 } from "./knowledge-taxonomy.js";
+import { normalizeRegionKey } from "./region-normalization.js";
 
 const CATEGORY_RULES = Object.freeze([
   { slug: "water_quality", terms: ["water quality", "contamination", "contaminant", "pollution", "filtration", "chlorination"] },
@@ -92,6 +93,10 @@ export function buildKnowledgeMigrationPatch(document) {
     if (invalidTopics.length > 0) {
       issues.push({ field: "topics", value: invalidTopics, reason: "unknown-or-retired" });
     }
+  }
+
+  if (document.regionKey == null) {
+    set.regionKey = normalizeRegionKey(document.region);
   }
 
   return { set, issues, classification };
