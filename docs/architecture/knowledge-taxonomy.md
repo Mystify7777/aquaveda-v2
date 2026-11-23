@@ -59,6 +59,12 @@ within the broader water-quality Category.
 - RETIRED terms remain resolvable through rendering lookups using their
   canonical display name, but cannot be assigned, exposed as selectable filter
   options, or used for related scoring.
+- The V1 production retired registries are empty. A term is added there only
+  when an actual persisted identity is retired; synthetic placeholders must
+  not be added to the authoritative vocabulary.
+- Lifecycle behavior is tested with isolated retired fixtures through
+  `createKnowledgeTaxonomyResolver`, without adding those fixtures to the
+  production registries.
 - The module makes the distinction explicit:
   - `getCategory` / `getTopic`: resolve known ACTIVE or RETIRED IDs for rendering.
   - `getAssignableCategory` / `getAssignableTopic`: ACTIVE terms only.
