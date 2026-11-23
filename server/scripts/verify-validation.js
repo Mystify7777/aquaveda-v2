@@ -212,6 +212,8 @@ check("4a. Valid Knowledge creation payload passes", () => {
   const result = createKnowledgeSchema.safeParse({
     title: "Drip irrigation basics",
     body: "How to set up a low-cost drip irrigation system.",
+    category: "agriculture_irrigation",
+    topics: ["efficient_irrigation"],
   });
   assert.equal(result.success, true);
 });
@@ -219,16 +221,35 @@ check("4a. Valid Knowledge creation payload passes", () => {
 check("4b. Knowledge creation payload missing body fails", () => {
   const result = createKnowledgeSchema.safeParse({
     title: "Drip irrigation basics",
+    category: "agriculture_irrigation",
   });
   assert.equal(result.success, false);
 });
 
-check("4c. Review decision 'approved' without feedback passes", () => {
+check("4c. Knowledge creation payload missing Category fails", () => {
+  const result = createKnowledgeSchema.safeParse({
+    title: "Drip irrigation basics",
+    body: "How to set up a low-cost drip irrigation system.",
+  });
+  assert.equal(result.success, false);
+});
+
+check("4d. Knowledge creation payload defaults omitted Topics to []", () => {
+  const result = createKnowledgeSchema.safeParse({
+    title: "Drip irrigation basics",
+    body: "How to set up a low-cost drip irrigation system.",
+    category: "agriculture_irrigation",
+  });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.data.topics, []);
+});
+
+check("4e. Review decision 'approved' without feedback passes", () => {
   const result = reviewKnowledgeSchema.safeParse({ decision: "approved" });
   assert.equal(result.success, true);
 });
 
-check("4d. Review decision 'approved' WITH feedback also passes (feedback is optional, not forbidden)", () => {
+check("4f. Review decision 'approved' WITH feedback also passes (feedback is optional, not forbidden)", () => {
   const result = reviewKnowledgeSchema.safeParse({
     decision: "approved",
     feedback: "great article, minor style notes",
@@ -236,7 +257,7 @@ check("4d. Review decision 'approved' WITH feedback also passes (feedback is opt
   assert.equal(result.success, true);
 });
 
-check("4e. Review decision with invalid enum value fails", () => {
+check("4g. Review decision with invalid enum value fails", () => {
   const result = reviewKnowledgeSchema.safeParse({ decision: "maybe" });
   assert.equal(result.success, false);
 });
