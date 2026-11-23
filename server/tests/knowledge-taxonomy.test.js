@@ -26,10 +26,12 @@ test("Category and Topic slugs are unique within and across kinds", () => {
   assert.equal(new Set(categorySlugs).size, categorySlugs.length);
   assert.equal(new Set(topicSlugs).size, topicSlugs.length);
   assert.equal(new Set([...categorySlugs, ...topicSlugs]).size, categorySlugs.length + topicSlugs.length);
+  assert.equal(new Set([...categorySlugs, ...RETIRED_KNOWLEDGE_CATEGORIES.map((term) => term.slug)]).size, categorySlugs.length + RETIRED_KNOWLEDGE_CATEGORIES.length);
+  assert.equal(new Set([...topicSlugs, ...RETIRED_KNOWLEDGE_TOPICS.map((term) => term.slug)]).size, topicSlugs.length + RETIRED_KNOWLEDGE_TOPICS.length);
 });
 
 test("each term has a stable slug, display name, and valid lifecycle", () => {
-  for (const term of [...KNOWLEDGE_CATEGORIES, ...KNOWLEDGE_TOPICS]) {
+  for (const term of [...KNOWLEDGE_CATEGORIES, ...KNOWLEDGE_TOPICS, ...RETIRED_KNOWLEDGE_CATEGORIES, ...RETIRED_KNOWLEDGE_TOPICS]) {
     assert.match(term.slug, /^[a-z0-9]+(?:_[a-z0-9]+)*$/);
     assert.ok(term.displayName.length > 0);
     assert.ok(["ACTIVE", "RETIRED"].includes(term.status));
@@ -87,6 +89,8 @@ test("vocabulary does not contain the rejected near-duplicate Topic concepts", (
 });
 
 test("retired entries are retained for rendering and excluded from selectable lists", () => {
+  assert.equal(RETIRED_KNOWLEDGE_CATEGORIES.length > 0, true);
+  assert.equal(RETIRED_KNOWLEDGE_TOPICS.length > 0, true);
   assert.equal(getActiveCategories().some((term) => term.status === "RETIRED"), false);
   assert.equal(getActiveTopics().some((term) => term.status === "RETIRED"), false);
 
