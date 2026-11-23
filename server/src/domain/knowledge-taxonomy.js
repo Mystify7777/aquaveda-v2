@@ -60,16 +60,14 @@ export const RETIRED_KNOWLEDGE_TOPICS = Object.freeze([
   Object.freeze({ slug: "legacy_irrigation_practice", displayName: "Legacy irrigation practice", status: RETIRED }),
 ]);
 
-const ALL_CATEGORIES = Object.freeze([...KNOWLEDGE_CATEGORIES, ...RETIRED_KNOWLEDGE_CATEGORIES]);
-const ALL_TOPICS = Object.freeze([...KNOWLEDGE_TOPICS, ...RETIRED_KNOWLEDGE_TOPICS]);
-
 /**
- * Alias maps are taxonomy-kind-specific. A Category alias can never resolve
- * through the Topic resolver, even if a future slug is reused in both kinds.
- *
- * Keys are normalized human-readable aliases. Values must be canonical slugs
- * from the corresponding registry. Canonical slugs resolve without aliases.
+ * Retired registries remain empty until a real persisted identity is retired.
+ * Do not add synthetic terms here: these arrays are authoritative identities
+ * that existing Knowledge records may contain.
  */
+export const RETIRED_KNOWLEDGE_CATEGORIES = Object.freeze([]);
+export const RETIRED_KNOWLEDGE_TOPICS = Object.freeze([]);
+
 export const CATEGORY_ALIASES = Object.freeze({
   "water saving": "water_conservation",
   "water-saving": "water_conservation",
