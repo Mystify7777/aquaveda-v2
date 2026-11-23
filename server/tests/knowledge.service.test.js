@@ -29,6 +29,8 @@ async function makeDraft(author = fakeActor("USER")) {
   const knowledge = await createKnowledge(author, {
     title: "Drip irrigation basics",
     body: "How to set up a low-cost system",
+    category: "agriculture_irrigation",
+    topics: ["efficient_irrigation"],
   });
   return { knowledge, author };
 }
@@ -83,7 +85,7 @@ describe("knowledge.service — createKnowledge", () => {
     const other = fakeObjectId();
     const knowledge = await createKnowledge(actor, {
       title: "t",
-      body: "b",
+      body: "b", category: "other",
       status: "approved",
       author: other,
       reviewHistory: [{ decision: "approved", reviewer: other }],
@@ -93,6 +95,71 @@ describe("knowledge.service — createKnowledge", () => {
     assert.equal(knowledge.reviewHistory.length, 0);
   });
 
+});
+
+describe("knowledge.service — taxonomy authoring (Issue #231)", () => {
+  it("requires an active canonical Category and deduplicates canonical Topics", async () => {
+    const actor = fakeActor("USER");
+    const knowledge = await createKnowledge(actor, {
+      title: "Rainwater harvesting",
+      body: "Collect roof runoff.",
+      category: "water_conservation",
+      topics: ["rainwater_harvesting", "rainwater_harvesting", "efficient_irrigation"],
+    });
+
+    assert.equal(knowledge.category, "water_conservation");
+    assert.deepEqual(knowledge.topics, ["rainwater_harvesting", "efficient_irrigation"]);
+    assert.equal(knowledge.regionKey, "");
+  });
+
+  it("rejects aliases, retired/unknown Categories, and non-canonical Topics", async () => {
+    const actor = fakeActor("USER");
+
+    await assert.rejects(
+      () => createKnowledge(actor, {
+        title: "t",
+        body: "b",
+        category: "water conservation",
+        topics: [],
+      }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+
+    await assert.rejects(
+      () => createKnowledge(actor, {
+        title: "t",
+        body: "b",
+        category: "not-a-category",
+        topics: [],
+      }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+
+    await assert.rejects(
+      () => createKnowledge(actor, {
+        title: "t",
+        body: "b",
+        category: "other",
+        topics: ["rain water harvesting"],
+      }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+
+  it("derives regionKey from Region and ignores caller-supplied regionKey", async () => {
+    const actor = fakeActor("USER");
+    const knowledge = await createKnowledge(actor, {
+      title: "t",
+      body: "b",
+      category: "other",
+      topics: [],
+      region: "  Bihar\u00a0 ",
+      regionKey: "attacker-controlled",
+    });
+
+    assert.equal(knowledge.region, "  Bihar\u00a0 ");
+    assert.equal(knowledge.regionKey, "bihar");
+  });
 });
 
 describe("knowledge.service — submitForReview", () => {
@@ -276,6 +343,99 @@ describe("knowledge.service — revise", () => {
   });
 });
 
+describe("knowledge.service — revision taxonomy invariants (Issue #231)", () => {
+  async function makeRejectedLegacy(author = fakeActor("USER")) {
+    const legacy = await Knowledge.create({
+      title: "Legacy article",
+      body: "Legacy body",
+      region: "Bihar",
+      author: author.id,
+      status: "rejected",
+      reviewHistory: [],
+    });
+    return { knowledge: legacy, author };
+  }
+
+  it("requires a valid Category when revising a legacy rejected record without one", async () => {
+    const { knowledge, author } = await makeRejectedLegacy();
+
+    await assert.rejects(
+      () => revise(author, knowledge._id, { title: "Revised" }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+
+    const revised = await revise(author, knowledge._id, {
+      title: "Revised",
+      category: "other",
+      topics: [],
+    });
+    assert.equal(revised.status, "draft");
+    assert.equal(revised.category, "other");
+  });
+
+  it("recomputes regionKey from stored Region even when the client supplies one", async () => {
+    const author = fakeActor("USER");
+    const knowledge = await Knowledge.create({
+      title: "Legacy article",
+      body: "Legacy body",
+      region: "Bihar",
+      regionKey: "wrong-key",
+      category: "other",
+      topics: [],
+      author: author.id,
+      status: "rejected",
+      reviewHistory: [],
+    });
+
+    const revised = await revise(author, knowledge._id, { title: "Revised" });
+    assert.equal(revised.region, "Bihar");
+    assert.equal(revised.regionKey, "bihar");
+  });
+
+  it("recomputes regionKey when Region changes", async () => {
+    const author = fakeActor("USER");
+    const knowledge = await Knowledge.create({
+      title: "Legacy article",
+      body: "Legacy body",
+      region: "Bihar",
+      regionKey: "bihar",
+      category: "other",
+      topics: [],
+      author: author.id,
+      status: "rejected",
+      reviewHistory: [],
+    });
+
+    const revised = await revise(author, knowledge._id, {
+      region: "Bihar, India",
+    });
+    assert.equal(revised.region, "Bihar, India");
+    assert.equal(revised.regionKey, "bihar, india");
+  });
+
+  it("does not overwrite concurrent taxonomy changes", async () => {
+    const author = fakeActor("USER");
+    const { knowledge } = await makeRejectedLegacy(author);
+    await Knowledge.updateOne(
+      { _id: knowledge._id },
+      { $set: { category: "other", topics: ["water_reuse"] } },
+    );
+
+    await assert.rejects(
+      () => revise(author, knowledge._id, {
+        category: "agriculture_irrigation",
+        topics: [],
+      }),
+      (err) => err.code === DomainErrorCode.STATE_RACE,
+    );
+
+    const current = await Knowledge.findById(knowledge._id);
+    assert.equal(current.category, "other");
+    assert.deepEqual(current.topics, ["water_reuse"]);
+    assert.equal(current.status, "rejected");
+  });
+});
+
 describe("knowledge.service — concurrency", () => {
   it("two concurrent approve attempts on the same document — exactly one succeeds", async () => {
     const { knowledge } = await makePendingReview();
@@ -322,17 +482,17 @@ describe("listApprovedKnowledge (Issue #48 — public read)", () => {
     const author = fakeActor("USER");
     const expert = fakeActor("EXPERT");
 
-    const draft = await createKnowledge(author, { title: "draft", body: "b" });
+    const draft = await createKnowledge(author, { title: "draft", body: "b", category: "other" });
 
-    const toApprove = await createKnowledge(author, { title: "to-approve", body: "b" });
+    const toApprove = await createKnowledge(author, { title: "to-approve", body: "b", category: "other" });
     await submitForReview(author, toApprove._id);
     await approve(expert, toApprove._id);
 
-    const toReject = await createKnowledge(author, { title: "to-reject", body: "b" });
+    const toReject = await createKnowledge(author, { title: "to-reject", body: "b", category: "other" });
     await submitForReview(author, toReject._id);
     await reject(expert, toReject._id, "needs work");
 
-    const pending = await createKnowledge(author, { title: "pending", body: "b" });
+    const pending = await createKnowledge(author, { title: "pending", body: "b", category: "other" });
     await submitForReview(author, pending._id);
 
     const result = await listApprovedKnowledge();
@@ -347,7 +507,7 @@ describe("listApprovedKnowledge (Issue #48 — public read)", () => {
 
   it("cannot be made to return non-approved content via any query parameter — no status parameter exists", async () => {
     const author = fakeActor("USER");
-    await createKnowledge(author, { title: "draft", body: "b" });
+    await createKnowledge(author, { title: "draft", body: "b", category: "other" });
 
     // listApprovedKnowledge only accepts {page, limit} — passing an
     // arbitrary extra key (as if trying to smuggle a status override)
@@ -361,7 +521,7 @@ describe("listApprovedKnowledge (Issue #48 — public read)", () => {
     const author = fakeActor("USER");
     const expert = fakeActor("EXPERT");
     for (let i = 0; i < 3; i++) {
-      const k = await createKnowledge(author, { title: `k${i}`, body: "b" });
+      const k = await createKnowledge(author, { title: `k${i}`, body: "b", category: "other" });
       await submitForReview(author, k._id);
       await approve(expert, k._id);
     }
@@ -377,7 +537,7 @@ describe("getApprovedKnowledgeById (Issue #48 — public read)", () => {
   it("returns an approved article", async () => {
     const author = fakeActor("USER");
     const expert = fakeActor("EXPERT");
-    const k = await createKnowledge(author, { title: "t", body: "b" });
+    const k = await createKnowledge(author, { title: "t", body: "b", category: "other" });
     await submitForReview(author, k._id);
     await approve(expert, k._id);
 
@@ -387,7 +547,7 @@ describe("getApprovedKnowledgeById (Issue #48 — public read)", () => {
 
   it("throws NOT_FOUND (not FORBIDDEN) for a real but non-approved article — never discloses its existence/state", async () => {
     const author = fakeActor("USER");
-    const draft = await createKnowledge(author, { title: "draft", body: "b" });
+    const draft = await createKnowledge(author, { title: "draft", body: "b", category: "other" });
 
     await assert.rejects(
       () => getApprovedKnowledgeById(draft._id),
@@ -418,7 +578,7 @@ describe("getApprovedKnowledgeById (Issue #48 — public read)", () => {
     });
     const expert = fakeActor("EXPERT");
     const actor = { id: String(user._id), role: "USER" };
-    const k = await createKnowledge(actor, { title: "t", body: "b" });
+    const k = await createKnowledge(actor, { title: "t", body: "b", category: "other" });
     await submitForReview(actor, k._id);
     await approve(expert, k._id);
 
