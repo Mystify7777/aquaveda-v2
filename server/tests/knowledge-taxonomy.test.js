@@ -2,23 +2,33 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CATEGORY_ALIASES,
   KNOWLEDGE_CATEGORIES,
   KNOWLEDGE_TOPICS,
-  TAXONOMY_ALIASES,
+  RETIRED_KNOWLEDGE_CATEGORIES,
+  RETIRED_KNOWLEDGE_TOPICS,
+  TOPIC_ALIASES,
   getActiveCategories,
   getActiveTopics,
+  getAssignableCategory,
+  getAssignableTopic,
   getCategory,
-  getRetiredTaxonomyTerms,
+  getCategoryDisplayName,
   getTopic,
+  getTopicDisplayName,
   isActiveCategory,
-  isActiveTaxonomyTerm,
   isActiveTopic,
 } from "../src/domain/knowledge-taxonomy.js";
 
-test("category and topic slugs are unique and stable", () => {
-  assert.equal(new Set(KNOWLEDGE_CATEGORIES.map((term) => term.slug)).size, KNOWLEDGE_CATEGORIES.length);
-  assert.equal(new Set(KNOWLEDGE_TOPICS.map((term) => term.slug)).size, KNOWLEDGE_TOPICS.length);
+test("Category and Topic slugs are unique within and across kinds", () => {
+  const categorySlugs = KNOWLEDGE_CATEGORIES.map((term) => term.slug);
+  const topicSlugs = KNOWLEDGE_TOPICS.map((term) => term.slug);
+  assert.equal(new Set(categorySlugs).size, categorySlugs.length);
+  assert.equal(new Set(topicSlugs).size, topicSlugs.length);
+  assert.equal(new Set([...categorySlugs, ...topicSlugs]).size, categorySlugs.length + topicSlugs.length);
+});
 
+test("each term has a stable slug, display name, and valid lifecycle", () => {
   for (const term of [...KNOWLEDGE_CATEGORIES, ...KNOWLEDGE_TOPICS]) {
     assert.match(term.slug, /^[a-z0-9]+(?:_[a-z0-9]+)*$/);
     assert.ok(term.displayName.length > 0);
@@ -26,51 +36,85 @@ test("category and topic slugs are unique and stable", () => {
   }
 });
 
-test("all initial V1 terms are active and selectable", () => {
-  assert.equal(getActiveCategories().length, KNOWLEDGE_CATEGORIES.length);
-  assert.equal(getActiveTopics().length, KNOWLEDGE_TOPICS.length);
-
-  for (const term of KNOWLEDGE_CATEGORIES) assert.equal(isActiveCategory(term.slug), true);
-  for (const term of KNOWLEDGE_TOPICS) assert.equal(isActiveTopic(term.slug), true);
+test("all V1 active terms are selectable and assignment-safe", () => {
+  assert.deepEqual(getActiveCategories(), KNOWLEDGE_CATEGORIES.filter((term) => term.status === "ACTIVE"));
+  assert.deepEqual(getActiveTopics(), KNOWLEDGE_TOPICS.filter((term) => term.status === "ACTIVE"));
+  for (const term of getActiveCategories()) assert.equal(getAssignableCategory(term.slug), term);
+  for (const term of getActiveTopics()) assert.equal(getAssignableTopic(term.slug), term);
 });
 
-test("canonical slugs resolve to themselves", () => {
+test("canonical IDs resolve for rendering and assignment while active", () => {
   assert.equal(getCategory("water_conservation")?.slug, "water_conservation");
   assert.equal(getTopic("rainwater_harvesting")?.slug, "rainwater_harvesting");
+  assert.equal(getAssignableCategory("water_conservation")?.slug, "water_conservation");
+  assert.equal(getAssignableTopic("rainwater_harvesting")?.slug, "rainwater_harvesting");
 });
 
-test("explicit aliases resolve without fuzzy matching", () => {
-  assert.equal(getCategory("Water  Conservation")?.slug, "water_conservation");
+test("Category aliases are scoped to Category", () => {
+  assert.equal(getCategory("Water  Saving")?.slug, "water_conservation");
+  assert.equal(getAssignableCategory("water saving")?.slug, "water_conservation");
+  assert.equal(getTopic("water saving"), null);
+  assert.equal(getAssignableTopic("water saving"), null);
+});
+
+test("Topic aliases are scoped to Topic", () => {
   assert.equal(getTopic("RAIN WATER HARVESTING")?.slug, "rainwater_harvesting");
-  assert.equal(getTopic("ground water recharge")?.slug, "groundwater_recharge");
-
-  assert.equal(getTopic("rainwater-harvesting"), null);
-  assert.equal(getTopic("something vaguely water related"), null);
+  assert.equal(getAssignableTopic("ground water recharge")?.slug, "groundwater_recharge");
+  assert.equal(getCategory("rain water harvesting"), null);
+  assert.equal(getAssignableCategory("rain water harvesting"), null);
 });
 
-test("unknown terms are not silently accepted", () => {
-  assert.equal(getCategory("unknown_category"), null);
-  assert.equal(getTopic("unknown_topic"), null);
-  assert.equal(isActiveCategory("unknown_category"), false);
-  assert.equal(isActiveTopic("unknown_topic"), false);
-});
+test("alias targets belong to their matching registry, never the other one", () => {
+  const categorySlugs = new Set(KNOWLEDGE_CATEGORIES.map((term) => term.slug));
+  const topicSlugs = new Set(KNOWLEDGE_TOPICS.map((term) => term.slug));
 
-test("retired terms are not selectable but remain distinguishable", () => {
-  const retired = { slug: "legacy_term", displayName: "Legacy term", status: "RETIRED" };
-
-  assert.equal(isActiveTaxonomyTerm(retired), false);
-  assert.deepEqual(getRetiredTaxonomyTerms([retired]), [retired]);
-  assert.deepEqual(getRetiredTaxonomyTerms(KNOWLEDGE_TOPICS), []);
-});
-
-test("aliases point only to canonical taxonomy identities", () => {
-  const allSlugs = new Set([
-    ...KNOWLEDGE_CATEGORIES.map((term) => term.slug),
-    ...KNOWLEDGE_TOPICS.map((term) => term.slug),
-  ]);
-
-  for (const [alias, target] of Object.entries(TAXONOMY_ALIASES)) {
+  for (const [alias, target] of Object.entries(CATEGORY_ALIASES)) {
     assert.notEqual(alias, target);
-    assert.equal(allSlugs.has(target), true, alias + " -> " + target);
+    assert.equal(categorySlugs.has(target), true, "invalid Category target: " + alias + " -> " + target);
   }
+  for (const [alias, target] of Object.entries(TOPIC_ALIASES)) {
+    assert.notEqual(alias, target);
+    assert.equal(topicSlugs.has(target), true, "invalid Topic target: " + alias + " -> " + target);
+  }
+});
+
+test("vocabulary does not contain the rejected near-duplicate Topic concepts", () => {
+  const topicSlugs = new Set(KNOWLEDGE_TOPICS.map((term) => term.slug));
+  assert.equal(topicSlugs.has("water_conservation"), false);
+  assert.equal(topicSlugs.has("water_supply_distribution"), false);
+  assert.equal(topicSlugs.has("water_quality_monitoring"), true);
+  assert.equal(topicSlugs.has("water_distribution_networks"), true);
+});
+
+test("retired entries are retained for rendering and excluded from selectable lists", () => {
+  assert.equal(getActiveCategories().some((term) => term.status === "RETIRED"), false);
+  assert.equal(getActiveTopics().some((term) => term.status === "RETIRED"), false);
+
+  for (const term of RETIRED_KNOWLEDGE_CATEGORIES) {
+    assert.equal(getCategory(term.slug), term);
+    assert.equal(getCategoryDisplayName(term.slug), term.displayName);
+    assert.equal(getAssignableCategory(term.slug), null);
+    assert.equal(isActiveCategory(term.slug), false);
+    assert.equal(getActiveCategories().includes(term), false);
+  }
+
+  for (const term of RETIRED_KNOWLEDGE_TOPICS) {
+    assert.equal(getTopic(term.slug), term);
+    assert.equal(getTopicDisplayName(term.slug), term.displayName);
+    assert.equal(getAssignableTopic(term.slug), null);
+    assert.equal(isActiveTopic(term.slug), false);
+    assert.equal(getActiveTopics().includes(term), false);
+  }
+});
+
+test("null, undefined, non-string, and blank resolver inputs return null", () => {
+  const invalid = [null, undefined, 42, {}, [], true, " ", "\t\n"];
+  for (const value of invalid) {
+    assert.equal(getCategory(value), null);
+    assert.equal(getTopic(value), null);
+    assert.equal(getAssignableCategory(value), null);
+    assert.equal(getAssignableTopic(value), null);
+  }
+  assert.equal(getCategoryDisplayName(null), null);
+  assert.equal(getTopicDisplayName({}), null);
 });
