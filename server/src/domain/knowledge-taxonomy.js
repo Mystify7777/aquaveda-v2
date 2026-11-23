@@ -49,18 +49,6 @@ export const KNOWLEDGE_TOPICS = Object.freeze([
 ]);
 
 /**
- * Retired records remain in the source registry forever (or until an explicit,
- * reviewed identity migration). They are resolvable for rendering only.
- * This empty initial set is intentional: V1 starts with no retired terms.
- */
-export const RETIRED_KNOWLEDGE_CATEGORIES = Object.freeze([
-  Object.freeze({ slug: "legacy_water_knowledge", displayName: "Legacy water knowledge", status: RETIRED }),
-]);
-export const RETIRED_KNOWLEDGE_TOPICS = Object.freeze([
-  Object.freeze({ slug: "legacy_irrigation_practice", displayName: "Legacy irrigation practice", status: RETIRED }),
-]);
-
-/**
  * Retired registries remain empty until a real persisted identity is retired.
  * Do not add synthetic terms here: these arrays are authoritative identities
  * that existing Knowledge records may contain.
@@ -96,9 +84,6 @@ export const TOPIC_ALIASES = Object.freeze({
   "drought response": "drought_management",
 });
 
-const CATEGORY_BY_SLUG = new Map(ALL_CATEGORIES.map((term) => [term.slug, term]));
-const TOPIC_BY_SLUG = new Map(ALL_TOPICS.map((term) => [term.slug, term]));
-
 function normalizeAliasKey(value) {
   if (typeof value !== "string") return null;
 
@@ -119,52 +104,66 @@ function resolveAssignable(registry, aliases, value) {
   return term?.status === ACTIVE ? term : null;
 }
 
+/**
+ * Build taxonomy lookups from a supplied registry.
+ *
+ * The injectable registry keeps lifecycle behavior testable without placing
+ * invented retired identities in the production vocabulary. Production uses
+ * only the source-controlled registries below.
+ */
+export function createKnowledgeTaxonomyResolver({
+  categories = KNOWLEDGE_CATEGORIES,
+  topics = KNOWLEDGE_TOPICS,
+  retiredCategories = RETIRED_KNOWLEDGE_CATEGORIES,
+  retiredTopics = RETIRED_KNOWLEDGE_TOPICS,
+  categoryAliases = CATEGORY_ALIASES,
+  topicAliases = TOPIC_ALIASES,
+} = {}) {
+  const categoryRegistry = new Map(
+    [...categories, ...retiredCategories].map((term) => [term.slug, term]),
+  );
+  const topicRegistry = new Map(
+    [...topics, ...retiredTopics].map((term) => [term.slug, term]),
+  );
+
+  const resolveCategory = (value) => resolveFromRegistry(categoryRegistry, categoryAliases, value);
+  const resolveTopic = (value) => resolveFromRegistry(topicRegistry, topicAliases, value);
+  const resolveAssignableCategory = (value) => resolveAssignable(categoryRegistry, categoryAliases, value);
+  const resolveAssignableTopic = (value) => resolveAssignable(topicRegistry, topicAliases, value);
+
+  return Object.freeze({
+    getCategory: resolveCategory,
+    getTopic: resolveTopic,
+    getAssignableCategory: resolveAssignableCategory,
+    getAssignableTopic: resolveAssignableTopic,
+    getActiveCategories: () => categories.filter((term) => term.status === ACTIVE),
+    getActiveTopics: () => topics.filter((term) => term.status === ACTIVE),
+    isActiveCategory: (value) => resolveAssignableCategory(value) !== null,
+    isActiveTopic: (value) => resolveAssignableTopic(value) !== null,
+    getCategoryDisplayName: (value) => resolveCategory(value)?.displayName ?? null,
+    getTopicDisplayName: (value) => resolveTopic(value)?.displayName ?? null,
+  });
+}
+
+const defaultResolver = createKnowledgeTaxonomyResolver();
+
 /** Resolve active or retired Category identity for rendering. */
-export function getCategory(slugOrAlias) {
-  return resolveFromRegistry(CATEGORY_BY_SLUG, CATEGORY_ALIASES, slugOrAlias);
-}
-
+export const getCategory = defaultResolver.getCategory;
 /** Resolve active or retired Topic identity for rendering. */
-export function getTopic(slugOrAlias) {
-  return resolveFromRegistry(TOPIC_BY_SLUG, TOPIC_ALIASES, slugOrAlias);
-}
-
+export const getTopic = defaultResolver.getTopic;
 /** Resolve only an ACTIVE Category, safe for new/revised article assignment. */
-export function getAssignableCategory(slugOrAlias) {
-  return resolveAssignable(CATEGORY_BY_SLUG, CATEGORY_ALIASES, slugOrAlias);
-}
-
+export const getAssignableCategory = defaultResolver.getAssignableCategory;
 /** Resolve only an ACTIVE Topic, safe for new/revised article assignment. */
-export function getAssignableTopic(slugOrAlias) {
-  return resolveAssignable(TOPIC_BY_SLUG, TOPIC_ALIASES, slugOrAlias);
-}
+export const getAssignableTopic = defaultResolver.getAssignableTopic;
+export const getActiveCategories = defaultResolver.getActiveCategories;
+export const getActiveTopics = defaultResolver.getActiveTopics;
+export const isActiveCategory = defaultResolver.isActiveCategory;
+export const isActiveTopic = defaultResolver.isActiveTopic;
+/** Return the canonical display name for any known Category identity. */
+export const getCategoryDisplayName = defaultResolver.getCategoryDisplayName;
+/** Return the canonical display name for any known Topic identity. */
+export const getTopicDisplayName = defaultResolver.getTopicDisplayName;
 
 export function isActiveTaxonomyTerm(term) {
   return term?.status === ACTIVE;
-}
-
-export function getActiveCategories() {
-  return KNOWLEDGE_CATEGORIES.filter(isActiveTaxonomyTerm);
-}
-
-export function getActiveTopics() {
-  return KNOWLEDGE_TOPICS.filter(isActiveTaxonomyTerm);
-}
-
-export function isActiveCategory(slugOrAlias) {
-  return getAssignableCategory(slugOrAlias) !== null;
-}
-
-export function isActiveTopic(slugOrAlias) {
-  return getAssignableTopic(slugOrAlias) !== null;
-}
-
-/** Return the canonical display name for any known Category identity. */
-export function getCategoryDisplayName(slugOrAlias) {
-  return getCategory(slugOrAlias)?.displayName ?? null;
-}
-
-/** Return the canonical display name for any known Topic identity. */
-export function getTopicDisplayName(slugOrAlias) {
-  return getTopic(slugOrAlias)?.displayName ?? null;
 }
