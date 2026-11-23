@@ -53,6 +53,7 @@ function buildReviewRecord(document, patch) {
 export async function migrateKnowledgeTaxonomy({
   apply = false,
   reportFile = null,
+  collectReviewRecords = false,
 } = {}) {
   const summary = {
     candidates: 0,
@@ -68,6 +69,7 @@ export async function migrateKnowledgeTaxonomy({
   };
 
   const reviewRecords = [];
+  const reportLines = [];
   const operations = [];
 
   if (reportFile) {
@@ -141,6 +143,10 @@ export async function migrateKnowledgeTaxonomy({
         operations.length = 0;
       }
     }
+  }
+
+  if (reportFile && reportLines.length > 0) {
+    await appendFile(reportFile, reportLines.join("\\n") + "\\n");
   }
 
   if (apply && operations.length > 0) {
