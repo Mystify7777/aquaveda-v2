@@ -105,7 +105,7 @@ function authCookie(accessToken) {
 async function makeDraft(accessToken) {
   const res = await request("POST", "/api/v1/knowledge", {
     cookies: authCookie(accessToken),
-    body: { title: "Drip irrigation basics", body: "How to set up drip irrigation." },
+    body: { title: "Drip irrigation basics", body: "How to set up drip irrigation.", category: "agriculture_irrigation", topics: ["efficient_irrigation"] },
   });
   return res.json.data;
 }
