@@ -49,6 +49,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const retryGeneration = React.useRef(0);
     const manualRetryInFlight = React.useRef(false);
     const mounted = React.useRef(false);
+    // Retry is an event callback. Read the latest status from a ref so a callback
+    // captured by a previous render cannot silently ignore a retry after the
+    // unavailable state has just been committed.
+    const statusRef = React.useRef<AuthStatus>("initializing");
+    statusRef.current = status;
 
     /** Apply a resolved session user; the only place restriction state is derived. */
     const setAuthenticated = React.useCallback((nextUser: AuthUser) => {
@@ -136,7 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [setAuthenticated]);
 
     const retryInitialization = React.useCallback(async () => {
-        if (status !== "unavailable" || manualRetryInFlight.current) return;
+        if (statusRef.current !== "unavailable" || manualRetryInFlight.current) return;
         manualRetryInFlight.current = true;
         const generation = ++retryGeneration.current;
         requestGeneration.current = generation;
@@ -152,7 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 manualRetryInFlight.current = false;
             }
         }
-    }, [status, runInitialization]);
+    }, [runInitialization]);
 
     React.useEffect(() => {
         mounted.current = true;
