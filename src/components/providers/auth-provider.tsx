@@ -53,7 +53,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // captured by a previous render cannot silently ignore a retry after the
     // unavailable state has just been committed.
     const statusRef = React.useRef<AuthStatus>("initializing");
-    statusRef.current = status;
+    React.useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
 
     /** Apply a resolved session user; the only place restriction state is derived. */
     const setAuthenticated = React.useCallback((nextUser: AuthUser) => {
