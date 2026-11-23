@@ -1,4 +1,4 @@
-import { appendFile, rm } from "node:fs/promises";
+import { appendFile, rename, rm } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 import { connectDB, disconnectDB } from "../src/config/db.js";
@@ -72,8 +72,10 @@ export async function migrateKnowledgeTaxonomy({
   const reportLines = [];
   const operations = [];
 
-  if (reportFile) {
-    await rm(reportFile, { force: true });
+  const temporaryReportFile = reportFile ? `${reportFile}.tmp-${process.pid}` : null;
+
+  if (temporaryReportFile) {
+    await rm(temporaryReportFile, { force: true });
   }
 
   const cursor = Knowledge.collection.find(
@@ -132,7 +134,7 @@ export async function migrateKnowledgeTaxonomy({
       reportLines.push(JSON.stringify(reviewRecord));
 
       if (reportLines.length >= BATCH_SIZE) {
-        await appendFile(reportFile, reportLines.join("\n") + "\n");
+        await appendFile(temporaryReportFile, reportLines.join("\n") + "\n");
         reportLines.length = 0;
       }
     }
@@ -154,7 +156,11 @@ export async function migrateKnowledgeTaxonomy({
   }
 
   if (reportFile && reportLines.length > 0) {
-    await appendFile(reportFile, reportLines.join("\n") + "\n");
+    await appendFile(temporaryReportFile, reportLines.join("\n") + "\n");
+  }
+
+  if (temporaryReportFile) {
+    await rename(temporaryReportFile, reportFile);
   }
 
   if (apply && operations.length > 0) {

@@ -193,7 +193,7 @@ test("persisted rewrite validation rejects inactive targets, active sources, and
   assert.throws(
     () => validatePersistedRewriteMap(
       { legacy: "middle", middle: "water_quality" },
-      new Set(["water_quality"]),
+      new Set(["middle", "water_quality"]),
       "Category",
     ),
     /chain\/cycle/,
