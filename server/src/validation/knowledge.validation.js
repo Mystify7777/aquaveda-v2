@@ -98,6 +98,16 @@ export const rejectKnowledgeSchema = z.object({
  * recomputes regionKey from the resulting display Region. Lifecycle,
  * ownership, moderation, and derived fields are never accepted here.
  */
+/**
+ * Knowledge revision request shape.
+ *
+ * Mirrors revise(actorContext, knowledgeId, updatedContent): each supported
+ * content/taxonomy field is optional so an author can change only what needs
+ * correction. The service validates active canonical Category/Topic values,
+ * requires an explicit Category for legacy records that have none, and
+ * recomputes regionKey from the resulting display Region. Lifecycle,
+ * ownership, moderation, and derived fields are never accepted here.
+ */
 export const reviseKnowledgeSchema = z.object({
   title: z.string().trim().min(1, "title must not be empty if provided").optional(),
   body: z.string().trim().min(1, "body must not be empty if provided").optional(),
@@ -106,4 +116,21 @@ export const reviseKnowledgeSchema = z.object({
   region: z.string().trim().optional(),
 });
 
+export const listApprovedKnowledgeQuerySchema = paginationQuerySchema;
 
+/**
+ * Authenticated workflow read queries (Issue #74).
+ *
+ * `status` on "My Knowledge" is validated against the four existing
+ * lifecycle states (Knowledge.js / ADR-0004) — no new state is
+ * introduced. The review queue takes no `status`: it is fixed to
+ * `pending_review` at the service layer. Neither accepts an author or
+ * region parameter.
+ */
+export const KNOWLEDGE_WORKFLOW_STATUSES = ["draft", "pending_review", "approved", "rejected"];
+
+export const myKnowledgeQuerySchema = paginationQuerySchema.extend({
+  status: z.enum(KNOWLEDGE_WORKFLOW_STATUSES).optional(),
+});
+
+export const reviewQueueQuerySchema = paginationQuerySchema;
