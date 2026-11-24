@@ -335,15 +335,10 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
   try {
     knowledge = await Knowledge.findById(knowledgeId);
   } catch (err) {
-    // Malformed knowledgeId -> raw Mongoose CastError, translated to the
-    // same DomainError contract as every other failure mode. Once this
-    // read succeeds (even with null), the id's shape is confirmed valid
-    // for the rest of this function.
+    // A malformed id is translated to the shared validation contract.
     throw wrapMongooseValidationError(err);
   }
-  if (!knowledge) {
-    throw notFound(`Knowledge ${knowledgeId} not found`);
-  }
+  if (!knowledge) throw notFound(`Knowledge ${knowledgeId} not found`);
 
   if (knowledge.status !== "rejected") {
     throw invalidState(
@@ -353,9 +348,7 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
   }
 
   if (String(knowledge.author) !== String(actorContext.id)) {
-    throw forbidden(
-      "only the author may revise a rejected Knowledge submission",
-    );
+    throw forbidden("only the author may revise a rejected Knowledge submission");
   }
 
   const content = updatedContent ?? {};
@@ -429,6 +422,9 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
   allowedFields.region = region;
   allowedFields.regionKey = normalizeRegionKey(region);
 
+  // Protect exactly the state this revision was based on. Comparing array
+  // values in the MongoDB filter prevents a delayed save from replacing a
+  // concurrent taxonomy update made after the initial read.
   const observedFilter = {
     _id: knowledgeId,
     status: "rejected",
