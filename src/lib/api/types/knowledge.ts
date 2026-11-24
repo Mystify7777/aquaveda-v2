@@ -29,9 +29,6 @@ export type KnowledgeListQuery = PaginationQuery;
 export interface CreateKnowledgePayload {
   title: string;
   body: string;
-  category: string;
-  topics?: string[];
-  region?: string;
 }
 
 /**
@@ -48,7 +45,7 @@ export type CreatedKnowledgeDraft = Pick<KnowledgeArticle, "_id" | "title" | "st
  */
 export type KnowledgeLifecycleResult = Pick<KnowledgeArticle, "_id" | "title" | "status">;
 
-/** Body of POST /api/v1/knowledge/:id/revise. Every field is independently optional. */
+/** Body of POST /api/v1/knowledge/:id/revise. Every supported field is independently optional. */
 export interface ReviseKnowledgePayload {
   title?: string;
   body?: string;
