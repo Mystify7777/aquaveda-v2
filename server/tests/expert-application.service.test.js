@@ -341,7 +341,7 @@ describe("fixture: verified EXPERT exercises real authorization (#90 readiness)"
     const nope = await createFixtureUser("USER");
     await applyApp(nope.ctx);
     await rejectApp(admin.ctx, nope.id);
-    const k2 = await createKnowledge(author.ctx, { title: "Swales", body: "Dig a swale." });
+    const k2 = await createKnowledge(author.ctx, { title: "Swales", body: "Dig a swale.", category: "water_conservation" });
     await submitForReview(author.ctx, String(k2._id));
     await rejectsWith(approve({ id: nope.id, role: "USER" }, String(k2._id)), DomainErrorCode.FORBIDDEN);
   });
