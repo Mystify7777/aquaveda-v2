@@ -78,24 +78,12 @@ describe("createKnowledge", () => {
       201,
     );
     const { createKnowledge } = await import("@/lib/api/knowledge");
-    await expect(createKnowledge({
-      title: "T",
-      body: "B",
-      category: "water_conservation",
-      topics: ["water_reuse"],
-      region: "Bihar",
-    })).resolves.toMatchObject({ _id: "k-2", status: "draft" });
+    await expect(createKnowledge({ title: "T", body: "B" })).resolves.toMatchObject({ _id: "k-2", status: "draft" });
     const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(String(url)).toContain("/api/v1/knowledge");
     expect(init).toMatchObject({
       method: "POST",
-      body: JSON.stringify({
-        title: "T",
-        body: "B",
-        category: "water_conservation",
-        topics: ["water_reuse"],
-        region: "Bihar",
-      }),
+      body: JSON.stringify({ title: "T", body: "B" }),
     });
     expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
