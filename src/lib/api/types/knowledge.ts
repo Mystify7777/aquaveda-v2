@@ -29,8 +29,6 @@ export type KnowledgeListQuery = PaginationQuery;
 export interface CreateKnowledgePayload {
   title: string;
   body: string;
-  category: string;
-  topics?: string[];
 }
 
 /**
@@ -51,7 +49,6 @@ export type KnowledgeLifecycleResult = Pick<KnowledgeArticle, "_id" | "title" | 
 export interface ReviseKnowledgePayload {
   title: string;
   body: string;
-  category: string;
 }
 
 // --- Authenticated workflow reads (Issue #74) ---------------------------
@@ -85,7 +82,6 @@ export interface WorkflowReviewEntry {
 
 /** Full article from GET /api/v1/knowledge/:id/workflow. */
 export interface WorkflowKnowledge extends WorkflowKnowledgeSummary {
-  category?: string;
   body: string;
   reviewHistory: WorkflowReviewEntry[];
 }
