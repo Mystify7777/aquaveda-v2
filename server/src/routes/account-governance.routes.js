@@ -36,6 +36,10 @@ import {
  *   GET  /:userId              one directory entry (ADMIN)
  *   GET  /:userId/history      governance history of an account (ADMIN)
  *
+ * The four POST operations reject a self or Admin target with 403 FORBIDDEN and
+ * reason SELF_TARGET_PROHIBITED / ADMIN_TARGET_PROTECTED (ADR-0012, #255); the
+ * check lives in the service, not here.
+ *
  * Authentication precedes validation (anonymous callers get 401, not field
  * detail). Responses are explicit DTOs; raw User documents are never returned.
  */
