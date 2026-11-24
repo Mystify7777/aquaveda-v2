@@ -265,7 +265,7 @@ check("4f. Knowledge creation rejects empty or malformed Topic entries", () => {
   }
 });
 
-check("4i. Review decision 'approved' without feedback passes", () => {
+check("4g. Review decision 'approved' without feedback passes", () => {
   const result = reviewKnowledgeSchema.safeParse({ decision: "approved" });
   assert.equal(result.success, true);
 });
@@ -278,7 +278,7 @@ check("4h. Review decision 'approved' WITH feedback also passes (feedback is opt
   assert.equal(result.success, true);
 });
 
-check("4g. Review decision with invalid enum value fails", () => {
+check("4i. Review decision with invalid enum value fails", () => {
   const result = reviewKnowledgeSchema.safeParse({ decision: "maybe" });
   assert.equal(result.success, false);
 });
