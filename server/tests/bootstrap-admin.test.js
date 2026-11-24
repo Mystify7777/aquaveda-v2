@@ -557,7 +557,7 @@ describe("bootstrapAdmin: authenticates and governs via standard auth path", () 
       password: "author-password-1",
     });
     const author = { id: String(user.id), role: "USER" };
-    const k = await createKnowledge(author, { title: "Water conservation", body: "Rainwater harvesting techniques." });
+    const k = await createKnowledge(author, { title: "Water conservation", body: "Rainwater harvesting techniques.", category: "water_conservation" });
     await submitForReview(author, String(k._id));
 
     // ADMIN has no Knowledge review authority (ADR-0004 / Issue #90)
