@@ -346,7 +346,7 @@ describe("WorkflowArticle — revise (rejected -> draft)", () => {
     expect(mockRevise).not.toHaveBeenCalled();
     expect(screen.getByText("Title is required.")).toBeInTheDocument();
     expect(screen.getByText("Body is required.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Category")).toHaveFocus();
+    expect(screen.getByLabelText("Title")).toHaveFocus();
   });
 
   it("sends exactly { title, body } (trimmed), then reloads as a draft that can be submitted again", async () => {
