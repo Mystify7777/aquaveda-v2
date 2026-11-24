@@ -1,6 +1,7 @@
 import type { CreateKnowledgePayload } from "@/lib/api/types/knowledge";
 
 export interface KnowledgeDraftValues {
+  category: string;
   title: string;
   body: string;
 }
