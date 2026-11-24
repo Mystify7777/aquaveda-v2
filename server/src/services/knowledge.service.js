@@ -436,11 +436,16 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
     region: knowledge.region ?? "",
   };
 
-  const updated = await Knowledge.findOneAndUpdate(
-    observedFilter,
-    { $set: { ...allowedFields, status: "draft" } },
-    { new: true, runValidators: true },
-  );
+  let updated;
+  try {
+    updated = await Knowledge.findOneAndUpdate(
+      observedFilter,
+      { $set: { ...allowedFields, status: "draft" } },
+      { new: true, runValidators: true },
+    );
+  } catch (err) {
+    throw wrapMongooseValidationError(err);
+  }
 
   if (updated) return updated;
 
