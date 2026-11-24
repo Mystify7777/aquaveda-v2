@@ -8,11 +8,13 @@ import {
   validateAccountRecord,
 } from "../domain/account-restriction.js";
 import { ACTOR_TYPES, GOVERNANCE_ACTIONS, REASON_MAX_LENGTH } from "../domain/governance-event.js";
+import { NOT_ADMIN_FILTER, adminTargetingViolation } from "../domain/admin-targeting.js";
 import { requireActor, requireRole } from "./authorization.js";
 import { recordTransitionEvent } from "./governance-audit.js";
 import {
   DomainError,
   DomainErrorCode,
+  forbidden,
   invalidState,
   notFound,
   stateRace,
@@ -37,6 +39,16 @@ import {
  *   ACTIVE         --suspend---------> HARD_SUSPENDED   (temporary | indefinite)
  *   HARD_SUSPENDED --lift / expiry---> ACTIVE
  *
+ * Administrator targeting (ADR-0012 D2/D8, #255; docs/architecture/admin-targeting-enforcement.md):
+ * every PRODUCT operation (mute, suspend, both lifts) is rejected with 403
+ * FORBIDDEN when the target is the actor (`SELF_TARGET_PROHIBITED`) or any other
+ * ADMIN in any state (`ADMIN_TARGET_PROTECTED`). Order: ADMIN actor -> target id
+ * -> load target (404) -> TARGET PROTECTION -> state preconditions. The check is
+ * made on the pre-read AND pinned in the atomic write (`role` not ADMIN, plus
+ * state and `accountStateVersion`), so a role change between read and write is
+ * a zero-match resolved to STATE_RACE/NOT_FOUND, never FORBIDDEN and never a
+ * mutation. SYSTEM expiry is NOT subject to this rule (ADR-0012 D2).
+ *
  * Sessions and credentials (ADR-0010 §4; protocol and guarantees in
  * docs/architecture/hard-suspension.md, "Restoration and session-cleanup
  * protocol", #217/#219): MUTE never touches sessions or the credential
@@ -58,8 +70,16 @@ import {
  *  - beforeCleanup({ phase, ... }): immediately before session cleanup; may throw
  *    to simulate cleanup failure.
  * `phase` is "restore" or "suspend".
+ *  - afterTargetRead({ operation, targetId }): after mute/suspend's pre-read and
+ *    protection/state checks, before their conditional update (#255). Lifts use
+ *    `afterRead` (mode "admin"), which already sits at the same point.
  */
-export const governanceTestHooks = { afterRead: undefined, afterFlip: undefined, beforeCleanup: undefined };
+export const governanceTestHooks = {
+  afterRead: undefined,
+  afterFlip: undefined,
+  beforeCleanup: undefined,
+  afterTargetRead: undefined,
+};
 
 async function runHook(name, ctx) {
   const hook = governanceTestHooks[name];
@@ -67,7 +87,7 @@ async function runHook(name, ctx) {
 }
 
 const OBJECT_ID = /^[a-f\d]{24}$/i;
-const STATE_PROJECTION = "accountState accountStateVersion accountRestriction authGeneration";
+const STATE_PROJECTION = "role accountState accountStateVersion accountRestriction authGeneration";
 
 /** Restriction families that share lift/expiry mechanics. */
 const MUTE = Object.freeze({
@@ -128,6 +148,22 @@ async function loadTarget(targetId) {
   const target = await User.findById(targetId).select(STATE_PROJECTION);
   if (!target) throw notFound("Account not found");
   return target;
+}
+
+/**
+ * ADR-0012 D2/D8: throws the exact documented 403 for a self or Admin target.
+ * Evaluated on the pre-read, before every state-dependent check. A zero-match
+ * on the write never reaches here (it never infers FORBIDDEN).
+ */
+function assertTargetNotProtected(actorContext, target) {
+  const reason = adminTargetingViolation({ actorId: actorContext.id, target });
+  if (!reason) return;
+  throw forbidden(
+    reason === "SELF_TARGET_PROHIBITED"
+      ? "An administrator cannot apply governance operations to their own account"
+      : "Administrator accounts cannot be restricted or restored through this operation",
+    { reason },
+  );
 }
 
 async function diagnoseZeroMatch(targetId) {
@@ -230,14 +266,16 @@ export async function muteAccount(actorContext, targetId, input = {}, { now = ne
   if (recordErrors.length > 0) throw validationFailed(recordErrors);
 
   const target = await loadTarget(targetId);
+  assertTargetNotProtected(actorContext, target);
   const currentState = target.accountState ?? ACCOUNT_STATES.ACTIVE;
   if (currentState !== ACCOUNT_STATES.ACTIVE) {
     throw invalidState("Only an ACTIVE account can be muted", { accountState: currentState });
   }
   const version = target.accountStateVersion ?? 0;
+  await runHook("afterTargetRead", { operation: "mute", targetId });
 
   const updated = await User.findOneAndUpdate(
-    { _id: targetId, ...stateFilter(ACCOUNT_STATES.ACTIVE), ...versionFilter(version) },
+    { _id: targetId, ...NOT_ADMIN_FILTER, ...stateFilter(ACCOUNT_STATES.ACTIVE), ...versionFilter(version) },
     {
       $set: {
         accountState: ACCOUNT_STATES.MUTED,
@@ -319,14 +357,16 @@ export async function suspendAccount(actorContext, targetId, input = {}, { now =
   if (recordErrors.length > 0) throw validationFailed(recordErrors);
 
   const target = await loadTarget(targetId);
+  assertTargetNotProtected(actorContext, target);
   const currentState = target.accountState ?? ACCOUNT_STATES.ACTIVE;
   if (currentState !== ACCOUNT_STATES.ACTIVE) {
     throw invalidState("Only an ACTIVE account can be hard-suspended", { accountState: currentState });
   }
   const version = target.accountStateVersion ?? 0;
+  await runHook("afterTargetRead", { operation: "suspend", targetId });
 
   const updated = await User.findOneAndUpdate(
-    { _id: targetId, ...stateFilter(ACCOUNT_STATES.ACTIVE), ...versionFilter(version) },
+    { _id: targetId, ...NOT_ADMIN_FILTER, ...stateFilter(ACCOUNT_STATES.ACTIVE), ...versionFilter(version) },
     {
       $set: {
         accountState: ACCOUNT_STATES.HARD_SUSPENDED,
@@ -383,6 +423,7 @@ async function restoreAccount(cfg, targetId, { mode, actorContext = null, reason
     expiredAt = target.accountRestriction.expiresAt;
   } else {
     if (!target) throw notFound("Account not found");
+    assertTargetNotProtected(actorContext, target);
     if (state !== cfg.state) {
       throw invalidState(`Only a ${cfg.state} account can have its ${cfg.label} lifted`, { accountState: state });
     }
@@ -392,6 +433,8 @@ async function restoreAccount(cfg, targetId, { mode, actorContext = null, reason
   await runHook("afterRead", { ...ctx, targetId });
 
   const filter = { _id: targetId, ...stateFilter(cfg.state), ...versionFilter(version) };
+  // Product lifts pin the role too (ADR-0012 D8); SYSTEM expiry may lift an Admin's restriction (D2).
+  if (mode === "admin") Object.assign(filter, NOT_ADMIN_FILTER);
   if (mode === "expiry") {
     filter["accountRestriction.kind"] = RESTRICTION_KINDS.TEMPORARY;
     filter["accountRestriction.expiresAt"] = { $lte: now };

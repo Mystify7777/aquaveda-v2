@@ -8,7 +8,16 @@
  * array is frozen and exists for documentation and tests. Adding a value is an
  * API contract change and must be recorded in the decision register.
  */
-const REASONS = ["GRANT_EXISTS", "GRANT_ALREADY_ACCEPTED", "GRANT_NOT_ACCEPTED", "NO_GRANT", "SELF_GRANT_NOT_PERMITTED"];
+const REASONS = [
+  "GRANT_EXISTS",
+  "GRANT_ALREADY_ACCEPTED",
+  "GRANT_NOT_ACCEPTED",
+  "NO_GRANT",
+  "SELF_GRANT_NOT_PERMITTED",
+  // ADR-0012 (#255): administrator targeting protection on account governance.
+  "SELF_TARGET_PROHIBITED",
+  "ADMIN_TARGET_PROTECTED",
+];
 const ALLOWED = new Set(REASONS);
 
 export const CLIENT_SAFE_REASONS = Object.freeze([...REASONS]);
