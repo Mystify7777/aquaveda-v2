@@ -5,19 +5,17 @@ import { paginationQuerySchema } from "./shared/pagination.js";
 /**
  * Knowledge request-shape validation.
  *
- * `createKnowledgeSchema` covers both draft creation and revision after
- * rejection (ADR-0004: `rejected -> draft` reuses the same entity and the
- * same content shape — there is no separate "revision" DTO because the
- * domain doesn't have a separate revision entity, see ADR-0005 §2's
- * rejection of a Submission/Version concept).
+ * Create requires title, body, and an active canonical Category. Topics
+ * default to an empty list and, when supplied, must be non-empty strings.
+ * Canonical taxonomy identity and active status are checked by the service
+ * against the authoritative application-owned taxonomy registry.
  */
 export const createKnowledgeSchema = z.object({
   title: z.string().trim().min(1, "title is required"),
   body: z.string().trim().min(1, "body is required"),
   category: z.string().trim().min(1, "category is required"),
   topics: z.array(z.string().trim().min(1, "topic must not be empty")).default([]),
-  // region is a freeform display value. The service derives regionKey from
-  // this value server-side; callers never submit a matching key.
+  // Region is a freeform display value; regionKey is derived server-side.
   region: z.string().trim().optional(),
 });
 
