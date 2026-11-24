@@ -332,7 +332,7 @@ describe("fixture: verified EXPERT exercises real authorization (#90 readiness)"
     );
 
     const author = await createFixtureUser("USER");
-    const k = await createKnowledge(author.ctx, { title: "Rain barrels", body: "Collect runoff." });
+    const k = await createKnowledge(author.ctx, { title: "Rain barrels", body: "Collect runoff.", category: "water_conservation" });
     await submitForReview(author.ctx, String(k._id));
     const out = await approve(expert.ctx, String(k._id));
     assert.equal(out.status, "approved");
