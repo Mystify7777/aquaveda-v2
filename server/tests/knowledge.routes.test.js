@@ -171,7 +171,7 @@ describe("POST /api/v1/knowledge", () => {
 
   it("401s for an anonymous request", async () => {
     const res = await request("POST", "/api/v1/knowledge", {
-      body: { title: "x", body: "y", category: "other" },
+      body: { title: "x", body: "y" },
     });
     assert.equal(res.status, 401);
     assert.equal(res.json.code, "UNAUTHORIZED");
