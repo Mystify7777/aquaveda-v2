@@ -425,7 +425,12 @@ describe("MUTE enforcement over HTTP (real app, every existing write surface)", 
   it("a muted ADMIN is blocked from governance writes too (mute is always temporary, so this self-heals)", async () => {
     const admin = await makeUser("ADMIN");
     const other = await makeUser("ADMIN");
-    await muteAccount(admin.actor, other.id, { expiresAt: future() });
+    // ADR-0012 (#255): an Admin cannot mute a peer through the product, so the
+    // Operator-imposed state this test needs is written directly.
+    await User.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(other.id) },
+      { $set: { accountState: "MUTED", accountStateChangedAt: new Date(), accountRestriction: { kind: "TEMPORARY", expiresAt: future() } } },
+    );
     const res = await call("POST", `/api/v1/accounts/${admin.id}/mute`, { token: other.accessToken, body: { expiresAt: future().toISOString() } });
     assert.equal(res.json.code, "ACCOUNT_MUTED");
   });
