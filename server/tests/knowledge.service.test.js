@@ -413,6 +413,40 @@ describe("knowledge.service — revision taxonomy invariants (Issue #231)", () =
     assert.equal(revised.regionKey, "bihar, india");
   });
 
+  it("revises only supplied fields while retaining omitted Topics and Region", async () => {
+    const author = fakeActor("USER");
+    const { knowledge } = await makeRejectedLegacy(author);
+    const revised = await revise(author, knowledge._id, {
+      category: "water_conservation",
+      title: "Corrected title",
+    });
+    assert.equal(revised.title, "Corrected title");
+    assert.equal(revised.category, "water_conservation");
+    assert.deepEqual(revised.topics, []);
+    assert.equal(revised.region, "Bihar");
+    assert.equal(revised.regionKey, "bihar");
+    assert.equal(revised.status, "draft");
+  });
+
+  it("deduplicates supplied Topics and rejects aliases/non-active terms on revision", async () => {
+    const author = fakeActor("USER");
+    const { knowledge } = await makeRejectedLegacy(author);
+    const revised = await revise(author, knowledge._id, {
+      category: "other",
+      topics: ["water_reuse", "water_reuse", "efficient_irrigation"],
+    });
+    assert.deepEqual(revised.topics, ["water_reuse", "efficient_irrigation"]);
+
+    const next = await makeRejectedLegacy(author);
+    await assert.rejects(
+      () => revise(author, next.knowledge._id, {
+        category: "other",
+        topics: ["Water reuse"],
+      }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+
   it("does not overwrite concurrent Category/Topic changes in MongoDB", async () => {
     const author = fakeActor("USER");
     const { knowledge } = await makeRejectedLegacy(author);
