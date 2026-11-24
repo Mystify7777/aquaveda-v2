@@ -52,5 +52,6 @@ governance mutation controls.** Any future governance UI must not offer mute,
 suspend, or lift for a row whose `role` is `ADMIN` or whose `id` is the
 signed-in user's. The server remains authoritative: the mutation endpoints
 reject those requests with `403` (`SELF_TARGET_PROHIBITED` /
-`ADMIN_TARGET_PROTECTED`); enforcement is owned by #255. The directory contract
+`ADMIN_TARGET_PROTECTED`); enforced by #255 (see
+[admin-targeting-enforcement.md](./admin-targeting-enforcement.md)). The directory contract
 itself is unchanged by this decision.
