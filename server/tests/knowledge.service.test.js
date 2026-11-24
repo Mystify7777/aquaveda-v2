@@ -417,28 +417,38 @@ describe("knowledge.service — revision taxonomy invariants (Issue #231)", () =
     const author = fakeActor("USER");
     const { knowledge } = await makeRejectedLegacy(author);
 
-    // The initial service read has already occurred by the time its
-    // conditional update reaches findOneAndUpdate. This real MongoDB write
-    // simulates another request winning the race immediately beforehand.
-    const concurrentWrite = await Knowledge.updateOne(
-      { _id: knowledge._id, status: "rejected" },
-      {
-        $set: {
-          category: "water_conservation",
-          topics: ["water_reuse"],
-        },
-      },
-    );
-    assert.equal(concurrentWrite.modifiedCount, 1);
+    const originalFindOneAndUpdate = Knowledge.findOneAndUpdate;
+    let injected = false;
+    Knowledge.findOneAndUpdate = async function (filter, update, options) {
+      if (!injected && String(filter?._id) === String(knowledge._id)) {
+        injected = true;
+        const concurrentWrite = await Knowledge.updateOne(
+          { _id: knowledge._id, status: "rejected" },
+          {
+            $set: {
+              category: "water_conservation",
+              topics: ["water_reuse"],
+            },
+          },
+        );
+        assert.equal(concurrentWrite.modifiedCount, 1);
+      }
+      return originalFindOneAndUpdate.call(this, filter, update, options);
+    };
 
-    await assert.rejects(
-      () => revise(author, knowledge._id, {
-        category: "agriculture_irrigation",
-        topics: [],
-      }),
-      (err) => err.code === DomainErrorCode.STATE_RACE,
-    );
+    try {
+      await assert.rejects(
+        () => revise(author, knowledge._id, {
+          category: "agriculture_irrigation",
+          topics: [],
+        }),
+        (err) => err.code === DomainErrorCode.STATE_RACE,
+      );
+    } finally {
+      Knowledge.findOneAndUpdate = originalFindOneAndUpdate;
+    }
 
+    assert.equal(injected, true);
     const current = await Knowledge.findById(knowledge._id).lean();
     assert.equal(current.category, "water_conservation");
     assert.deepEqual(current.topics, ["water_reuse"]);
@@ -456,20 +466,33 @@ describe("knowledge.service — revision taxonomy invariants (Issue #231)", () =
       reviewHistory: [],
     });
 
-    const concurrentWrite = await Knowledge.updateOne(
-      { _id: legacy._id, status: "rejected" },
-      { $set: { region: "Jharkhand" } },
-    );
-    assert.equal(concurrentWrite.modifiedCount, 1);
+    const originalFindOneAndUpdate = Knowledge.findOneAndUpdate;
+    let injected = false;
+    Knowledge.findOneAndUpdate = async function (filter, update, options) {
+      if (!injected && String(filter?._id) === String(legacy._id)) {
+        injected = true;
+        const concurrentWrite = await Knowledge.updateOne(
+          { _id: legacy._id, status: "rejected" },
+          { $set: { region: "Jharkhand" } },
+        );
+        assert.equal(concurrentWrite.modifiedCount, 1);
+      }
+      return originalFindOneAndUpdate.call(this, filter, update, options);
+    };
 
-    await assert.rejects(
-      () => revise(author, legacy._id, {
-        category: "other",
-        region: "Bihar, India",
-      }),
-      (err) => err.code === DomainErrorCode.STATE_RACE,
-    );
+    try {
+      await assert.rejects(
+        () => revise(author, legacy._id, {
+          category: "other",
+          region: "Bihar, India",
+        }),
+        (err) => err.code === DomainErrorCode.STATE_RACE,
+      );
+    } finally {
+      Knowledge.findOneAndUpdate = originalFindOneAndUpdate;
+    }
 
+    assert.equal(injected, true);
     const current = await Knowledge.findById(legacy._id).lean();
     assert.equal(current.region, "Jharkhand");
     assert.equal(current.regionKey, "jharkhand");
