@@ -507,7 +507,7 @@ describe("knowledge.service — revision taxonomy invariants (Issue #231)", () =
         injected = true;
         const concurrentWrite = await Knowledge.updateOne(
           { _id: legacy._id, status: "rejected" },
-          { $set: { region: "Jharkhand" } },
+          { $set: { region: "Jharkhand", regionKey: "jharkhand-concurrent" } },
         );
         assert.equal(concurrentWrite.modifiedCount, 1);
       }
@@ -529,7 +529,7 @@ describe("knowledge.service — revision taxonomy invariants (Issue #231)", () =
     assert.equal(injected, true);
     const current = await Knowledge.findById(legacy._id).lean();
     assert.equal(current.region, "Jharkhand");
-    assert.equal(current.regionKey, "jharkhand");
+    assert.equal(current.regionKey, "jharkhand-concurrent");
     assert.equal(current.category, undefined);
     assert.equal(current.status, "rejected");
   });
