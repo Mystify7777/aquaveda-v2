@@ -14,6 +14,7 @@ import { KnowledgeSubmitAction } from "@/components/knowledge/knowledge-submit-a
 import type { CreatedKnowledgeDraft, KnowledgeLifecycleResult } from "@/lib/api/types/knowledge";
 import {
   EMPTY_KNOWLEDGE_DRAFT,
+  KNOWLEDGE_CATEGORIES,
   validateKnowledgeDraft,
   type KnowledgeDraftErrors,
   type KnowledgeDraftField,
