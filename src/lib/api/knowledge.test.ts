@@ -83,7 +83,7 @@ describe("createKnowledge", () => {
     expect(String(url)).toContain("/api/v1/knowledge");
     expect(init).toMatchObject({
       method: "POST",
-      body: JSON.stringify({ title: "T", body: "B" }),
+      body: JSON.stringify({ title: "T", body: "B", category: "other" }),
     });
     expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
@@ -175,15 +175,15 @@ describe("lifecycle writes", () => {
     expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
 
-  it("reviseKnowledge POSTs exactly { title, body } as JSON", async () => {
+  it("reviseKnowledge POSTs exactly { title, body, category } as JSON", async () => {
     mockFetchOnce(result);
     const { reviseKnowledge } = await import("@/lib/api/knowledge");
-    await reviseKnowledge("k-1", { title: "T2", body: "B2" });
+    await reviseKnowledge("k-1", { title: "T2", body: "B2", category: "other" });
     const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toBe("https://api.aquaveda.com/api/v1/knowledge/k-1/revise");
     expect(init).toMatchObject({
       method: "POST",
-      body: JSON.stringify({ title: "T2", body: "B2" }),
+      body: JSON.stringify({ title: "T2", body: "B2", category: "other" }),
     });
     expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
