@@ -16,6 +16,7 @@ vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => mockUseA
 const CREATED = { _id: "k1", title: "Drip irrigation", status: "draft" };
 
 async function fill(user: ReturnType<typeof userEvent.setup>) {
+  await user.selectOptions(screen.getByLabelText(/^category/i), "agriculture_irrigation");
   await user.type(screen.getByLabelText(/^title/i), "Drip irrigation");
   await user.type(screen.getByLabelText(/^body/i), "Steps to set it up");
 }
@@ -30,6 +31,7 @@ describe("KnowledgeDraftForm", () => {
 
   it("idle: renders labelled title/body fields and an enabled submit, with no region field", () => {
     render(<KnowledgeDraftForm />);
+    expect(screen.getByLabelText(/^category/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^title/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^body/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/region/i)).not.toBeInTheDocument();
@@ -41,10 +43,11 @@ describe("KnowledgeDraftForm", () => {
     render(<KnowledgeDraftForm />);
     await user.click(submit());
     expect(mockCreateKnowledge).not.toHaveBeenCalled();
+    expect(screen.getByText("Category is required.")).toBeInTheDocument();
     expect(screen.getByText("Title is required.")).toBeInTheDocument();
     expect(screen.getByText("Body is required.")).toBeInTheDocument();
-    expect(screen.getByLabelText(/^title/i)).toHaveFocus();
-    expect(screen.getByLabelText(/^title/i)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText(/^category/i)).toHaveFocus();
+    expect(screen.getByLabelText(/^category/i)).toHaveAttribute("aria-invalid", "true");
   });
 
   it("valid submission sends the exact backend payload and shows the completion state", async () => {
@@ -54,7 +57,11 @@ describe("KnowledgeDraftForm", () => {
     await fill(user);
     await user.click(submit());
     expect(mockCreateKnowledge).toHaveBeenCalledTimes(1);
-    expect(mockCreateKnowledge).toHaveBeenCalledWith({ title: "Drip irrigation", body: "Steps to set it up" });
+    expect(mockCreateKnowledge).toHaveBeenCalledWith({
+      title: "Drip irrigation",
+      body: "Steps to set it up",
+      category: "agriculture_irrigation",
+    });
     expect(await screen.findByText("Draft saved")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(/not been submitted for review/i);
     await user.click(screen.getByRole("button", { name: "Write another" }));
