@@ -6,31 +6,68 @@ import { ProtectedRouteBoundary } from "@/components/auth/protected-route-bounda
 const mockUseAuth = vi.fn();
 const mockUsePathname = vi.fn();
 
-vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => mockUseAuth() }));
-vi.mock("next/navigation", () => ({ usePathname: () => mockUsePathname() }));
+vi.mock("@/components/providers/auth-provider", () => ({
+    useAuth: () => mockUseAuth(),
+}));
+
+vi.mock("next/navigation", () => ({
+    usePathname: () => mockUsePathname(),
+}));
 
 function setStatus(status: "anonymous" | "session-failure" | "unavailable" | "initializing") {
-    mockUseAuth.mockReturnValue({ status, user: null, retryInitialization: vi.fn() });
+    mockUseAuth.mockReturnValue({
+        status,
+        user: null,
+        retryInitialization: vi.fn(),
+    });
 }
 
 describe("ProtectedRouteBoundary", () => {
-    beforeEach(() => { mockUseAuth.mockReset(); mockUsePathname.mockReset(); });
+    beforeEach(() => {
+        mockUseAuth.mockReset();
+        mockUsePathname.mockReset();
+    });
 
     it("renders a dashboard-specific authentication card for anonymous state", () => {
         mockUsePathname.mockReturnValue("/dashboard");
         setStatus("anonymous");
-        render(<ProtectedRouteBoundary><div>Protected content</div></ProtectedRouteBoundary>);
+
+        render(
+            <ProtectedRouteBoundary>
+                <div>Protected content</div>
+            </ProtectedRouteBoundary>,
+        );
 
         expect(screen.getByRole("heading", { name: "Your dashboard" })).toBeInTheDocument();
-        expect(screen.getByText("Sign in to view your activity and AquaVeda's platform totals.")).toBeInTheDocument();
-        expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
-        expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/auth/register");
+        expect(
+            screen.getByText("Sign in to view your activity and AquaVeda's platform totals."),
+        ).toBeInTheDocument();
+
+        const gate = screen.getByRole("heading", { name: "Your dashboard" }).closest("div")?.parentElement
+            ?.parentElement;
+        expect(gate).toHaveClass("items-center", "justify-center");
+        expect(gate).toHaveClass("min-h-[calc(100dvh-12rem)]");
+
+        expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+            "href",
+            "/auth/login",
+        );
+        expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute(
+            "href",
+            "/auth/register",
+        );
     });
 
     it("centers the Dashboard unavailable state shown in the production preview", () => {
         mockUsePathname.mockReturnValue("/dashboard");
         setStatus("unavailable");
-        render(<ProtectedRouteBoundary><div>Protected content</div></ProtectedRouteBoundary>);
+
+        render(
+            <ProtectedRouteBoundary>
+                <div>Protected content</div>
+            </ProtectedRouteBoundary>,
+        );
+
         const gate = screen.getByRole("alert").parentElement;
         expect(gate).toHaveClass("items-center", "justify-center", "text-center");
         expect(gate).toHaveClass("min-h-[calc(100dvh-12rem)]");
@@ -40,7 +77,13 @@ describe("ProtectedRouteBoundary", () => {
     it("centers the Dashboard session-failure state", () => {
         mockUsePathname.mockReturnValue("/dashboard");
         setStatus("session-failure");
-        render(<ProtectedRouteBoundary><div>Protected content</div></ProtectedRouteBoundary>);
+
+        render(
+            <ProtectedRouteBoundary>
+                <div>Protected content</div>
+            </ProtectedRouteBoundary>,
+        );
+
         const gate = screen.getByRole("alert").parentElement;
         expect(gate).toHaveClass("items-center", "justify-center", "text-center");
         expect(gate).toHaveClass("min-h-[calc(100dvh-12rem)]");
@@ -50,7 +93,13 @@ describe("ProtectedRouteBoundary", () => {
     it("keeps non-Dashboard protected routes on the existing gate presentation", () => {
         mockUsePathname.mockReturnValue("/learn/new");
         setStatus("unavailable");
-        render(<ProtectedRouteBoundary><div>Protected content</div></ProtectedRouteBoundary>);
+
+        render(
+            <ProtectedRouteBoundary>
+                <div>Protected content</div>
+            </ProtectedRouteBoundary>,
+        );
+
         const gate = screen.getByRole("alert").parentElement;
         expect(gate).not.toHaveClass("items-center");
         expect(gate).not.toHaveClass("justify-center");
@@ -60,8 +109,18 @@ describe("ProtectedRouteBoundary", () => {
 
     it("passes through authenticated content without a gate frame", () => {
         mockUsePathname.mockReturnValue("/dashboard");
-        mockUseAuth.mockReturnValue({ status: "authenticated", user: { id: "u1", role: "USER" }, retryInitialization: vi.fn() });
-        render(<ProtectedRouteBoundary><div>Protected content</div></ProtectedRouteBoundary>);
+        mockUseAuth.mockReturnValue({
+            status: "authenticated",
+            user: { id: "u1", role: "USER" },
+            retryInitialization: vi.fn(),
+        });
+
+        render(
+            <ProtectedRouteBoundary>
+                <div>Protected content</div>
+            </ProtectedRouteBoundary>,
+        );
+
         expect(screen.getByText("Protected content")).toBeInTheDocument();
     });
 });
