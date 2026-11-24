@@ -111,7 +111,7 @@ async function makeExpertViaHttp(admin, name = "Expert") {
 const KN = "/api/v1/knowledge";
 
 async function submitted(author, title = "Drip irrigation") {
-  const created = await request("POST", KN, { token: author.token, body: { title, body: `Body of ${title}` } });
+  const created = await request("POST", KN, { token: author.token, body: { title, body: `Body of ${title}`, category: "agriculture_irrigation" } });
   assert.equal(created.status, 201);
   assert.equal(created.json.data.status, "draft");
   const id = created.json.data._id;
@@ -295,7 +295,7 @@ describe("invalid transitions and races", () => {
     const expert = await makeExpertViaHttp(admin);
     const author = await makeUser();
 
-    const draft = (await request("POST", KN, { token: author.token, body: { title: "T", body: "B" } })).json.data;
+    const draft = (await request("POST", KN, { token: author.token, body: { title: "T", body: "B", category: "other" } })).json.data;
     for (const [action, body] of [["approve"], ["reject", { feedback: "x" }]].map((a) => [a[0], a[1]])) {
       const res = await request("POST", `${KN}/${draft._id}/${action}`, { token: expert.token, body });
       assert.equal(res.status, 409, `draft ${action}`);
