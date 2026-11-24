@@ -4,9 +4,9 @@ import { EMPTY_KNOWLEDGE_DRAFT, validateKnowledgeDraft } from "@/lib/knowledge/d
 
 describe("validateKnowledgeDraft", () => {
   it("returns a trimmed payload with exactly title and body", () => {
-    expect(validateKnowledgeDraft({ title: " Drip irrigation ", body: " Steps... " })).toEqual({
+    expect(validateKnowledgeDraft({ category: "agriculture_irrigation", title: " Drip irrigation ", body: " Steps... " })).toEqual({
       ok: true,
-      payload: { title: "Drip irrigation", body: "Steps..." },
+      payload: { title: "Drip irrigation", body: "Steps...", category: "agriculture_irrigation" },
     });
   });
 
