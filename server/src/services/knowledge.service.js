@@ -54,8 +54,10 @@ function resolveCanonicalTopic(value) {
 /**
  * createKnowledge(actorContext, payload)
  *
- * payload: { title, body, region? } — never accepts status, author, or
- * reviewHistory from the caller.
+ * payload: { title, body, category, topics?, region? }.
+ * Category and supplied Topics must be ACTIVE canonical taxonomy slugs.
+ * Region remains a display value and regionKey is derived server-side.
+ * Lifecycle, author, reviewHistory, and derived fields are server-owned.
  */
 export async function createKnowledge(actorContext, payload) {
   requireActor(actorContext);
@@ -320,9 +322,11 @@ export async function reject(actorContext, knowledgeId, feedback) {
 /**
  * revise(actorContext, knowledgeId, updatedContent)
  *
- * rejected -> draft, author-only. Only title/body/region are updatable
- * from `updatedContent` — author, reviewHistory, and status are never
- * accepted from the caller, regardless of what updatedContent contains.
+ * rejected -> draft, author-only. Optional title/body/category/topics/region
+ * changes are applied after validating supplied taxonomy identities. Existing
+ * taxonomy is retained when its field is omitted; a legacy record without a
+ * Category must supply one. regionKey is recomputed from the resulting Region.
+ * Author, reviewHistory, status, and derived fields remain server-owned.
  */
 export async function revise(actorContext, knowledgeId, updatedContent) {
   requireActor(actorContext);
