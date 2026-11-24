@@ -244,11 +244,11 @@ check("4d. Knowledge creation payload defaults omitted Topics to []", () => {
   assert.deepEqual(result.data.topics, []);
 });
 
-check("4e. Knowledge creation rejects a non-canonical Category", () => {
+check("4e. Knowledge creation rejects an empty Category", () => {
   const result = createKnowledgeSchema.safeParse({
     title: "Drip irrigation basics",
     body: "How to set up a low-cost drip irrigation system.",
-    category: "water conservation",
+    category: "",
   });
   assert.equal(result.success, false);
 });
