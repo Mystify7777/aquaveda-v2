@@ -85,7 +85,7 @@ async function makeUser(role = "USER", name = `Person ${++seq}`) {
 async function draftVia(u, title = "Drip irrigation") {
   const res = await request("POST", "/api/v1/knowledge", {
     token: u.token,
-    body: { title, body: `Body of ${title}` },
+    body: { title, body: `Body of ${title}`, category: "agriculture_irrigation" },
   });
   return res.json.data;
 }
