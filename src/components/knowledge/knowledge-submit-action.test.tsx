@@ -71,6 +71,7 @@ describe("KnowledgeSubmitAction", () => {
     mockCreate.mockResolvedValue({ _id: "k1", title: "Drip irrigation", status: "draft" });
     mockSubmit.mockResolvedValue(SUBMITTED);
     render(<KnowledgeDraftForm />);
+    await user.selectOptions(screen.getByLabelText(/^category/i), "agriculture_irrigation");
     await user.type(screen.getByLabelText(/^title/i), "Drip irrigation");
     await user.type(screen.getByLabelText(/^body/i), "Steps");
     await user.click(screen.getByRole("button", { name: "Save draft" }));
