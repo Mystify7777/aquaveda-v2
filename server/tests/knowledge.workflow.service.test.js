@@ -228,7 +228,7 @@ describe("getKnowledgeForWorkflow", () => {
 
     const dto = await getKnowledgeForWorkflow(author, k._id);
     assert.deepEqual(Object.keys(dto).sort(), [
-      "_id", "author", "body", "createdAt", "region", "reviewHistory", "status", "title", "updatedAt",
+      "_id", "author", "body", "category", "createdAt", "region", "reviewHistory", "status", "title", "updatedAt",
     ]);
     assert.deepEqual(dto.author, { _id: author.id, name: "Asha", role: "USER" });
     assert.equal(dto.reviewHistory.length, 2);
