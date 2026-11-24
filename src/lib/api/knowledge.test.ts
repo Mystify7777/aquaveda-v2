@@ -78,12 +78,24 @@ describe("createKnowledge", () => {
       201,
     );
     const { createKnowledge } = await import("@/lib/api/knowledge");
-    await expect(createKnowledge({ title: "T", body: "B" })).resolves.toMatchObject({ _id: "k-2", status: "draft" });
+    await expect(createKnowledge({
+      title: "T",
+      body: "B",
+      category: "water_conservation",
+      topics: ["water_reuse"],
+      region: "Bihar",
+    })).resolves.toMatchObject({ _id: "k-2", status: "draft" });
     const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(String(url)).toContain("/api/v1/knowledge");
     expect(init).toMatchObject({
       method: "POST",
-      body: JSON.stringify({ title: "T", body: "B" }),
+      body: JSON.stringify({
+        title: "T",
+        body: "B",
+        category: "water_conservation",
+        topics: ["water_reuse"],
+        region: "Bihar",
+      }),
     });
     expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
@@ -175,15 +187,23 @@ describe("lifecycle writes", () => {
     expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
 
-  it("reviseKnowledge POSTs exactly { title, body } as JSON", async () => {
+  it("reviseKnowledge accepts sparse taxonomy/content/region updates", async () => {
     mockFetchOnce(result);
     const { reviseKnowledge } = await import("@/lib/api/knowledge");
-    await reviseKnowledge("k-1", { title: "T2", body: "B2" });
+    await reviseKnowledge("k-1", {
+      title: "T2",
+      topics: ["water_reuse", "efficient_irrigation"],
+      region: "Bihar",
+    });
     const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toBe("https://api.aquaveda.com/api/v1/knowledge/k-1/revise");
     expect(init).toMatchObject({
       method: "POST",
-      body: JSON.stringify({ title: "T2", body: "B2" }),
+      body: JSON.stringify({
+        title: "T2",
+        topics: ["water_reuse", "efficient_irrigation"],
+        region: "Bihar",
+      }),
     });
     expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
