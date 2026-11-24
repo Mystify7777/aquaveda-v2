@@ -59,7 +59,7 @@ async function makeIssue(reporterId, title) {
 async function makeApprovedKnowledge(authorId, title) {
   const knowledge = await createKnowledge(
     { id: String(authorId), role: "USER" },
-    { title, body: "body" },
+    { title, body: "body", category: "other" },
   );
   await submitForReview(
     { id: String(authorId), role: "USER" },
