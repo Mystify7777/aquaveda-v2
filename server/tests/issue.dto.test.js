@@ -271,7 +271,7 @@ describe("failure envelope `reason` allowlist", () => {
 
   it("the allowlist is exactly the documented set and cannot be mutated", () => {
     assert.deepEqual([...CLIENT_SAFE_REASONS].sort(), [
-      "GRANT_ALREADY_ACCEPTED", "GRANT_EXISTS", "GRANT_NOT_ACCEPTED", "NO_GRANT", "SELF_GRANT_NOT_PERMITTED",
+      "ADMIN_TARGET_PROTECTED", "GRANT_ALREADY_ACCEPTED", "GRANT_EXISTS", "GRANT_NOT_ACCEPTED", "NO_GRANT", "SELF_GRANT_NOT_PERMITTED",
     ]);
     assert.ok(Object.isFrozen(CLIENT_SAFE_REASONS));
     assert.throws(() => CLIENT_SAFE_REASONS.push("INJECTED"), TypeError);
