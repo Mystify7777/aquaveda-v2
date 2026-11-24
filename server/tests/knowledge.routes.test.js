@@ -120,7 +120,7 @@ describe("POST /api/v1/knowledge", () => {
     const { accessToken } = await makeAuthedUser("USER");
     const res = await request("POST", "/api/v1/knowledge", {
       cookies: authCookie(accessToken),
-      body: { title: "Drip irrigation basics", body: "How to set up drip irrigation." },
+      body: { title: "Drip irrigation basics", body: "How to set up drip irrigation.", category: "agriculture_irrigation" },
     });
 
     assert.equal(res.status, 201);
