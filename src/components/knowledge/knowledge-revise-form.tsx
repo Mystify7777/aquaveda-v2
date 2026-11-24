@@ -6,6 +6,7 @@ import Link from "next/link";
 import { KnowledgeFormField as Field } from "@/components/knowledge/knowledge-form-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { KNOWLEDGE_CATEGORIES } from "@/lib/knowledge/draft-validation";
 import { Textarea } from "@/components/ui/textarea";
 import { reviseKnowledge } from "@/lib/api/knowledge";
 import type { KnowledgeLifecycleResult } from "@/lib/api/types/knowledge";
@@ -17,7 +18,7 @@ import {
   type KnowledgeDraftValues,
 } from "@/lib/knowledge/draft-validation";
 
-const FIELD_ORDER: KnowledgeDraftField[] = ["title", "body"];
+const FIELD_ORDER: KnowledgeDraftField[] = ["category", "title", "body"];
 
 /**
  * rejected -> draft (POST /knowledge/:id/revise), prefilled with the
@@ -95,6 +96,27 @@ export function KnowledgeReviseForm({
           </div>
         )}
         <fieldset disabled={pending} className="space-y-4">
+          <Field id="revise-category" label="Category" error={fieldErrors.category}>
+            <select
+              id="revise-category"
+              ref={(el) => {
+                fieldRefs.current.category = el;
+              }}
+              value={values.category}
+              onChange={(e) => setField("category", e.target.value)}
+              aria-invalid={!!fieldErrors.category}
+              aria-describedby={fieldErrors.category ? "revise-category-error" : undefined}
+              aria-required="true"
+              className="border-input bg-background text-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2"
+            >
+              <option value="">Select a category</option>
+              {KNOWLEDGE_CATEGORIES.map((category) => (
+                <option key={category.value} value={category.value}>
+                  {category.label}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field id="revise-title" label="Title" error={fieldErrors.title}>
             <Input
               id="revise-title"
