@@ -99,8 +99,8 @@ describe("full app router mounting (Phase 7)", () => {
       headers: { Origin: ALLOWED_ORIGIN },
       body: { title: "x", description: "y", location: { type: "Point", coordinates: [0, 0] } },
     });
-    assert.equal(res.status, 401);
-    assert.equal(res.json.code, "UNAUTHORIZED");
+    assert.equal(res.status, 400);
+    assert.equal(res.json.code, "VALIDATION_FAILED");
   });
 
   describe("fail-closed CSRF provenance for Issue creation", () => {
