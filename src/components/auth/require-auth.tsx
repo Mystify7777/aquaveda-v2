@@ -3,32 +3,27 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/components/providers/auth-provider";
 import { RESTRICTION_ACTION_MESSAGE } from "@/lib/api/account-restriction";
 import { cn } from "@/lib/utils";
 
-/**
- * The reusable authenticated-route protection boundary (Issue #43).
- * Backend authorization remains authoritative; this component only controls
- * what the client renders while the shared session state is unresolved.
- */
 export function RequireAuth({
     children,
     gateClassName,
+    gateTitle,
+    gateDescription,
 }: {
     children: React.ReactNode;
     gateClassName?: string;
+    gateTitle?: string;
+    gateDescription?: string;
 }) {
     const { status, retryInitialization } = useAuth();
 
     if (status === "initializing") {
         return (
-            <div
-                role="status"
-                aria-live="polite"
-                aria-label="Checking authentication"
-                className={gateClassName}
-            >
+            <div role="status" aria-live="polite" aria-label="Checking authentication" className={gateClassName}>
                 <span className="sr-only">Checking your session...</span>
             </div>
         );
@@ -37,32 +32,38 @@ export function RequireAuth({
     if (status === "authenticated") return <>{children}</>;
 
     if (status === "anonymous") {
+        if (gateTitle) {
+            return (
+                <div className={cn("space-y-2", gateClassName)}>
+                    <Card className="w-full max-w-md text-left">
+                        <CardHeader>
+                            <CardTitle>{gateTitle}</CardTitle>
+                            <CardDescription>{gateDescription}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex gap-2">
+                            <Button asChild size="sm"><Link href="/auth/login">Sign in</Link></Button>
+                            <Button asChild variant="outline" size="sm"><Link href="/auth/register">Register</Link></Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            );
+        }
+
         return (
             <div className={cn("space-y-2", gateClassName)}>
-                <p className="text-muted-foreground text-sm">
-                    Sign in to continue with this contribution.
-                </p>
+                <p className="text-muted-foreground text-sm">Sign in to continue with this contribution.</p>
                 <div className="flex gap-2">
-                    <Button asChild size="sm">
-                        <Link href="/auth/login">Sign in</Link>
-                    </Button>
-                    <Button asChild variant="outline" size="sm">
-                        <Link href="/auth/register">Register</Link>
-                    </Button>
+                    <Button asChild size="sm"><Link href="/auth/login">Sign in</Link></Button>
+                    <Button asChild variant="outline" size="sm"><Link href="/auth/register">Register</Link></Button>
                 </div>
             </div>
         );
     }
 
     if (status === "suspended") {
-        // Hard-suspended session recognized at bootstrap (#251): never rendered as
-        // signed-in content, and not a "sign in again" problem. The app-wide banner
-        // carries the explanation and the sign-out action.
         return (
             <div className={cn("space-y-2", gateClassName)}>
-                <p role="alert" className="text-sm">
-                    {RESTRICTION_ACTION_MESSAGE.suspended}
-                </p>
+                <p role="alert" className="text-sm">{RESTRICTION_ACTION_MESSAGE.suspended}</p>
             </div>
         );
     }
@@ -70,13 +71,9 @@ export function RequireAuth({
     if (status === "session-failure") {
         return (
             <div className={cn("space-y-2", gateClassName)}>
-                <p role="alert" className="text-destructive text-sm">
-                    There&apos;s a problem with your session. Please sign in again.
-                </p>
+                <p role="alert" className="text-destructive text-sm">There&apos;s a problem with your session. Please sign in again.</p>
                 <div className="flex gap-2">
-                    <Button asChild size="sm">
-                        <Link href="/auth/login">Sign in</Link>
-                    </Button>
+                    <Button asChild size="sm"><Link href="/auth/login">Sign in</Link></Button>
                 </div>
             </div>
         );
@@ -84,12 +81,8 @@ export function RequireAuth({
 
     return (
         <div className={cn("space-y-3", gateClassName)}>
-            <p role="alert" className="text-destructive text-sm">
-                Authentication is unavailable right now. Your session has not been cleared.
-            </p>
-            <Button size="sm" variant="outline" onClick={() => void retryInitialization()}>
-                Retry connection
-            </Button>
+            <p role="alert" className="text-destructive text-sm">Authentication is unavailable right now. Your session has not been cleared.</p>
+            <Button size="sm" variant="outline" onClick={() => void retryInitialization()}>Retry connection</Button>
         </div>
     );
 }
