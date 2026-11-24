@@ -30,7 +30,6 @@ function article(over: Partial<WorkflowKnowledge> = {}): WorkflowKnowledge {
     _id: "k1",
     title: "Drip irrigation",
     body: "Line one\nLine two",
-    category: "agriculture_irrigation",
     region: "",
     status: "draft",
     author: AUTHOR,
@@ -335,7 +334,6 @@ describe("WorkflowArticle — revise (rejected -> draft)", () => {
   it("prefills the rejected content, shows the feedback, and validates like draft authoring", async () => {
     const user = userEvent.setup();
     await load(rejected());
-    expect(screen.getByLabelText("Category")).toHaveValue("agriculture_irrigation");
     expect(screen.getByLabelText("Title")).toHaveValue("Drip irrigation");
     expect(screen.getByLabelText("Body")).toHaveValue("Line one\nLine two");
     expect(screen.getByText("Needs sources")).toBeInTheDocument();
@@ -363,11 +361,7 @@ describe("WorkflowArticle — revise (rejected -> draft)", () => {
     await user.type(screen.getByLabelText("Body"), "Better body");
     await user.click(screen.getByRole("button", { name: "Save revision" }));
 
-    expect(mockRevise).toHaveBeenCalledWith("k1", {
-      title: "Better title",
-      body: "Better body",
-      category: "agriculture_irrigation",
-    });
+    expect(mockRevise).toHaveBeenCalledWith("k1", { title: "Better title", body: "Better body" });
     expect(await screen.findByRole("heading", { level: 1, name: "Better title" })).toBeInTheDocument();
     expect(screen.getByText("Draft")).toBeInTheDocument();
     expect(controls()).toEqual(["Submit for review"]);
@@ -402,6 +396,5 @@ describe("WorkflowArticle — revise (rejected -> draft)", () => {
     await user.click(screen.getByRole("button", { name: "Save revision" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
     expect(screen.getByLabelText("Title")).toHaveValue("Drip irrigation v2");
-    expect(screen.getByLabelText("Category")).toHaveValue("agriculture_irrigation");
   });
 });
