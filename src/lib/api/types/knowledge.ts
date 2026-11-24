@@ -29,6 +29,8 @@ export type KnowledgeListQuery = PaginationQuery;
 export interface CreateKnowledgePayload {
   title: string;
   body: string;
+  category: string;
+  topics?: string[];
 }
 
 /**
