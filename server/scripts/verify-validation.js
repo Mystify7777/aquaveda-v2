@@ -244,12 +244,33 @@ check("4d. Knowledge creation payload defaults omitted Topics to []", () => {
   assert.deepEqual(result.data.topics, []);
 });
 
-check("4e. Review decision 'approved' without feedback passes", () => {
+check("4e. Knowledge creation rejects a non-canonical Category", () => {
+  const result = createKnowledgeSchema.safeParse({
+    title: "Drip irrigation basics",
+    body: "How to set up a low-cost drip irrigation system.",
+    category: "water conservation",
+  });
+  assert.equal(result.success, false);
+});
+
+check("4f. Knowledge creation rejects empty or malformed Topic entries", () => {
+  for (const topics of [[""], "efficient_irrigation"]) {
+    const result = createKnowledgeSchema.safeParse({
+      title: "Drip irrigation basics",
+      body: "How to set up a low-cost drip irrigation system.",
+      category: "agriculture_irrigation",
+      topics,
+    });
+    assert.equal(result.success, false);
+  }
+});
+
+check("4i. Review decision 'approved' without feedback passes", () => {
   const result = reviewKnowledgeSchema.safeParse({ decision: "approved" });
   assert.equal(result.success, true);
 });
 
-check("4f. Review decision 'approved' WITH feedback also passes (feedback is optional, not forbidden)", () => {
+check("4h. Review decision 'approved' WITH feedback also passes (feedback is optional, not forbidden)", () => {
   const result = reviewKnowledgeSchema.safeParse({
     decision: "approved",
     feedback: "great article, minor style notes",
