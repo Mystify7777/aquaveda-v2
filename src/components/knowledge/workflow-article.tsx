@@ -107,7 +107,7 @@ export function WorkflowArticle({ knowledgeId }: { knowledgeId: string }) {
       {article.status === "rejected" && isAuthor && (
         <KnowledgeReviseForm
           knowledgeId={article._id}
-          initial={{ category: article.category, title: article.title, body: article.body }}
+          initial={{ category: article.category ?? "", title: article.title, body: article.body }}
           onRevised={reload}
         />
       )}
