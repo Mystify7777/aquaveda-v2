@@ -53,9 +53,9 @@ contract addition).
   governance-capable Admins. This is a property of the rule, **not** of any
   count/write/recount sequence. No count is taken, no lock or transaction is
   introduced, and nothing here relies on a recount for safety.
-- **G4. `account-governance.service.js` is the only writer of account state**
-  (checked by search of `server/src`); there is no second path that bypasses
-  protection.
+- **G4. `account-governance.service.js` is the only product-path writer of
+  account state in `server/src`; Operator and out-of-band state changes are
+  outside this guarantee.**
 
 ## What is NOT guaranteed (limitations)
 
