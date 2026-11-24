@@ -56,7 +56,7 @@ function toFailure(error: unknown): SubmitFailure {
   return { kind: "failure", message: "We could not save your draft. Try again." };
 }
 
-const FIELD_ORDER: KnowledgeDraftField[] = ["title", "body"];
+const FIELD_ORDER: KnowledgeDraftField[] = ["category", "title", "body"];
 
 /**
  * Draft creation only. Auth gating is the route's job ((protected) layout →
@@ -162,6 +162,27 @@ export function KnowledgeDraftForm() {
       )}
 
       <fieldset disabled={pending} className="space-y-4">
+        <Field id="draft-category" label="Category" error={fieldErrors.category}>
+          <select
+            id="draft-category"
+            ref={(el) => {
+              fieldRefs.current.category = el;
+            }}
+            value={values.category}
+            onChange={(e) => setField("category", e.target.value)}
+            aria-invalid={!!fieldErrors.category}
+            aria-describedby={fieldErrors.category ? "draft-category-error" : undefined}
+            aria-required="true"
+            className="border-input bg-background text-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2"
+          >
+            <option value="">Select a category</option>
+            {KNOWLEDGE_CATEGORIES.map((category) => (
+              <option key={category.value} value={category.value}>
+                {category.label}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field id="draft-title" label="Title" error={fieldErrors.title}>
           <Input
             id="draft-title"
