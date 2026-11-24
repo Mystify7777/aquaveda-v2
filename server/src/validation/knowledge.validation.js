@@ -93,13 +93,12 @@ export const rejectKnowledgeSchema = z.object({
 /**
  * Knowledge revision request shape.
  *
- * Matches revise(actorContext, knowledgeId, updatedContent)'s actual
- * behavior exactly (knowledge.service.js, confirmed by direct read):
- * only title/body/region are ever read from updatedContent, all three
- * fully optional — the service tolerates any subset, including an
- * empty object (a no-op revision is not itself an error at the service
- * layer). This schema does not require at least one field to be
- * present; that would be inventing a rule the service doesn't enforce.
+ * Mirrors revise(actorContext, knowledgeId, updatedContent): each supported
+ * content/taxonomy field is optional so an author can change only what needs
+ * correction. The service validates active canonical Category/Topic values,
+ * requires an explicit Category for legacy records that have none, and
+ * recomputes regionKey from the resulting display Region. Lifecycle,
+ * ownership, moderation, and derived fields are never accepted here.
  */
 export const reviseKnowledgeSchema = z.object({
   title: z.string().trim().min(1, "title must not be empty if provided").optional(),
@@ -109,34 +108,4 @@ export const reviseKnowledgeSchema = z.object({
   region: z.string().trim().optional(),
 });
 
-/**
- * Public Knowledge list query shape (Issue #48).
- *
- * No `status` parameter exists here at all — deliberately, not an
- * oversight. The service layer (listApprovedKnowledge) always filters
- * to status: "approved" unconditionally; exposing a status query param
- * here would let a caller request draft/pending_review/rejected
- * content, which is exactly the "expose private/draft Knowledge"
- * outcome Issue #48's own constraints forbid. No region filter either
- * — no approved document or the frontend plan currently calls for one,
- * and region has no index; adding it now would be an invented feature,
- * not a requested one.
- */
-export const listApprovedKnowledgeQuerySchema = paginationQuerySchema;
 
-/**
- * Authenticated workflow read queries (Issue #74).
- *
- * `status` on "My Knowledge" is validated against the four existing
- * lifecycle states (Knowledge.js / ADR-0004) — no new state is
- * introduced. The review queue takes no `status`: it is fixed to
- * `pending_review` at the service layer. Neither accepts an author or
- * region parameter.
- */
-export const KNOWLEDGE_WORKFLOW_STATUSES = ["draft", "pending_review", "approved", "rejected"];
-
-export const myKnowledgeQuerySchema = paginationQuerySchema.extend({
-  status: z.enum(KNOWLEDGE_WORKFLOW_STATUSES).optional(),
-});
-
-export const reviewQueueQuerySchema = paginationQuerySchema;
