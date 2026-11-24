@@ -589,7 +589,12 @@ describe("enforcement over HTTP", () => {
   it("a suspended Admin cannot call governance routes", async () => {
     const a = await makeUser("ADMIN");
     const b = await makeUser("ADMIN");
-    await suspendAccount(a.actor, b.id, indefinite());
+    // ADR-0012 (#255): an Admin cannot suspend a peer through the product, so the
+    // Operator-imposed state this test needs is written directly.
+    await User.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(b.id) },
+      { $set: { accountState: "HARD_SUSPENDED", accountStateChangedAt: new Date(), accountRestriction: { kind: "INDEFINITE" } } },
+    );
     const res = await call("POST", `/api/v1/accounts/${a.id}/suspend`, { token: b.accessToken, body: indefinite() });
     assert.equal(res.json.code, "ACCOUNT_SUSPENDED");
   });

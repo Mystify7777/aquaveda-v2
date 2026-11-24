@@ -258,7 +258,7 @@ state stays committed and no false event exists.
   Admin out until another Admin lifted it).
   **Current policy:** [ADR-0012](../adr/ADR-0012-administrator-targeting-and-lockout-protection.md)
   (#249): Admins cannot suspend or lift themselves or other Admins. This is
-  **not yet enforced in code**; enforcement is #255.
+  enforced in code (#255; see [admin-targeting-enforcement.md](./admin-targeting-enforcement.md)).
 - No maximum or minimum suspension duration (none specified).
 - ~~Access-token window~~ **closed** by the credential generation above (it was
   a review-blocking defect: the first draft let a pre-suspension access token
