@@ -89,7 +89,7 @@ async function main() {
   const pending = await createKnowledge(reporterCtx, {
     title: fixtures.pendingKnowledgeTitle,
     body: "Route sink and washing-machine outflow to a mulch basin for trees.",
-    category: "water_reuse",
+    category: "water_conservation",
     topics: ["water_reuse"],
   });
   await submitForReview(reporterCtx, String(pending._id));
