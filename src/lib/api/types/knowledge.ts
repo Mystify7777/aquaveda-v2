@@ -85,7 +85,7 @@ export interface WorkflowReviewEntry {
 
 /** Full article from GET /api/v1/knowledge/:id/workflow. */
 export interface WorkflowKnowledge extends WorkflowKnowledgeSummary {
-  category: string;
+  category?: string;
   body: string;
   reviewHistory: WorkflowReviewEntry[];
 }
