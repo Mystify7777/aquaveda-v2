@@ -413,21 +413,30 @@ describe("knowledge.service — revision taxonomy invariants (Issue #231)", () =
     assert.equal(revised.regionKey, "bihar, india");
   });
 
-  it("does not overwrite concurrent taxonomy changes", async () => {
+  it("does not overwrite taxonomy changes when the conditional write loses a race", async () => {
     const author = fakeActor("USER");
     const { knowledge } = await makeRejectedLegacy(author);
-    await Knowledge.updateOne(
-      { _id: knowledge._id },
-      { $set: { category: "other", topics: ["water_reuse"] } },
-    );
 
-    await assert.rejects(
-      () => revise(author, knowledge._id, {
-        category: "agriculture_irrigation",
-        topics: [],
-      }),
-      (err) => err.code === DomainErrorCode.STATE_RACE,
-    );
+    const originalFindOneAndUpdate = Knowledge.findOneAndUpdate;
+    Knowledge.findOneAndUpdate = async () => {
+      await Knowledge.updateOne(
+        { _id: knowledge._id },
+        { $set: { category: "other", topics: ["water_reuse"] } },
+      );
+      return null;
+    };
+
+    try {
+      await assert.rejects(
+        () => revise(author, knowledge._id, {
+          category: "agriculture_irrigation",
+          topics: [],
+        }),
+        (err) => err.code === DomainErrorCode.STATE_RACE,
+      );
+    } finally {
+      Knowledge.findOneAndUpdate = originalFindOneAndUpdate;
+    }
 
     const current = await Knowledge.findById(knowledge._id);
     assert.equal(current.category, "other");
