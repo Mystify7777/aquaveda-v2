@@ -132,7 +132,7 @@ describe("listCommunityActivity", () => {
 
     const draft = await createKnowledge(
       { id: String(author._id), role: "USER" },
-      { title: "Draft", body: "body" },
+      { title: "Draft", body: "body", category: "other" },
     );
     await addComment("WIKI", draft._id, author._id);
 
