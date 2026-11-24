@@ -13,11 +13,11 @@ describe("validateKnowledgeDraft", () => {
   it("flags both required fields when empty", () => {
     const r = validateKnowledgeDraft(EMPTY_KNOWLEDGE_DRAFT);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(["body", "title"]);
+    if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(["body", "category", "title"]);
   });
 
   it("treats whitespace-only values as empty", () => {
-    const r = validateKnowledgeDraft({ title: "  ", body: "\n\t" });
+    const r = validateKnowledgeDraft({ category: "  ", title: "  ", body: "\n\t" });
     expect(r.ok).toBe(false);
   });
 });
