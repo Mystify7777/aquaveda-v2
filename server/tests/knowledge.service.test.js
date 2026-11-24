@@ -413,34 +413,67 @@ describe("knowledge.service — revision taxonomy invariants (Issue #231)", () =
     assert.equal(revised.regionKey, "bihar, india");
   });
 
-  it("does not overwrite taxonomy changes when the conditional write loses a race", async () => {
+  it("does not overwrite concurrent Category/Topic changes in MongoDB", async () => {
     const author = fakeActor("USER");
     const { knowledge } = await makeRejectedLegacy(author);
 
-    const originalFindOneAndUpdate = Knowledge.findOneAndUpdate;
-    Knowledge.findOneAndUpdate = async () => {
-      await Knowledge.updateOne(
-        { _id: knowledge._id },
-        { $set: { category: "other", topics: ["water_reuse"] } },
-      );
-      return null;
-    };
+    // The initial service read has already occurred by the time its
+    // conditional update reaches findOneAndUpdate. This real MongoDB write
+    // simulates another request winning the race immediately beforehand.
+    const concurrentWrite = await Knowledge.updateOne(
+      { _id: knowledge._id, status: "rejected" },
+      {
+        $set: {
+          category: "water_conservation",
+          topics: ["water_reuse"],
+        },
+      },
+    );
+    assert.equal(concurrentWrite.modifiedCount, 1);
 
-    try {
-      await assert.rejects(
-        () => revise(author, knowledge._id, {
-          category: "agriculture_irrigation",
-          topics: [],
-        }),
-        (err) => err.code === DomainErrorCode.STATE_RACE,
-      );
-    } finally {
-      Knowledge.findOneAndUpdate = originalFindOneAndUpdate;
-    }
+    await assert.rejects(
+      () => revise(author, knowledge._id, {
+        category: "agriculture_irrigation",
+        topics: [],
+      }),
+      (err) => err.code === DomainErrorCode.STATE_RACE,
+    );
 
-    const current = await Knowledge.findById(knowledge._id);
-    assert.equal(current.category, "other");
+    const current = await Knowledge.findById(knowledge._id).lean();
+    assert.equal(current.category, "water_conservation");
     assert.deepEqual(current.topics, ["water_reuse"]);
+    assert.equal(current.status, "rejected");
+  });
+
+  it("does not overwrite a concurrent Region change in MongoDB", async () => {
+    const author = fakeActor("USER");
+    const legacy = await Knowledge.create({
+      title: "Legacy article",
+      body: "Legacy body",
+      region: "Bihar",
+      author: author.id,
+      status: "rejected",
+      reviewHistory: [],
+    });
+
+    const concurrentWrite = await Knowledge.updateOne(
+      { _id: legacy._id, status: "rejected" },
+      { $set: { region: "Jharkhand" } },
+    );
+    assert.equal(concurrentWrite.modifiedCount, 1);
+
+    await assert.rejects(
+      () => revise(author, legacy._id, {
+        category: "other",
+        region: "Bihar, India",
+      }),
+      (err) => err.code === DomainErrorCode.STATE_RACE,
+    );
+
+    const current = await Knowledge.findById(legacy._id).lean();
+    assert.equal(current.region, "Jharkhand");
+    assert.equal(current.regionKey, "jharkhand");
+    assert.equal(current.category, undefined);
     assert.equal(current.status, "rejected");
   });
 });
