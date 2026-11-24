@@ -28,7 +28,7 @@ describe("ProtectedRouteBoundary", () => {
         mockUsePathname.mockReset();
     });
 
-    it("centers the Dashboard authentication gate for anonymous state", () => {
+    it("renders a dashboard-specific authentication card for anonymous state", () => {
         mockUsePathname.mockReturnValue("/dashboard");
         setStatus("anonymous");
 
@@ -38,9 +38,16 @@ describe("ProtectedRouteBoundary", () => {
             </ProtectedRouteBoundary>,
         );
 
-        const gate = screen.getByText("Sign in to continue with this contribution.").parentElement;
-        expect(gate).toHaveClass("items-center", "justify-center", "text-center");
+        expect(screen.getByRole("heading", { name: "Your dashboard" })).toBeInTheDocument();
+        expect(
+            screen.getByText("Sign in to view your activity and AquaVeda's platform totals."),
+        ).toBeInTheDocument();
+
+        const gate = screen.getByRole("heading", { name: "Your dashboard" }).closest("div")?.parentElement
+            ?.parentElement;
+        expect(gate).toHaveClass("items-center", "justify-center");
         expect(gate).toHaveClass("min-h-[calc(100dvh-12rem)]");
+
         expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
             "href",
             "/auth/login",

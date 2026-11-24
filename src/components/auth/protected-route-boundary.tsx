@@ -17,8 +17,19 @@ const DASHBOARD_GATE_CLASS_NAME =
 export function ProtectedRouteBoundary({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
 
-    const gateClassName =
-        pathname === "/dashboard" ? DASHBOARD_GATE_CLASS_NAME : undefined;
+    const isDashboard = pathname === "/dashboard";
 
-    return <RequireAuth gateClassName={gateClassName}>{children}</RequireAuth>;
+    return (
+        <RequireAuth
+            gateClassName={isDashboard ? DASHBOARD_GATE_CLASS_NAME : undefined}
+            gateTitle={isDashboard ? "Your dashboard" : undefined}
+            gateDescription={
+                isDashboard
+                    ? "Sign in to view your activity and AquaVeda's platform totals."
+                    : undefined
+            }
+        >
+            {children}
+        </RequireAuth>
+    );
 }

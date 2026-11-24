@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/components/providers/auth-provider";
 import { RESTRICTION_ACTION_MESSAGE } from "@/lib/api/account-restriction";
 import { cn } from "@/lib/utils";
@@ -15,9 +16,13 @@ import { cn } from "@/lib/utils";
 export function RequireAuth({
     children,
     gateClassName,
+    gateTitle,
+    gateDescription,
 }: {
     children: React.ReactNode;
     gateClassName?: string;
+    gateTitle?: string;
+    gateDescription?: string;
 }) {
     const { status, retryInitialization } = useAuth();
 
@@ -37,6 +42,27 @@ export function RequireAuth({
     if (status === "authenticated") return <>{children}</>;
 
     if (status === "anonymous") {
+        if (gateTitle) {
+            return (
+                <div className={cn("space-y-2", gateClassName)}>
+                    <Card className="w-full max-w-md text-left">
+                        <CardHeader>
+                            <CardTitle>{gateTitle}</CardTitle>
+                            <CardDescription>{gateDescription}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex gap-2">
+                            <Button asChild size="sm">
+                                <Link href="/auth/login">Sign in</Link>
+                            </Button>
+                            <Button asChild variant="outline" size="sm">
+                                <Link href="/auth/register">Register</Link>
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            );
+        }
+
         return (
             <div className={cn("space-y-2", gateClassName)}>
                 <p className="text-muted-foreground text-sm">
