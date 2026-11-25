@@ -91,6 +91,8 @@ jobs:
   e2e:
     name: Browser smoke (Playwright; MongoDB)
     runs-on: ubuntu-24.04
+    env:
+      E2E_MONGO_URI: mongodb://127.0.0.1:27017/aquaveda_v2_e2e?replicaSet=rs0
     timeout-minutes: 20
     services:
       mongo:
