@@ -653,7 +653,6 @@ function collectActorIds(plain) {
   if (plain.remediation) ids.push(plain.remediation.actor, plain.remediation.grantedBy);
   for (const e of plain.remediationHistory ?? []) ids.push(e.actor, e.grantee);
   if (plain.disposition) ids.push(plain.disposition.actor);
-  for (const e of plain.dispositionHistory ?? []) ids.push(e.actor);
   return ids;
 }
 
@@ -723,7 +722,6 @@ export async function listPublicIssues(query) {
     p.reportedBy,
     ...(p.statusHistory ?? []).map((h) => h.actor),
     ...(p.disposition ? [p.disposition.actor] : []),
-    ...(p.dispositionHistory ?? []).map((h) => h.actor),
   ]);
   const actors = await loadActors(ids);
   return { ...page, items: plains.map((p) => toPublicIssueSummaryDTO(p, actors)) };
