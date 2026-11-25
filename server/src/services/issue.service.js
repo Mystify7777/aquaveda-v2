@@ -400,6 +400,12 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
   if (!issue) throw notFound(`Issue ${issueId} not found`);
 
   if (!canAssignDisposition(issue, actorContext, type)) {
+    if (issue.status === "open" && issue.disposition?.type) {
+      throw stateRace(
+        `Issue ${issueId} was disposed before this disposition could be applied`,
+        { type },
+      );
+    }
     throw forbidden("This Issue cannot be assigned that disposition by this actor");
   }
 
