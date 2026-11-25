@@ -92,6 +92,22 @@ export const createIssueSchema = z.object({
  * responsibility ADR-0003/ADR-0006 assign to the service layer's
  * `changeStatus()` operation, not to input validation.
  */
+export const issueDispositionSchema = z.object({
+  type: z.enum(["invalid", "duplicate", "withdrawn"]),
+  note: z.string().optional(),
+  canonicalIssueId: z.string().regex(/^[a-f\\d]{24}$/i, "canonicalIssueId must be a valid ObjectId").optional(),
+}).superRefine((value, ctx) => {
+  if ((value.type === "invalid" || value.type === "duplicate") && !value.note?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["note"], message: "A note is required." });
+  }
+  if (value.type === "duplicate" && !value.canonicalIssueId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["canonicalIssueId"], message: "canonicalIssueId is required for duplicate disposition." });
+  }
+  if (value.type !== "duplicate" && value.canonicalIssueId !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["canonicalIssueId"], message: "canonicalIssueId is only valid for duplicate disposition." });
+  }
+});
+
 export const changeIssueStatusSchema = z.object({
   targetStatus: z.enum(ISSUE_STATUSES),
 });
