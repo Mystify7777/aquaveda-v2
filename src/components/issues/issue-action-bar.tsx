@@ -35,8 +35,8 @@ function ActionForm({
 }) {
   const spec = ACTION_SPECS[action];
   const uid = useId();
-  const [input, setInput] = useState<ActionInput>({ note: "", granteeId: "" });
-  const [errors, setErrors] = useState<{ note?: string; granteeId?: string }>({});
+  const [input, setInput] = useState<ActionInput>({ note: "", granteeId: "", canonicalIssueId: "" });
+  const [errors, setErrors] = useState<{ note?: string; granteeId?: string; canonicalIssueId?: string }>({});
 
   function edit(field: keyof ActionInput, value: string) {
     setInput((p) => ({ ...p, [field]: value }));
@@ -53,6 +53,25 @@ function ActionForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate aria-label={spec.label} className="mt-3 space-y-3">
+      {spec.canonicalIssue && (
+        <div className="space-y-1">
+          <label className="text-sm font-medium" htmlFor={`${uid}-canonical`}>Canonical Issue ID</label>
+          <Input
+            id={`${uid}-canonical`}
+            value={input.canonicalIssueId}
+            onChange={(e) => edit("canonicalIssueId", e.target.value)}
+            aria-invalid={Boolean(errors.canonicalIssueId)}
+            aria-describedby={errors.canonicalIssueId ? `${uid}-canonical-err` : undefined}
+            disabled={pending}
+            autoComplete="off"
+          />
+          {errors.canonicalIssueId && (
+            <p id={`${uid}-canonical-err`} role="alert" className="text-sm">
+              {errors.canonicalIssueId}
+            </p>
+          )}
+        </div>
+      )}
       {spec.grantee && (
         <div className="space-y-1">
           <label className="text-sm font-medium" htmlFor={`${uid}-grantee`}>Grantee user ID</label>
