@@ -127,6 +127,19 @@ describe("IssueActionBar — input", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
+  it("requires a canonical Issue ID for duplicate disposition", async () => {
+    getWf.mockResolvedValue(wf("disposition.duplicate"));
+    render(<IssueActionBar issueId="i1" />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Mark duplicate" }));
+    await user.type(screen.getByLabelText(/canonical issue id/i), "nope");
+    await user.click(screen.getByRole("button", { name: "Confirm duplicate" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/valid Issue ID/i);
+    expect(exec).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed grantee id", async () => {
     getWf.mockResolvedValue(wf("remediation.grant"));
     render(<IssueActionBar issueId="i1" />);
