@@ -150,5 +150,4 @@ export interface IssueDetailData extends Issue {
   waitingSince: string | null;
   /** `false` today only because dispute storage does not exist yet (DSH/PRG-148-4); read-only here. */
   resolutionDisputed: boolean;
-  dispositionHistory?: IssueDisposition[];
 }
