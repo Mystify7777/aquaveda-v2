@@ -76,7 +76,7 @@ function toIssueCore(plain, actors) {
     status: plain.status,
     createdAt: plain.createdAt,
     updatedAt: plain.updatedAt,
-    disposition: toDispositionDTO(plain.disposition, actors),
+    ...(plain.disposition ? { disposition: toDispositionDTO(plain.disposition, actors) } : {}),
   };
 }
 
@@ -137,7 +137,9 @@ export function toPublicIssueDetailDTO(plain, actors, { assignee, activity } = {
     nextAction,
     waitingSince,
     resolutionDisputed,
-    dispositionHistory: toDispositionHistoryDTO(plain.dispositionHistory, actors),
+    ...(plain.dispositionHistory?.length
+      ? { dispositionHistory: toDispositionHistoryDTO(plain.dispositionHistory, actors) }
+      : {}),
     ...(activity ? { activity: activity.map(toActivityEntryDTO) } : {}),
   };
 }
