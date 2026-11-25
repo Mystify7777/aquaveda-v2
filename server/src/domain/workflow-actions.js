@@ -108,6 +108,6 @@ const RULES = {
  * @returns {string[]} the permitted actions, in the stable `WORKFLOW_ACTIONS` order
  */
 export function evaluateWorkflowActions(issue, actor) {
-  if (!actor || !actor.id || !issue) return [];
+  if (!actor || !actor.id || !issue || issue.disposition?.type) return [];
   return WORKFLOW_ACTIONS.filter((action) => RULES[action](issue, actor));
 }
