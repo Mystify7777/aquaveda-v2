@@ -30,9 +30,10 @@ import { GovernanceEvent } from "../../src/models/GovernanceEvent.js";
  * not just documented.
  *
  * When TEST_MONGO_URI is not set in the environment (e.g. a developer
- * without a local MongoDB installation), MongoMemoryServer is used as a
+ * without a local MongoDB installation), MongoMemoryReplSet is used as a
  * transparent substitute: it downloads a real mongod binary on first run
- * (cached in ~/.cache/mongodb-binaries) and starts it in-process.
+ * (cached in ~/.cache/mongodb-binaries) and starts a single-node replica set
+ * in-process so transaction semantics are exercised locally.
  * TEST_MONGO_URI is then set to the ephemeral URI so the rest of this
  * module's logic is unchanged — no test file needs to know or care.
  */
