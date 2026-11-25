@@ -26,8 +26,9 @@ import { GovernanceEvent } from "../../src/models/GovernanceEvent.js";
  * reached via `npm test` or any other entry point.
  *
  * TEST_MONGO_URI is required and must differ from MONGO_URI — tests must
- * never run against the development database. This is enforced below,
- * not just documented.
+ * never run against the development database. The configured MongoDB must
+ * support transactions (replica set or sharded cluster). This is enforced
+ * by the CI/local fallback setup below.
  *
  * When TEST_MONGO_URI is not set in the environment (e.g. a developer
  * without a local MongoDB installation), MongoMemoryReplSet is used as a
