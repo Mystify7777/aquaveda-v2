@@ -11,7 +11,7 @@ import { executeIssueAction, getIssueWorkflow } from "@/lib/api/issue-workflow";
 import { WORKFLOW_ACTIONS, type WorkflowAction } from "@/lib/issues/issue-actions";
 
 const GRANTEE = "507f1f77bcf86cd799439011";
-const input = { note: "n", granteeId: GRANTEE };
+const input = { note: "n", granteeId: GRANTEE, canonicalIssueId: "507f1f77bcf86cd799439012" };
 
 const EXPECTED: Record<WorkflowAction, [string, Record<string, string>]> = {
   acknowledge: ["/api/v1/issues/i1/acknowledge", { note: "n" }],
@@ -25,6 +25,10 @@ const EXPECTED: Record<WorkflowAction, [string, Record<string, string>]> = {
   "remediation.resolve": ["/api/v1/issues/i1/resolve", { note: "n" }],
   "resolution.verify": ["/api/v1/issues/i1/verify", { note: "n" }],
   "resolution.fail": ["/api/v1/issues/i1/fail-verification", { note: "n" }],
+  "disposition.invalid": ["/api/v1/issues/i1/disposition", { type: "invalid", note: "n" }],
+  "disposition.duplicate": ["/api/v1/issues/i1/disposition", { type: "duplicate", canonicalIssueId: "507f1f77bcf86cd799439012", note: "n" }],
+  "disposition.withdraw": ["/api/v1/issues/i1/disposition", { type: "withdrawn", note: "n" }],
+
 };
 
 describe("issue workflow api", () => {
