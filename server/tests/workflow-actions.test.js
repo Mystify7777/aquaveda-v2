@@ -21,11 +21,12 @@ const issue = (status, over = {}) => ({ status, statusHistory: [], ...over });
 const acts = (i, a) => evaluateWorkflowActions(i, a);
 
 describe("evaluateWorkflowActions: the action vocabulary", () => {
-  it("is exactly the eleven operations that exist today, in a stable order", () => {
+  it("is exactly the fourteen operations that exist today, in a stable order", () => {
     assert.deepEqual([...WORKFLOW_ACTIONS], [
       "acknowledge", "remediation.grant", "remediation.withdraw", "remediation.revoke",
       "remediation.accept", "remediation.decline", "remediation.release",
       "remediation.start", "remediation.resolve", "resolution.verify", "resolution.fail",
+      "disposition.invalid", "disposition.duplicate", "disposition.withdraw",
     ]);
   });
 
@@ -37,6 +38,18 @@ describe("evaluateWorkflowActions: the action vocabulary", () => {
           assert.deepEqual(out, WORKFLOW_ACTIONS.filter((a) => out.includes(a)));
         }
       }
+    }
+  });
+});
+
+describe("disposed Issues expose no workflow capabilities", () => {
+  it("terminal disposition suppresses lifecycle, remediation, and disposition actions", () => {
+    const disposed = issue("open", {
+      reportedBy: "u1",
+      disposition: { type: "invalid" },
+    });
+    for (const actor of [EXPERT, ADMIN, USER, { id: "u1", role: "USER" }]) {
+      assert.deepEqual(acts(disposed, actor), []);
     }
   });
 });
