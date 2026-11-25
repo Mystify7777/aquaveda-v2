@@ -7,6 +7,7 @@ import { IssueProgress } from "@/components/issues/issue-progress";
 import { IssueRecommendations } from "@/components/issues/issue-recommendations";
 import { IssueStatusBadge } from "@/components/issues/issue-status-badge";
 import { IssueTimeline } from "@/components/issues/issue-timeline";
+import Link from "next/link";
 import { formatDate } from "@/lib/format-date";
 import type { IssueDetailData } from "@/lib/api/types/issue";
 import { toLatLng } from "@/lib/issues/geo";
@@ -44,6 +45,31 @@ export function IssueDetail({ issue }: { issue: IssueDetailData }) {
       </header>
 
       <UserText text={issue.description} />
+
+      {issue.disposition && (
+        <section aria-label="Issue disposition" className="rounded-lg border p-4">
+          <div className="space-y-1">
+            <h2 className="font-display text-lg font-semibold">
+              {issue.disposition.type === "invalid"
+                ? "Invalid report"
+                : issue.disposition.type === "duplicate"
+                  ? "Duplicate report"
+                  : "Withdrawn report"}
+            </h2>
+            <p className="text-muted-foreground text-sm">
+              {issue.disposition.note ?? "This report has been closed from further remediation."}
+            </p>
+            {issue.disposition.canonicalIssueId && (
+              <p className="text-sm">
+                Canonical Issue:{" "}
+                <Link href={`/explore/${issue.disposition.canonicalIssueId}`} className="underline">
+                  {issue.disposition.canonicalIssueId}
+                </Link>
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       <IssueProgress issue={issue} />
 
