@@ -75,6 +75,37 @@ describe("Issue #199 — dispositions", () => {
     assert.equal((await Issue.findById(canonical._id)).disposition, undefined);
   });
 
+  it("concurrent duplicate creation and canonical disposal serialize safely", async () => {
+    const duplicate = await openIssue(fakeActor("USER"));
+    const canonical = await openIssue(fakeActor("USER"));
+    const expert = fakeActor("EXPERT");
+
+    const results = await Promise.allSettled([
+      disposeIssue(expert, duplicate._id, "duplicate", {
+        note: "Same report.",
+        canonicalIssueId: canonical._id,
+      }),
+      disposeIssue(expert, canonical._id, "invalid", { note: "Not actionable." }),
+    ]);
+
+    assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+    assert.equal(results.filter((r) => r.status === "rejected").length, 1);
+    assert.equal(
+      results.find((r) => r.status === "rejected").reason.code,
+      DomainErrorCode.INVALID_STATE,
+    );
+
+    const duplicateAfter = await Issue.findById(duplicate._id);
+    const canonicalAfter = await Issue.findById(canonical._id);
+
+    if (duplicateAfter.disposition?.type === "duplicate") {
+      assert.equal(canonicalAfter.disposition, undefined);
+    } else {
+      assert.equal(canonicalAfter.disposition?.type, "invalid");
+      assert.equal(duplicateAfter.disposition, undefined);
+    }
+  });
+
   it("an Issue already serving as canonical cannot be disposed", async () => {
     const reporter = fakeActor("USER");
     const expert = fakeActor("EXPERT");
