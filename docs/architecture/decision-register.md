@@ -1444,3 +1444,15 @@ Implements GOV-T1/T3/T7/T8 for the product path. ADR-0012 is unchanged. Detail a
 - **GOV-T14 — Rejections are side-effect free**: no account field, version, `authGeneration`, session, or event change (snapshot-tested for every operation and state).
 - **GOV-T15 — Test seams and fixtures.** New inert hook `governanceTestHooks.afterTargetRead` (mute/suspend); lifts reuse `afterRead`. Three existing tests changed: `issue.dto.test.js` pins the exact client-safe reason set (now includes the two ADR-0012 reasons), and two others (`hard-suspension`, `mute.enforcement`) that restricted a peer Admin through the product now write the Operator-imposed state directly; their assertions are unchanged.
 - **GOV-T10 update:** the product-path compliance gap is closed by #255. Still open: F2 (Operator tool + `OPERATOR` actor type), F3 (#177/#178 guard), F4 (runbook recovery section; §7 documents the gap), F5 (optional directory flag).
+
+
+### Issue #199 — terminal Issue dispositions
+
+- **DISP-1 — Dispositions are terminal metadata, not lifecycle statuses.** The five-state Issue lifecycle from ADR-0003 remains unchanged. A disposed Issue retains its lifecycle status but exposes a terminal `disposition`.
+- **DISP-2 — Vocabulary.** `invalid`, `duplicate`, and `withdrawn` are explicit, distinct outcomes. Generic `reject`/cancellation terminology is not used.
+- **DISP-3 — Authority.** EXPERTs may assign `invalid` or `duplicate` only from `open`; only the reporter may assign `withdrawn` from `open`. ADMIN receives no generic disposition override.
+- **DISP-4 — Duplicate integrity.** A duplicate requires a distinct, existing, undisposed canonical Issue. The canonical Issue is never mutated or deleted by the disposition operation.
+- **DISP-5 — Terminality and visibility.** Dispositions cannot be reopened in V2. Disposed Issues remain publicly readable with their disposition and duplicate linkage exposed.
+- **DISP-6 — Audit.** The current disposition is stored alongside an append-only `dispositionHistory`. Each entry records disposition, actor, timestamp, note, and canonical Issue when applicable.
+- **DISP-7 — Workflow capability.** The viewer-specific workflow exposes `disposition.invalid`, `disposition.duplicate`, and `disposition.withdraw` only when the server-side authority predicate permits them. A disposed Issue exposes no workflow actions.
+- **DISP-8 — Concurrency.** Disposition writes condition on the observed open/undisposed state. A stale conditional write cannot overwrite an existing disposition.
