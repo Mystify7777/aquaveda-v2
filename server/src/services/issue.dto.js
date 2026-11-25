@@ -39,6 +39,27 @@ function toHistoryCore(h) {
   };
 }
 
+function toDispositionDTO(disposition, actors) {
+  if (!disposition) return null;
+  return {
+    type: disposition.type,
+    actorProfile: profile(actors, disposition.actor),
+    timestamp: disposition.timestamp,
+    ...(disposition.note !== undefined ? { note: disposition.note } : {}),
+    ...(disposition.canonicalIssueId ? { canonicalIssueId: String(disposition.canonicalIssueId) } : {}),
+  };
+}
+
+function toDispositionHistoryDTO(history, actors) {
+  return (history ?? []).map((entry) => ({
+    type: entry.type,
+    actorProfile: profile(actors, entry.actor),
+    timestamp: entry.timestamp,
+    ...(entry.note !== undefined ? { note: entry.note } : {}),
+    ...(entry.canonicalIssueId ? { canonicalIssueId: String(entry.canonicalIssueId) } : {}),
+  }));
+}
+
 /** Fields shared by every public Issue shape (no actor references). */
 function toIssueCore(plain) {
   return {
@@ -55,6 +76,7 @@ function toIssueCore(plain) {
     status: plain.status,
     createdAt: plain.createdAt,
     updatedAt: plain.updatedAt,
+    disposition: toDispositionDTO(plain.disposition, actors),
   };
 }
 
@@ -115,6 +137,7 @@ export function toPublicIssueDetailDTO(plain, actors, { assignee, activity } = {
     nextAction,
     waitingSince,
     resolutionDisputed,
+    dispositionHistory: toDispositionHistoryDTO(plain.dispositionHistory, actors),
     ...(activity ? { activity: activity.map(toActivityEntryDTO) } : {}),
   };
 }
