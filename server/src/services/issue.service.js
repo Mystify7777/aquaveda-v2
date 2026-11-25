@@ -719,7 +719,12 @@ export async function getPublicIssueDetail(issueId) {
 export async function listPublicIssues(query) {
   const page = await listIssues(query);
   const plains = page.items.map((doc) => doc.toObject());
-  const ids = plains.flatMap((p) => [p.reportedBy, ...(p.statusHistory ?? []).map((h) => h.actor)]);
+  const ids = plains.flatMap((p) => [
+    p.reportedBy,
+    ...(p.statusHistory ?? []).map((h) => h.actor),
+    ...(p.disposition ? [p.disposition.actor] : []),
+    ...(p.dispositionHistory ?? []).map((h) => h.actor),
+  ]);
   const actors = await loadActors(ids);
   return { ...page, items: plains.map((p) => toPublicIssueSummaryDTO(p, actors)) };
 }
