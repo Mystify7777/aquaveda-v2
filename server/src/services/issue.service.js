@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+
 import { isGrantee } from "../domain/remediation.js";
 import { canAssignDisposition, ISSUE_DISPOSITIONS } from "../domain/issue-disposition.js";
 import { resolverOf } from "../domain/issue-lifecycle.js";
@@ -414,13 +416,6 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
     throw validationFailed(parsedNote.problem, { field: "note" });
   }
 
-  if (type !== "duplicate" && canonicalIssueId !== undefined) {
-    throw validationFailed(
-      "canonicalIssueId is only valid for duplicate disposition",
-      { field: "canonicalIssueId" },
-    );
-  }
-
   if (type === "duplicate") {
     if (!canonicalIssueId) {
       throw validationFailed(
@@ -434,35 +429,47 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
         { field: "canonicalIssueId" },
       );
     }
+  } else if (canonicalIssueId !== undefined) {
+    throw validationFailed(
+      "canonicalIssueId is only valid for duplicate disposition",
+      { field: "canonicalIssueId" },
+    );
+  }
 
-    // The canonical Issue and the duplicate target are two independent
-    // documents, so the "canonical is live" invariant cannot be established
-    // by the target's conditional update alone. Run the validation and target
-    // write in one transaction. The canonical read is deliberately upgraded
-    // to a write-locking read: MongoDB snapshot reads may otherwise be stale
-    // when another operation disposes the canonical concurrently. Updating
-    // updatedAt is harmless domain metadata, and the transaction rolls it
-    // back if the disposition cannot commit.
-    const session = await Issue.startSession();
-    try {
-      let result;
-      await session.withTransaction(
-        async () => {
-          const txIssue = await Issue.findOne({
-            _id: issueId,
-            status: "open",
-            disposition: { $exists: false },
-          }).session(session);
-          if (!txIssue) {
-            throw stateRace(
-              `Issue ${issueId} changed before this disposition could be applied`,
-              { type },
-            );
-          }
+  // A duplicate disposition creates an invariant spanning two Issue documents:
+  // the target may point at a canonical only while that canonical is live.
+  // MongoDB snapshot reads alone are insufficient here because a transaction
+  // can observe a stale canonical document. The canonical is therefore
+  // deliberately write-locked inside the transaction before it is accepted.
+  //
+  // Every disposition also runs in the same transaction so an Issue already
+  // serving as a canonical cannot be disposed concurrently with creation of
+  // a duplicate reference. The canonical lock serializes those two operations:
+  // either the duplicate commits first, or the canonical disposition commits
+  // first and the duplicate is retried against the new state.
+  const session = await Issue.startSession();
+  try {
+    let result;
+    await session.withTransaction(
+      async () => {
+        const txIssue = await Issue.findOne({
+          _id: issueId,
+          status: "open",
+          disposition: { $exists: false },
+        }).session(session);
 
-          const canonical = await Issue.findOneAndUpdate(
+        if (!txIssue) {
+          throw stateRace(
+            `Issue ${issueId} changed before this disposition could be applied`,
+            { type },
+          );
+        }
+
+        let canonical;
+        if (type === "duplicate") {
+          canonical = await Issue.findOneAndUpdate(
             { _id: canonicalIssueId, disposition: { $exists: false } },
-            { $set: { updatedAt: new Date() } },
+            { $set: { dispositionGuard: new mongoose.Types.ObjectId() } },
             {
               new: true,
               timestamps: false,
@@ -470,65 +477,59 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
               session,
             },
           );
+
           if (!canonical) {
             const exists = await Issue.exists({ _id: canonicalIssueId }).session(session);
             if (!exists) throw invalidState("The canonical Issue does not exist");
             throw invalidState("The canonical Issue is already disposed");
           }
+        } else {
+          // Once a duplicate points at an Issue, that Issue is no longer a
+          // valid terminal-disposition target. Lock the target before checking
+          // the cross-document reference so a concurrent duplicate creation
+          // cannot commit between the check and this disposition.
+          const duplicateReference = await Issue.exists({
+            "disposition.type": "duplicate",
+            "disposition.canonicalIssueId": issueId,
+          }).session(session);
 
-          const now = new Date();
-          const entry = {
-            type,
-            actor: actorContext.id,
-            timestamp: now,
-            ...(parsedNote.value !== undefined ? { note: parsedNote.value } : {}),
-            canonicalIssueId: canonical._id,
-          };
-
-          result = await Issue.findOneAndUpdate(
-            { _id: issueId, status: "open", disposition: { $exists: false } },
-            { $set: { disposition: entry }, $push: { dispositionHistory: entry } },
-            { new: true, runValidators: true, session },
-          );
-
-          if (!result) {
-            throw stateRace(
-              `Issue ${issueId} changed before this disposition could be applied`,
-              { type },
+          if (duplicateReference) {
+            throw invalidState(
+              "An Issue referenced as canonical cannot itself be disposed",
             );
           }
-        },
-        { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } },
-      );
-      return result;
-    } finally {
-      await session.endSession();
-    }
+        }
+
+        const now = new Date();
+        const entry = {
+          type,
+          actor: actorContext.id,
+          timestamp: now,
+          ...(parsedNote.value !== undefined ? { note: parsedNote.value } : {}),
+          ...(canonical !== undefined ? { canonicalIssueId: canonical._id } : {}),
+        };
+
+        result = await Issue.findOneAndUpdate(
+          { _id: issueId, status: "open", disposition: { $exists: false } },
+          { $set: { disposition: entry }, $push: { dispositionHistory: entry } },
+          { new: true, runValidators: true, session },
+        );
+
+        if (!result) {
+          throw stateRace(
+            `Issue ${issueId} changed before this disposition could be applied`,
+            { type },
+          );
+        }
+      },
+      { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } },
+    );
+
+    return result;
+  } finally {
+    await session.endSession();
   }
-
-  const now = new Date();
-  const entry = {
-    type,
-    actor: actorContext.id,
-    timestamp: now,
-    ...(parsedNote.value !== undefined ? { note: parsedNote.value } : {}),
-  };
-
-  const updated = await Issue.findOneAndUpdate(
-    { _id: issueId, status: "open", disposition: { $exists: false } },
-    { $set: { disposition: entry }, $push: { dispositionHistory: entry } },
-    { new: true, runValidators: true },
-  );
-
-  if (updated) return updated;
-
-  const stillExists = await Issue.exists({ _id: issueId });
-  if (!stillExists) {
-    throw notFound(`Issue ${issueId} was deleted before disposition completed`);
-  }
-  throw stateRace(`Issue ${issueId} changed before this disposition could be applied`, { type });
 }
-
 /**
  * Extra radius (radians; ~0.1 degree) added to the index-assisted circle
  * so every point of the box lies strictly inside it. The circle is only a
