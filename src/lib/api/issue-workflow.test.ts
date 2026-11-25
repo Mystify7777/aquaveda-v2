@@ -26,7 +26,7 @@ const EXPECTED: Record<WorkflowAction, [string, Record<string, string>]> = {
   "resolution.verify": ["/api/v1/issues/i1/verify", { note: "n" }],
   "resolution.fail": ["/api/v1/issues/i1/fail-verification", { note: "n" }],
   "disposition.invalid": ["/api/v1/issues/i1/disposition", { type: "invalid", note: "n" }],
-  "disposition.duplicate": ["/api/v1/issues/i1/disposition", { type: "duplicate", canonicalIssueId: "507f1f77bcf86cd799439012", note: "n" }],
+  "disposition.duplicate": ["/api/v1/issues/i1/disposition", { canonicalIssueId: "507f1f77bcf86cd799439012", type: "duplicate", note: "n" }],
   "disposition.withdraw": ["/api/v1/issues/i1/disposition", { type: "withdrawn", note: "n" }],
 
 };
