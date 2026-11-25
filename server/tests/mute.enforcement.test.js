@@ -106,7 +106,7 @@ const WRITE_ROUTES = [
   "POST /api/v1/issues/:issueId/resolve",
   "POST /api/v1/issues/:issueId/verify",
   "POST /api/v1/issues/:issueId/fail-verification",
-  "POST /api/v1/issues/:issueId/disposition",
+
   "POST /api/v1/issues/:issueId/remediation/grant",
   "POST /api/v1/issues/:issueId/remediation/accept",
   "POST /api/v1/issues/:issueId/remediation/decline",
