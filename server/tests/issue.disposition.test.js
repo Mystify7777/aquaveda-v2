@@ -75,6 +75,26 @@ describe("Issue #199 — dispositions", () => {
     assert.equal((await Issue.findById(canonical._id)).disposition, undefined);
   });
 
+  it("an Issue already serving as canonical cannot be disposed", async () => {
+    const reporter = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const duplicate = await openIssue(reporter);
+    const canonical = await openIssue(fakeActor("USER"));
+
+    await disposeIssue(expert, duplicate._id, "duplicate", {
+      note: "Same report.",
+      canonicalIssueId: canonical._id,
+    });
+
+    await assert.rejects(
+      () => disposeIssue(expert, canonical._id, "invalid", { note: "No longer canonical." }),
+      (err) => err.code === DomainErrorCode.INVALID_STATE,
+    );
+
+    const stillCanonical = await Issue.findById(canonical._id);
+    assert.equal(stillCanonical.disposition, undefined);
+  });
+
   it("a disposed Issue cannot re-enter lifecycle or remediation", async () => {
     const reporter = fakeActor("USER");
     const expert = fakeActor("EXPERT");
