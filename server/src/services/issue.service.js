@@ -646,6 +646,8 @@ function collectActorIds(plain) {
   for (const h of plain.statusHistory ?? []) ids.push(h.actor);
   if (plain.remediation) ids.push(plain.remediation.actor, plain.remediation.grantedBy);
   for (const e of plain.remediationHistory ?? []) ids.push(e.actor, e.grantee);
+  if (plain.disposition) ids.push(plain.disposition.actor);
+  for (const e of plain.dispositionHistory ?? []) ids.push(e.actor);
   return ids;
 }
 
