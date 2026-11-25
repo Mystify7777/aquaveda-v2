@@ -108,6 +108,36 @@ const remediationGrantSchema = new Schema(
 // Append-only audit trail of responsibility changes (ADR-0007 §5). Deliberately
 // separate from statusHistory (different shape, events and audience;
 // ADR-0005: no generic shared history abstraction).
+const issueDispositionSchema = new Schema(
+  {
+    type: {
+      type: String,
+      enum: ["invalid", "duplicate", "withdrawn"],
+      required: true,
+    },
+    actor: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    timestamp: { type: Date, required: true },
+    note: { type: String, maxlength: NOTE_MAX_LENGTH },
+    canonicalIssueId: { type: Schema.Types.ObjectId, ref: "Issue" },
+  },
+  { _id: false },
+);
+
+const issueDispositionHistoryEntrySchema = new Schema(
+  {
+    type: {
+      type: String,
+      enum: ["invalid", "duplicate", "withdrawn"],
+      required: true,
+    },
+    actor: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    timestamp: { type: Date, required: true },
+    note: { type: String, maxlength: NOTE_MAX_LENGTH },
+    canonicalIssueId: { type: Schema.Types.ObjectId, ref: "Issue" },
+  },
+  { _id: false },
+);
+
 const remediationEventSchema = new Schema(
   {
     type: { type: String, enum: REMEDIATION_EVENT_TYPES, required: true },
@@ -248,6 +278,16 @@ const issueSchema = new Schema(
     // ADR-0007. Both fields are PRIVATE workflow state: they are stripped from
     // every JSON serialization below, and public/workflow views are produced
     // only by the pure projections in domain/issue-activity.js.
+    // Terminal triage outcome (ADR-0013). This does not alter the five-state
+    // lifecycle status; a disposed Issue simply has no further workflow actions.
+    disposition: {
+      type: issueDispositionSchema,
+      default: undefined,
+    },
+    dispositionHistory: {
+      type: [issueDispositionHistoryEntrySchema],
+      default: [],
+    },
     remediation: {
       type: remediationGrantSchema,
       default: undefined, // absent on unassigned and on all pre-existing Issues
