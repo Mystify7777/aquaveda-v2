@@ -452,11 +452,23 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
     let result;
     await session.withTransaction(
       async () => {
-        const txIssue = await Issue.findOne({
-          _id: issueId,
-          status: "open",
-          disposition: { $exists: false },
-        }).session(session);
+        // Lock the target before any cross-document read. This makes
+        // canonical-disposition checks and duplicate creation serialize on the
+        // same Issue document instead of relying on a snapshot read.
+        const txIssue = await Issue.findOneAndUpdate(
+          {
+            _id: issueId,
+            status: "open",
+            disposition: { $exists: false },
+          },
+          { $set: { dispositionGuard: new mongoose.Types.ObjectId() } },
+          {
+            new: true,
+            timestamps: false,
+            runValidators: false,
+            session,
+          },
+        );
 
         if (!txIssue) {
           throw stateRace(
