@@ -1,0 +1,495 @@
+{
+  "_provenance": "Recorded from the real Express app (createApp) on real MongoDB 7 by running the real governance services; do not hand-edit. Regenerate if the /accounts envelopes change.",
+  "ids": {
+    "admin": "6b0520c5f42c75366a68affc",
+    "user": "6b0520c5f42c75366a68b00a",
+    "muted": "6b0520c5f42c75366a68b010",
+    "suspended": "6b0520c5f42c75366a68b016",
+    "deletion": "6b0520c5f42c75366a68b01c",
+    "history": "6b0520c5f42c75366a68b033",
+    "lapsed": "6b0520c5f42c75366a68b04c",
+    "missing": "000000000000000000000000"
+  },
+  "directory": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "items": [
+          {
+            "id": "6b0520c5f42c75366a68b04c",
+            "name": "Lena Lapsed",
+            "email": "lena.lapsed@example.test",
+            "role": "USER",
+            "registeredAt": "2026-11-24T05:29:41.541Z",
+            "accountState": "MUTED",
+            "accountStateChangedAt": "2026-11-24T05:29:41.545Z",
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": {
+              "kind": "TEMPORARY",
+              "expiresAt": "2026-11-24T05:28:41.551Z",
+              "safeReason": null,
+              "lapsed": true
+            }
+          },
+          {
+            "id": "6b0520c5f42c75366a68b033",
+            "name": "Hana History",
+            "email": "hana.history@example.test",
+            "role": "USER",
+            "registeredAt": "2026-11-24T05:29:41.466Z",
+            "accountState": "ACTIVE",
+            "accountStateChangedAt": "2026-11-24T05:29:41.485Z",
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": null
+          },
+          {
+            "id": "6b0520c5f42c75366a68b022",
+            "name": "Eli Expert",
+            "email": "eli.expert@example.test",
+            "role": "EXPERT",
+            "registeredAt": "2026-11-24T05:29:41.405Z",
+            "accountState": "ACTIVE",
+            "accountStateChangedAt": null,
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": null
+          },
+          {
+            "id": "6b0520c5f42c75366a68b01c",
+            "name": "Dev Deleting",
+            "email": "dev.deleting@example.test",
+            "role": "USER",
+            "registeredAt": "2026-11-24T05:29:41.362Z",
+            "accountState": "DELETION_PENDING",
+            "accountStateChangedAt": "2026-11-24T04:29:41.425Z",
+            "deletionPending": true,
+            "deletionRequestedAt": "2026-11-24T04:29:41.425Z",
+            "restriction": null
+          },
+          {
+            "id": "6b0520c5f42c75366a68b016",
+            "name": "Sam Suspended",
+            "email": "sam.suspended@example.test",
+            "role": "USER",
+            "registeredAt": "2026-11-24T05:29:41.320Z",
+            "accountState": "HARD_SUSPENDED",
+            "accountStateChangedAt": "2026-11-24T05:29:41.420Z",
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": {
+              "kind": "INDEFINITE",
+              "expiresAt": null,
+              "safeReason": "Repeated policy violations",
+              "lapsed": false
+            }
+          },
+          {
+            "id": "6b0520c5f42c75366a68b010",
+            "name": "Mira Muted",
+            "email": "mira.muted@example.test",
+            "role": "USER",
+            "registeredAt": "2026-11-24T05:29:41.274Z",
+            "accountState": "MUTED",
+            "accountStateChangedAt": "2026-11-24T05:29:41.410Z",
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": {
+              "kind": "TEMPORARY",
+              "expiresAt": "2026-11-24T07:29:41.410Z",
+              "safeReason": "Please keep discussion civil",
+              "lapsed": false
+            }
+          },
+          {
+            "id": "6b0520c5f42c75366a68b00a",
+            "name": "Uma User",
+            "email": "uma.user@example.test",
+            "role": "USER",
+            "registeredAt": "2026-11-24T05:29:41.227Z",
+            "accountState": "ACTIVE",
+            "accountStateChangedAt": null,
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": null
+          },
+          {
+            "id": "6b0520c5f42c75366a68b003",
+            "name": "Peer Admin",
+            "email": "peer.admin@example.test",
+            "role": "ADMIN",
+            "registeredAt": "2026-11-24T05:29:41.177Z",
+            "accountState": "ACTIVE",
+            "accountStateChangedAt": null,
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": null
+          },
+          {
+            "id": "6b0520c5f42c75366a68affc",
+            "name": "Asha Admin",
+            "email": "asha.admin@example.test",
+            "role": "ADMIN",
+            "registeredAt": "2026-11-24T05:29:41.122Z",
+            "accountState": "ACTIVE",
+            "accountStateChangedAt": null,
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": null
+          }
+        ],
+        "page": 1,
+        "limit": 50,
+        "total": 9,
+        "totalPages": 1
+      },
+      "message": "Accounts retrieved"
+    }
+  },
+  "directoryFiltered": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "items": [
+          {
+            "id": "6b0520c5f42c75366a68b010",
+            "name": "Mira Muted",
+            "email": "mira.muted@example.test",
+            "role": "USER",
+            "registeredAt": "2026-11-24T05:29:41.274Z",
+            "accountState": "MUTED",
+            "accountStateChangedAt": "2026-11-24T05:29:41.410Z",
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": {
+              "kind": "TEMPORARY",
+              "expiresAt": "2026-11-24T07:29:41.410Z",
+              "safeReason": "Please keep discussion civil",
+              "lapsed": false
+            }
+          }
+        ],
+        "page": 1,
+        "limit": 20,
+        "total": 1,
+        "totalPages": 1
+      },
+      "message": "Accounts retrieved"
+    }
+  },
+  "directoryEmpty": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "items": [],
+        "page": 1,
+        "limit": 20,
+        "total": 0,
+        "totalPages": 0
+      },
+      "message": "Accounts retrieved"
+    }
+  },
+  "directoryPage2": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "items": [
+          {
+            "id": "6b0520c5f42c75366a68b01c",
+            "name": "Dev Deleting",
+            "email": "dev.deleting@example.test",
+            "role": "USER",
+            "registeredAt": "2026-11-24T05:29:41.362Z",
+            "accountState": "DELETION_PENDING",
+            "accountStateChangedAt": "2026-11-24T04:29:41.425Z",
+            "deletionPending": true,
+            "deletionRequestedAt": "2026-11-24T04:29:41.425Z",
+            "restriction": null
+          },
+          {
+            "id": "6b0520c5f42c75366a68b016",
+            "name": "Sam Suspended",
+            "email": "sam.suspended@example.test",
+            "role": "USER",
+            "registeredAt": "2026-11-24T05:29:41.320Z",
+            "accountState": "HARD_SUSPENDED",
+            "accountStateChangedAt": "2026-11-24T05:29:41.420Z",
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": {
+              "kind": "INDEFINITE",
+              "expiresAt": null,
+              "safeReason": "Repeated policy violations",
+              "lapsed": false
+            }
+          },
+          {
+            "id": "6b0520c5f42c75366a68b010",
+            "name": "Mira Muted",
+            "email": "mira.muted@example.test",
+            "role": "USER",
+            "registeredAt": "2026-11-24T05:29:41.274Z",
+            "accountState": "MUTED",
+            "accountStateChangedAt": "2026-11-24T05:29:41.410Z",
+            "deletionPending": false,
+            "deletionRequestedAt": null,
+            "restriction": {
+              "kind": "TEMPORARY",
+              "expiresAt": "2026-11-24T07:29:41.410Z",
+              "safeReason": "Please keep discussion civil",
+              "lapsed": false
+            }
+          }
+        ],
+        "page": 2,
+        "limit": 3,
+        "total": 9,
+        "totalPages": 3
+      },
+      "message": "Accounts retrieved"
+    }
+  },
+  "directoryBadQuery": {
+    "status": 400,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "q must be at least 2 characters",
+      "code": "VALIDATION_FAILED"
+    }
+  },
+  "detailMuted": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "id": "6b0520c5f42c75366a68b010",
+        "name": "Mira Muted",
+        "email": "mira.muted@example.test",
+        "role": "USER",
+        "registeredAt": "2026-11-24T05:29:41.274Z",
+        "accountState": "MUTED",
+        "accountStateChangedAt": "2026-11-24T05:29:41.410Z",
+        "deletionPending": false,
+        "deletionRequestedAt": null,
+        "restriction": {
+          "kind": "TEMPORARY",
+          "expiresAt": "2026-11-24T07:29:41.410Z",
+          "safeReason": "Please keep discussion civil",
+          "lapsed": false
+        }
+      },
+      "message": "Account retrieved"
+    }
+  },
+  "detailSuspended": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "id": "6b0520c5f42c75366a68b016",
+        "name": "Sam Suspended",
+        "email": "sam.suspended@example.test",
+        "role": "USER",
+        "registeredAt": "2026-11-24T05:29:41.320Z",
+        "accountState": "HARD_SUSPENDED",
+        "accountStateChangedAt": "2026-11-24T05:29:41.420Z",
+        "deletionPending": false,
+        "deletionRequestedAt": null,
+        "restriction": {
+          "kind": "INDEFINITE",
+          "expiresAt": null,
+          "safeReason": "Repeated policy violations",
+          "lapsed": false
+        }
+      },
+      "message": "Account retrieved"
+    }
+  },
+  "detailAdmin": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "id": "6b0520c5f42c75366a68b003",
+        "name": "Peer Admin",
+        "email": "peer.admin@example.test",
+        "role": "ADMIN",
+        "registeredAt": "2026-11-24T05:29:41.177Z",
+        "accountState": "ACTIVE",
+        "accountStateChangedAt": null,
+        "deletionPending": false,
+        "deletionRequestedAt": null,
+        "restriction": null
+      },
+      "message": "Account retrieved"
+    }
+  },
+  "detailMissing": {
+    "status": 404,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Account not found",
+      "code": "NOT_FOUND"
+    }
+  },
+  "detailMalformed": {
+    "status": 400,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "must be a valid ObjectId",
+      "code": "VALIDATION_FAILED"
+    }
+  },
+  "history": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "items": [
+          {
+            "id": "6b0520c5f42c75366a68b043",
+            "action": "HARD_SUSPEND",
+            "actorType": "USER",
+            "actor": {
+              "id": "6b0520c5f42c75366a68affc",
+              "name": "Asha Admin"
+            },
+            "previousState": "ACTIVE",
+            "resultingState": "HARD_SUSPENDED",
+            "safeReason": null,
+            "occurredAt": "2026-11-24T05:29:41.479Z"
+          },
+          {
+            "id": "6b0520c5f42c75366a68b03e",
+            "action": "MUTE_LIFTED",
+            "actorType": "USER",
+            "actor": {
+              "id": "6b0520c5f42c75366a68affc",
+              "name": "Asha Admin"
+            },
+            "previousState": "MUTED",
+            "resultingState": "ACTIVE",
+            "safeReason": null,
+            "occurredAt": "2026-11-24T05:29:41.474Z"
+          },
+          {
+            "id": "6b0520c5f42c75366a68b03a",
+            "action": "MUTE",
+            "actorType": "USER",
+            "actor": {
+              "id": "6b0520c5f42c75366a68affc",
+              "name": "Asha Admin"
+            },
+            "previousState": "ACTIVE",
+            "resultingState": "MUTED",
+            "safeReason": "Be civil",
+            "occurredAt": "2026-11-24T05:29:41.470Z"
+          },
+          {
+            "id": "6b0520c5f42c75366a68b049",
+            "action": "SUSPENSION_LIFTED",
+            "actorType": "SYSTEM",
+            "actor": null,
+            "previousState": "HARD_SUSPENDED",
+            "resultingState": "ACTIVE",
+            "safeReason": null,
+            "occurredAt": "2026-11-24T05:28:41.484Z"
+          }
+        ],
+        "page": 1,
+        "limit": 20,
+        "total": 4,
+        "totalPages": 1
+      },
+      "message": "Governance history retrieved"
+    }
+  },
+  "historyPage2": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "items": [
+          {
+            "id": "6b0520c5f42c75366a68b03a",
+            "action": "MUTE",
+            "actorType": "USER",
+            "actor": {
+              "id": "6b0520c5f42c75366a68affc",
+              "name": "Asha Admin"
+            },
+            "previousState": "ACTIVE",
+            "resultingState": "MUTED",
+            "safeReason": "Be civil",
+            "occurredAt": "2026-11-24T05:29:41.470Z"
+          },
+          {
+            "id": "6b0520c5f42c75366a68b049",
+            "action": "SUSPENSION_LIFTED",
+            "actorType": "SYSTEM",
+            "actor": null,
+            "previousState": "HARD_SUSPENDED",
+            "resultingState": "ACTIVE",
+            "safeReason": null,
+            "occurredAt": "2026-11-24T05:28:41.484Z"
+          }
+        ],
+        "page": 2,
+        "limit": 2,
+        "total": 4,
+        "totalPages": 2
+      },
+      "message": "Governance history retrieved"
+    }
+  },
+  "historyEmpty": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "items": [],
+        "page": 1,
+        "limit": 20,
+        "total": 0,
+        "totalPages": 0
+      },
+      "message": "Governance history retrieved"
+    }
+  },
+  "forbiddenUser": {
+    "status": 403,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Forbidden: insufficient role privileges",
+      "code": "FORBIDDEN"
+    }
+  },
+  "forbiddenExpert": {
+    "status": 403,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Forbidden: insufficient role privileges",
+      "code": "FORBIDDEN"
+    }
+  },
+  "unauthorized": {
+    "status": 401,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "an authenticated actor is required",
+      "code": "UNAUTHORIZED"
+    }
+  }
+}

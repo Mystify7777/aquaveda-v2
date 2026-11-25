@@ -58,9 +58,9 @@ describe("navigation links resolve to implemented routes", () => {
   });
 
   it("the new Expert/governance routes are canonical (no /protected or (protected) URL segment)", () => {
-    for (const href of ["/learn/expert-application", "/admin/expert-applications"]) {
+    for (const href of ["/learn/expert-application", "/admin/expert-applications", "/admin/accounts"]) {
       expect(findBrokenLinks([href])).toEqual([]);
     }
-    expect(findBrokenLinks(["/protected/learn/expert-application", "/protected/admin/expert-applications"]).length).toBe(2);
+    expect(findBrokenLinks(["/protected/learn/expert-application", "/protected/admin/expert-applications", "/protected/admin/accounts"]).length).toBe(3);
   });
 });

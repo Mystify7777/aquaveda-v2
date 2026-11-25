@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 
+import { ADMIN_ACCOUNTS_HREF } from "@/lib/accounts/directory";
 import {
   ADMIN_EXPERT_APPLICATIONS_HREF,
   EXPERT_APPLICATION_HREF,
@@ -20,9 +21,12 @@ describe("getRoleLinks", () => {
     ]);
   });
 
-  it("ADMIN: Expert-application governance only — never EXPERT queues", () => {
+  it("ADMIN: Expert-application governance and the read-only accounts directory — never EXPERT queues", () => {
     const links = getRoleLinks("ADMIN");
-    expect(links).toEqual([{ href: ADMIN_EXPERT_APPLICATIONS_HREF, label: "Expert applications" }]);
+    expect(links).toEqual([
+      { href: ADMIN_EXPERT_APPLICATIONS_HREF, label: "Expert applications" },
+      { href: ADMIN_ACCOUNTS_HREF, label: "Accounts" },
+    ]);
     expect(links.some((l) => l.href === KNOWLEDGE_REVIEW_HREF || l.href === EXPERT_ATTENTION_HREF)).toBe(false);
   });
 
