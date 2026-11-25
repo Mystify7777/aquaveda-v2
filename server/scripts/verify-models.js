@@ -493,8 +493,26 @@ check("8b. Issue has exactly the expected top-level fields", () => {
     "statusHistory",
     "remediation", // ADR-0007: current grant (private workflow state)
     "remediationHistory", // ADR-0007: append-only responsibility events (private)
+    "disposition", // ADR-0013: terminal triage outcome
+    "dispositionHistory", // ADR-0013: append-only disposition audit history
   ].sort();
   assert.deepEqual(topLevelFields(Issue.schema), expected);
+});
+
+check("8b-0. Issue disposition shape (ADR-0013): exact fields and terminal enum", () => {
+  const disposition = Issue.schema.path("disposition").schema;
+  assert.deepEqual(
+    Object.keys(disposition.paths).sort(),
+    ["actor", "canonicalIssueId", "note", "timestamp", "type"],
+  );
+  assert.deepEqual(disposition.path("type").enumValues, ["invalid", "duplicate", "withdrawn"]);
+  assert.equal(disposition.path("note").options.maxlength, 2000);
+  assert.equal(Issue.schema.path("disposition").options.default, undefined);
+  const history = Issue.schema.path("dispositionHistory").schema;
+  assert.deepEqual(
+    Object.keys(history.paths).sort(),
+    ["actor", "canonicalIssueId", "note", "timestamp", "type"],
+  );
 });
 
 check("8b-1. Issue.remediation grant shape (ADR-0007 §1): exact fields, required identity, acceptedAt defaults to null", () => {
