@@ -70,7 +70,10 @@ describe("no actor, no capabilities", () => {
 });
 
 describe("EXPERT actions follow the status and the grant", () => {
-  it("open: acknowledge only", () => assert.deepEqual(acts(issue("open"), EXPERT), ["acknowledge"]));
+  it("open: acknowledge plus EXPERT disposition actions", () => assert.deepEqual(
+    acts(issue("open"), EXPERT),
+    ["acknowledge", "disposition.invalid", "disposition.duplicate"],
+  ));
 
   it("acknowledged, no grant: grant; with a pending or accepted grant: withdraw (never grant)", () => {
     assert.deepEqual(acts(issue("acknowledged"), EXPERT), ["remediation.grant"]);
