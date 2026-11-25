@@ -332,7 +332,7 @@ describe("fixture: verified EXPERT exercises real authorization (#90 readiness)"
     );
 
     const author = await createFixtureUser("USER");
-    const k = await createKnowledge(author.ctx, { title: "Rain barrels", body: "Collect runoff." });
+    const k = await createKnowledge(author.ctx, { title: "Rain barrels", body: "Collect runoff.", category: "water_conservation" });
     await submitForReview(author.ctx, String(k._id));
     const out = await approve(expert.ctx, String(k._id));
     assert.equal(out.status, "approved");
@@ -341,7 +341,7 @@ describe("fixture: verified EXPERT exercises real authorization (#90 readiness)"
     const nope = await createFixtureUser("USER");
     await applyApp(nope.ctx);
     await rejectApp(admin.ctx, nope.id);
-    const k2 = await createKnowledge(author.ctx, { title: "Swales", body: "Dig a swale." });
+    const k2 = await createKnowledge(author.ctx, { title: "Swales", body: "Dig a swale.", category: "water_conservation" });
     await submitForReview(author.ctx, String(k2._id));
     await rejectsWith(approve({ id: nope.id, role: "USER" }, String(k2._id)), DomainErrorCode.FORBIDDEN);
   });

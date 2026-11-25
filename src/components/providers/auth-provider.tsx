@@ -63,10 +63,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRestriction(next);
         if (next === "suspended") {
             setUser(null);
+            statusRef.current = "suspended";
             setStatus("suspended");
             return null;
         }
         setUser(nextUser);
+        statusRef.current = "authenticated";
         setStatus("authenticated");
         return nextUser;
     }, []);
@@ -138,6 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
             setUser(null);
             setRestriction(result.status === "suspended" ? "suspended" : null);
+            statusRef.current = result.status as AuthStatus;
             setStatus(result.status as AuthStatus);
         }
     }, [setAuthenticated]);
@@ -147,6 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         manualRetryInFlight.current = true;
         const generation = ++retryGeneration.current;
         requestGeneration.current = generation;
+        statusRef.current = "initializing";
         setStatus("initializing");
         try {
             await runInitialization(generation);

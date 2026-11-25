@@ -11,6 +11,8 @@ import {
   DomainErrorCode,
 } from "./errors.js";
 import { requireActor, requireRole } from "./authorization.js";
+import { getAssignableCategory, getAssignableTopic } from "../domain/knowledge-taxonomy.js";
+import { normalizeRegionKey } from "../domain/region-normalization.js";
 import { toWorkflowKnowledgeDTO, toWorkflowKnowledgeSummaryDTO } from "./knowledge.dto.js";
 
 /**
@@ -37,20 +39,75 @@ function wrapMongooseValidationError(err) {
 // identical constant for the full rationale.
 const PUBLIC_ACTOR_FIELDS = "_id name role";
 
+function resolveCanonicalCategory(value) {
+  if (typeof value !== "string") return null;
+  const term = getAssignableCategory(value);
+  return term && value === term.slug ? term : null;
+}
+
+function resolveCanonicalTopic(value) {
+  if (typeof value !== "string") return null;
+  const term = getAssignableTopic(value);
+  return term && value === term.slug ? term : null;
+}
+
 /**
  * createKnowledge(actorContext, payload)
  *
- * payload: { title, body, region? } — never accepts status, author, or
- * reviewHistory from the caller.
+ * payload: { title, body, category, topics?, region? }.
+ * Category and supplied Topics must be ACTIVE canonical taxonomy slugs.
+ * Region remains a display value and regionKey is derived server-side.
+ * Lifecycle, author, reviewHistory, and derived fields are server-owned.
  */
 export async function createKnowledge(actorContext, payload) {
   requireActor(actorContext);
+
+  const category = resolveCanonicalCategory(payload?.category);
+  if (!category) {
+    throw new DomainError(
+      DomainErrorCode.VALIDATION_FAILED,
+      "category must be an active canonical taxonomy value",
+      { field: "category" },
+    );
+  }
+
+  if (payload?.topics !== undefined && !Array.isArray(payload.topics)) {
+    throw new DomainError(
+      DomainErrorCode.VALIDATION_FAILED,
+      "topics must be an array of canonical taxonomy slugs",
+      { field: "topics" },
+    );
+  }
+
+  const rawTopics = payload?.topics ?? [];
+  const topics = [];
+  const seenTopics = new Set();
+  for (const rawTopic of rawTopics) {
+    const topic = resolveCanonicalTopic(rawTopic);
+    if (!topic) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        "topics must contain only active canonical taxonomy values",
+        { field: "topics", value: rawTopic },
+      );
+    }
+    if (!seenTopics.has(topic.slug)) {
+      seenTopics.add(topic.slug);
+      topics.push(topic.slug);
+    }
+  }
+
+  const region = typeof payload?.region === "string" ? payload.region : "";
+  const regionKey = normalizeRegionKey(region);
 
   try {
     const knowledge = await Knowledge.create({
       title: payload.title,
       body: payload.body,
-      region: payload.region,
+      region,
+      regionKey,
+      category: category.slug,
+      topics,
       author: actorContext.id,
       status: "draft",
       reviewHistory: [],
@@ -265,9 +322,11 @@ export async function reject(actorContext, knowledgeId, feedback) {
 /**
  * revise(actorContext, knowledgeId, updatedContent)
  *
- * rejected -> draft, author-only. Only title/body/region are updatable
- * from `updatedContent` — author, reviewHistory, and status are never
- * accepted from the caller, regardless of what updatedContent contains.
+ * rejected -> draft, author-only. Optional title/body/category/topics/region
+ * changes are applied after validating supplied taxonomy identities. Existing
+ * taxonomy is retained when its field is omitted; a legacy record without a
+ * Category must supply one. regionKey is recomputed from the resulting Region.
+ * Author, reviewHistory, status, and derived fields remain server-owned.
  */
 export async function revise(actorContext, knowledgeId, updatedContent) {
   requireActor(actorContext);
@@ -276,15 +335,10 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
   try {
     knowledge = await Knowledge.findById(knowledgeId);
   } catch (err) {
-    // Malformed knowledgeId -> raw Mongoose CastError, translated to the
-    // same DomainError contract as every other failure mode. Once this
-    // read succeeds (even with null), the id's shape is confirmed valid
-    // for the rest of this function.
+    // A malformed id is translated to the shared validation contract.
     throw wrapMongooseValidationError(err);
   }
-  if (!knowledge) {
-    throw notFound(`Knowledge ${knowledgeId} not found`);
-  }
+  if (!knowledge) throw notFound(`Knowledge ${knowledgeId} not found`);
 
   if (knowledge.status !== "rejected") {
     throw invalidState(
@@ -294,27 +348,104 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
   }
 
   if (String(knowledge.author) !== String(actorContext.id)) {
-    throw forbidden(
-      "only the author may revise a rejected Knowledge submission",
+    throw forbidden("only the author may revise a rejected Knowledge submission");
+  }
+
+  const content = updatedContent ?? {};
+  const allowedFields = {};
+
+  if (typeof content.title === "string") allowedFields.title = content.title;
+  if (typeof content.body === "string") allowedFields.body = content.body;
+
+  let categorySlug;
+  if (Object.prototype.hasOwnProperty.call(content, "category")) {
+    const category = resolveCanonicalCategory(content.category);
+    if (!category) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        "category must be an active canonical taxonomy value",
+        { field: "category" },
+      );
+    }
+    categorySlug = category.slug;
+  } else if (knowledge.category !== undefined && knowledge.category !== null) {
+    const existingCategory = resolveCanonicalCategory(knowledge.category);
+    if (!existingCategory) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        "existing Knowledge category is not an active canonical taxonomy value; provide a valid category",
+        { field: "category", existingValue: knowledge.category },
+      );
+    }
+    categorySlug = existingCategory.slug;
+  } else {
+    throw new DomainError(
+      DomainErrorCode.VALIDATION_FAILED,
+      "category is required when revising a legacy Knowledge record without one",
+      { field: "category" },
     );
   }
+  allowedFields.category = categorySlug;
 
-  const allowedFields = {};
-  if (updatedContent && typeof updatedContent.title === "string") {
-    allowedFields.title = updatedContent.title;
-  }
-  if (updatedContent && typeof updatedContent.body === "string") {
-    allowedFields.body = updatedContent.body;
-  }
-  if (updatedContent && typeof updatedContent.region === "string") {
-    allowedFields.region = updatedContent.region;
-  }
+  let topics;
+  if (Object.prototype.hasOwnProperty.call(content, "topics")) {
+    if (!Array.isArray(content.topics)) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        "topics must be an array of canonical taxonomy slugs",
+        { field: "topics" },
+      );
+    }
 
-  const updated = await Knowledge.findOneAndUpdate(
-    { _id: knowledgeId, status: "rejected" },
-    { $set: { ...allowedFields, status: "draft" } },
-    { new: true, runValidators: true },
-  );
+    const seenTopics = new Set();
+    topics = [];
+    for (const rawTopic of content.topics) {
+      const topic = resolveCanonicalTopic(rawTopic);
+      if (!topic) {
+        throw new DomainError(
+          DomainErrorCode.VALIDATION_FAILED,
+          "topics must contain only active canonical taxonomy values",
+          { field: "topics", value: rawTopic },
+        );
+      }
+      if (!seenTopics.has(topic.slug)) {
+        seenTopics.add(topic.slug);
+        topics.push(topic.slug);
+      }
+    }
+  } else {
+    topics = Array.isArray(knowledge.topics) ? [...knowledge.topics] : [];
+  }
+  allowedFields.topics = topics;
+
+  const region = typeof content.region === "string" ? content.region : (knowledge.region ?? "");
+  allowedFields.region = region;
+  allowedFields.regionKey = normalizeRegionKey(region);
+
+  // Protect exactly the state this revision was based on. Comparing array
+  // values in the MongoDB filter prevents a delayed save from replacing a
+  // concurrent taxonomy update made after the initial read.
+  const observedFilter = {
+    _id: knowledgeId,
+    status: "rejected",
+    category:
+      knowledge.category === undefined
+        ? { $exists: false }
+        : knowledge.category,
+    topics: Array.isArray(knowledge.topics) ? knowledge.topics : [],
+    region: knowledge.region ?? "",
+  };
+
+  let updated;
+  try {
+    updated = await Knowledge.findOneAndUpdate(
+      observedFilter,
+      { $set: { ...allowedFields, status: "draft" } },
+      { new: true, runValidators: true },
+    );
+  } catch (err) {
+    throw wrapMongooseValidationError(err);
+  }
 
   if (updated) return updated;
 
@@ -325,8 +456,14 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
     );
   }
   throw stateRace(
-    `Knowledge ${knowledgeId} status changed before revision could be applied`,
-    { expectedStatus: "rejected", targetStatus: "draft" },
+    `Knowledge ${knowledgeId} changed before revision could be applied`,
+    {
+      expectedStatus: "rejected",
+      targetStatus: "draft",
+      expectedCategory: knowledge.category ?? null,
+      expectedTopics: Array.isArray(knowledge.topics) ? knowledge.topics : [],
+      expectedRegion: knowledge.region ?? "",
+    },
   );
 }
 

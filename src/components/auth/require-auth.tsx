@@ -47,7 +47,7 @@ export function RequireAuth({
                 <div className={cn("space-y-2", gateClassName)}>
                     <Card className="w-full max-w-md text-left">
                         <CardHeader>
-                            <CardTitle>{gateTitle}</CardTitle>
+                            <h2 className="font-display text-lg leading-none font-semibold">{gateTitle}</h2>
                             <CardDescription>{gateDescription}</CardDescription>
                         </CardHeader>
                         <CardContent className="flex gap-2">

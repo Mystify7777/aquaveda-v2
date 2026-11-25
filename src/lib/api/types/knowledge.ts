@@ -25,7 +25,7 @@ export interface KnowledgeArticle {
 
 export type KnowledgeListQuery = PaginationQuery;
 
-/** Body of POST /api/v1/knowledge. `region` is intentionally not modeled (semantics undefined). */
+/** Body of POST /api/v1/knowledge. Region is optional display text. */
 export interface CreateKnowledgePayload {
   title: string;
   body: string;
@@ -45,10 +45,13 @@ export type CreatedKnowledgeDraft = Pick<KnowledgeArticle, "_id" | "title" | "st
  */
 export type KnowledgeLifecycleResult = Pick<KnowledgeArticle, "_id" | "title" | "status">;
 
-/** Body of POST /api/v1/knowledge/:id/revise. `region` is intentionally not modeled. */
+/** Body of POST /api/v1/knowledge/:id/revise. Every supported field is independently optional. */
 export interface ReviseKnowledgePayload {
-  title: string;
-  body: string;
+  title?: string;
+  body?: string;
+  category?: string;
+  topics?: string[];
+  region?: string;
 }
 
 // --- Authenticated workflow reads (Issue #74) ---------------------------

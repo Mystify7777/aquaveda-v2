@@ -211,7 +211,7 @@ describe("provisioned ADMIN works through the real auth + authorization path", (
       password: "author-passphrase-1",
     });
     const author = { id: String(user.id), role: "USER" };
-    const k = await createKnowledge(author, { title: "Rain barrels", body: "Collect runoff." });
+    const k = await createKnowledge(author, { title: "Rain barrels", body: "Collect runoff.", category: "water_conservation" });
     await submitForReview(author, String(k._id));
 
     const KN = "/api/v1/knowledge";

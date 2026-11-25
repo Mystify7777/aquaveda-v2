@@ -42,6 +42,7 @@ export function toWorkflowKnowledgeSummaryDTO(doc) {
 export function toWorkflowKnowledgeDTO(doc) {
   return {
     ...toSummary(doc),
+    category: doc.category,
     body: doc.body,
     reviewHistory: (doc.reviewHistory ?? []).map((entry) => ({
       decision: entry.decision,
