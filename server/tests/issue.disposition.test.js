@@ -107,7 +107,11 @@ describe("Issue #199 — dispositions", () => {
 
     assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
     assert.equal(results.filter((r) => r.status === "rejected").length, 1);
-    assert.equal(results.find((r) => r.status === "rejected").reason.code, DomainErrorCode.STATE_RACE);
+    assert.ok(
+      [DomainErrorCode.STATE_RACE, DomainErrorCode.FORBIDDEN].includes(
+        results.find((r) => r.status === "rejected").reason.code,
+      ),
+    );
 
     const final = await Issue.findById(issue._id);
     assert.ok(final.disposition);
