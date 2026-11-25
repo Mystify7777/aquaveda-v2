@@ -45,8 +45,10 @@ export async function setupTestDb() {
     // No real MongoDB configured — start an in-process one.
     // Dynamic import keeps the dev-only package out of the production
     // bundle; mongodb-memory-server is listed in devDependencies only.
-    const { MongoMemoryServer } = await import("mongodb-memory-server");
-    _memoryServer = await MongoMemoryServer.create();
+    const { MongoMemoryReplSet } = await import("mongodb-memory-server");
+    _memoryServer = await MongoMemoryReplSet.create({
+      replSet: { count: 1 },
+    });
     process.env.TEST_MONGO_URI = _memoryServer.getUri();
   }
 
