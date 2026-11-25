@@ -99,7 +99,7 @@ const OBJECT_ID = /^[a-f\d]{24}$/i;
 export function validateActionInput(
   action: WorkflowAction,
   input: ActionInput,
-): { note?: string; granteeId?: string } {
+): { note?: string; granteeId?: string; canonicalIssueId?: string } {
   const spec = ACTION_SPECS[action];
   const errors: { note?: string; granteeId?: string; canonicalIssueId?: string } = {};
   if (spec.grantee && !OBJECT_ID.test(input.granteeId.trim())) {
