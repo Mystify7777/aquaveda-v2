@@ -1,5 +1,6 @@
 import { hasRole } from "./actor.js";
 import { resolverOf } from "./issue-lifecycle.js";
+import { canAssignDisposition } from "./issue-disposition.js";
 import {
   GRANT_OPERATION_STATUSES,
   deriveResponsibilityState,
@@ -37,6 +38,9 @@ export const WORKFLOW_ACTIONS = Object.freeze([
   "remediation.resolve",
   "resolution.verify",
   "resolution.fail",
+  "disposition.invalid",
+  "disposition.duplicate",
+  "disposition.withdraw",
 ]);
 
 const RULES = {
@@ -92,6 +96,10 @@ const RULES = {
   // Failed verification is EXPERT-authorized (ADR-0003); it carries no
   // independence rule, exactly as `authorizeTransition` implements it.
   "resolution.fail": (i, a) => i.status === "resolved" && hasRole(a, "EXPERT"),
+
+  "disposition.invalid": (i, a) => canAssignDisposition(i, a, "invalid"),
+  "disposition.duplicate": (i, a) => canAssignDisposition(i, a, "duplicate"),
+  "disposition.withdraw": (i, a) => canAssignDisposition(i, a, "withdrawn"),
 };
 
 /**
