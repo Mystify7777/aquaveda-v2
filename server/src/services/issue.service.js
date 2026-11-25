@@ -414,27 +414,96 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
     throw validationFailed(parsedNote.problem, { field: "note" });
   }
 
-  let canonicalId;
+  if (type !== "duplicate" && canonicalIssueId !== undefined) {
+    throw validationFailed(
+      "canonicalIssueId is only valid for duplicate disposition",
+      { field: "canonicalIssueId" },
+    );
+  }
+
   if (type === "duplicate") {
     if (!canonicalIssueId) {
-      throw validationFailed("canonicalIssueId is required for duplicate disposition", { field: "canonicalIssueId" });
+      throw validationFailed(
+        "canonicalIssueId is required for duplicate disposition",
+        { field: "canonicalIssueId" },
+      );
     }
     if (String(canonicalIssueId) === String(issueId)) {
-      throw validationFailed("canonicalIssueId must reference a different Issue", { field: "canonicalIssueId" });
+      throw validationFailed(
+        "canonicalIssueId must reference a different Issue",
+        { field: "canonicalIssueId" },
+      );
     }
-    let canonical;
+
+    // The canonical Issue and the duplicate target are two independent
+    // documents, so the "canonical is live" invariant cannot be established
+    // by the target's conditional update alone. Run the validation and target
+    // write in one transaction. The canonical read is deliberately upgraded
+    // to a write-locking read: MongoDB snapshot reads may otherwise be stale
+    // when another operation disposes the canonical concurrently. Updating
+    // updatedAt is harmless domain metadata, and the transaction rolls it
+    // back if the disposition cannot commit.
+    const session = await Issue.startSession();
     try {
-      canonical = await Issue.findById(canonicalIssueId);
-    } catch (err) {
-      throw wrapMongooseValidationError(err);
+      let result;
+      await session.withTransaction(
+        async () => {
+          const txIssue = await Issue.findOne({
+            _id: issueId,
+            status: "open",
+            disposition: { $exists: false },
+          }).session(session);
+          if (!txIssue) {
+            throw stateRace(
+              `Issue ${issueId} changed before this disposition could be applied`,
+              { type },
+            );
+          }
+
+          const canonical = await Issue.findOneAndUpdate(
+            { _id: canonicalIssueId, disposition: { $exists: false } },
+            { $set: { updatedAt: new Date() } },
+            {
+              new: true,
+              timestamps: false,
+              runValidators: false,
+              session,
+            },
+          );
+          if (!canonical) {
+            const exists = await Issue.exists({ _id: canonicalIssueId }).session(session);
+            if (!exists) throw invalidState("The canonical Issue does not exist");
+            throw invalidState("The canonical Issue is already disposed");
+          }
+
+          const now = new Date();
+          const entry = {
+            type,
+            actor: actorContext.id,
+            timestamp: now,
+            ...(parsedNote.value !== undefined ? { note: parsedNote.value } : {}),
+            canonicalIssueId: canonical._id,
+          };
+
+          result = await Issue.findOneAndUpdate(
+            { _id: issueId, status: "open", disposition: { $exists: false } },
+            { $set: { disposition: entry }, $push: { dispositionHistory: entry } },
+            { new: true, runValidators: true, session },
+          );
+
+          if (!result) {
+            throw stateRace(
+              `Issue ${issueId} changed before this disposition could be applied`,
+              { type },
+            );
+          }
+        },
+        { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } },
+      );
+      return result;
+    } finally {
+      await session.endSession();
     }
-    if (!canonical) throw invalidState("The canonical Issue does not exist");
-    if (canonical.disposition?.type) {
-      throw invalidState("The canonical Issue is already disposed");
-    }
-    canonicalId = canonical._id;
-  } else if (canonicalIssueId !== undefined) {
-    throw validationFailed("canonicalIssueId is only valid for duplicate disposition", { field: "canonicalIssueId" });
   }
 
   const now = new Date();
@@ -443,7 +512,6 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
     actor: actorContext.id,
     timestamp: now,
     ...(parsedNote.value !== undefined ? { note: parsedNote.value } : {}),
-    ...(canonicalId !== undefined ? { canonicalIssueId: canonicalId } : {}),
   };
 
   const updated = await Issue.findOneAndUpdate(
