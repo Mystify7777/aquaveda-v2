@@ -17,6 +17,9 @@ export const WORKFLOW_ACTIONS = [
   "remediation.resolve",
   "resolution.verify",
   "resolution.fail",
+  "disposition.invalid",
+  "disposition.duplicate",
+  "disposition.withdraw",
 ] as const;
 
 export type WorkflowAction = (typeof WORKFLOW_ACTIONS)[number];
@@ -31,6 +34,7 @@ export interface ActionSpec {
   noteMinLength?: number;
   consequence?: string;
   grantee?: boolean;
+  canonicalIssue?: boolean;
   destructive?: boolean;
 }
 
@@ -45,6 +49,30 @@ export const ACTION_SPECS: Record<WorkflowAction, ActionSpec> = {
   "remediation.start": { label: "Start remediation", confirmLabel: "Confirm start", path: "start", note: "optional" },
   "remediation.resolve": { label: "Mark resolved", confirmLabel: "Confirm resolution", path: "resolve", note: "required", noteLabel: "Resolution note" },
   "resolution.verify": { label: "Verify resolution", confirmLabel: "Confirm verification", path: "verify", note: "required", noteLabel: "Verification rationale" },
+  "disposition.invalid": {
+    label: "Mark invalid",
+    confirmLabel: "Confirm invalid",
+    path: "disposition",
+    note: "required",
+    noteLabel: "Reason",
+    destructive: true,
+  },
+  "disposition.duplicate": {
+    label: "Mark duplicate",
+    confirmLabel: "Confirm duplicate",
+    path: "disposition",
+    note: "required",
+    noteLabel: "Reason",
+    canonicalIssue: true,
+    destructive: true,
+  },
+  "disposition.withdraw": {
+    label: "Withdraw issue",
+    confirmLabel: "Confirm withdrawal",
+    path: "disposition",
+    note: "optional",
+    destructive: true,
+  },
   "resolution.fail": {
     label: "Request changes",
     confirmLabel: "Request changes",
@@ -63,6 +91,7 @@ export function isKnownAction(action: string): action is WorkflowAction {
 export interface ActionInput {
   note: string;
   granteeId: string;
+  canonicalIssueId: string;
 }
 
 const OBJECT_ID = /^[a-f\d]{24}$/i;
@@ -72,9 +101,12 @@ export function validateActionInput(
   input: ActionInput,
 ): { note?: string; granteeId?: string } {
   const spec = ACTION_SPECS[action];
-  const errors: { note?: string; granteeId?: string } = {};
+  const errors: { note?: string; granteeId?: string; canonicalIssueId?: string } = {};
   if (spec.grantee && !OBJECT_ID.test(input.granteeId.trim())) {
     errors.granteeId = "Enter a valid user ID (24 hexadecimal characters).";
+  }
+  if (spec.canonicalIssue && !OBJECT_ID.test(input.canonicalIssueId.trim())) {
+    errors.canonicalIssueId = "Enter a valid Issue ID (24 hexadecimal characters).";
   }
   if (spec.note === "required") {
     const note = input.note.trim();
@@ -91,6 +123,8 @@ export function buildActionBody(action: WorkflowAction, input: ActionInput): Rec
   const spec = ACTION_SPECS[action];
   const body: Record<string, string> = {};
   if (spec.grantee) body.granteeId = input.granteeId.trim();
+  if (spec.canonicalIssue) body.canonicalIssueId = input.canonicalIssueId.trim();
+  if (spec.path === "disposition") body.type = action === "disposition.invalid" ? "invalid" : action === "disposition.duplicate" ? "duplicate" : "withdrawn";
   if (spec.note !== "none") {
     const note = input.note.trim();
     if (note) body.note = note;
