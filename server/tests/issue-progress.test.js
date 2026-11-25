@@ -67,6 +67,13 @@ describe("deriveNextAction", () => {
     assert.deepEqual([...seen].sort(), [...NEXT_ACTIONS].sort());
   });
 
+  it("a terminally disposed Issue has no next action", () => {
+    assert.equal(
+      deriveNextAction({ status: "open", disposition: { type: "invalid" } }),
+      null,
+    );
+  });
+
   it("an unknown status yields null instead of throwing (and never a lifecycle code)", () => {
     assert.equal(deriveNextAction({ status: "legacy" }), null);
     assert.equal(deriveNextAction(undefined), null);
@@ -100,6 +107,18 @@ describe("deriveWaitingSince", () => {
   it("is not moved by a grant: only a status change moves it", () => {
     const base = { createdAt: T(0), statusHistory: [{ toStatus: "acknowledged", timestamp: T(4) }] };
     assert.equal(deriveWaitingSince({ ...base, remediation: ACCEPTED }), base.statusHistory[0].timestamp);
+  });
+
+  it("a terminally disposed Issue has no waitingSince", () => {
+    assert.equal(
+      deriveWaitingSince({
+        status: "open",
+        createdAt: T(7),
+        statusHistory: [{ toStatus: "open", timestamp: T(7) }],
+        disposition: { type: "withdrawn" },
+      }),
+      null,
+    );
   });
 
   it("falls back to createdAt without history, and to null without either", () => {
