@@ -293,6 +293,9 @@ export async function changeStatus(actorContext, issueId, targetStatus, { note, 
   if (!issue) {
     throw notFound(`Issue ${issueId} not found`);
   }
+  if (issue.disposition?.type) {
+    throw invalidState("A disposed Issue has no further lifecycle transitions");
+  }
 
   const expectedStatus = issue.status;
   const legalTargets = LEGAL_TRANSITIONS[expectedStatus] ?? [];
