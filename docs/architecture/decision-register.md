@@ -1456,3 +1456,13 @@ Implements GOV-T1/T3/T7/T8 for the product path. ADR-0012 is unchanged. Detail a
 - **DISP-6 — Audit.** The current disposition is stored alongside an append-only `dispositionHistory`. Each entry records disposition, actor, timestamp, note, and canonical Issue when applicable.
 - **DISP-7 — Workflow capability.** The viewer-specific workflow exposes `disposition.invalid`, `disposition.duplicate`, and `disposition.withdraw` only when the server-side authority predicate permits them. A disposed Issue exposes no workflow actions.
 - **DISP-8 — Concurrency.** Disposition writes condition on the observed open/undisposed state. A stale conditional write cannot overwrite an existing disposition.
+### Implementation notes — Read-only Admin accounts UI (#250; implementation-level)
+
+Consumer of #181 (API), #255 (enforcement) and ADR-0012 GOV-T9. Detail: `docs/architecture/admin-directory.md` ("Frontend").
+
+- **ADMUI-L1 — Read-only by construction.** `src/lib/api/accounts.ts` has only `getAccountDirectory` / `getAccountEntry` / `getAccountHistory` (a test pins the export list); the surface has no buttons or POST forms. Mutation UI waits for the mutation contracts; it must not be added here.
+- **ADMUI-L2 — Role gate is UX, backend is authority.** `RequireAdmin` withholds the request from signed-in non-ADMINs; the backend's 403/401 are still rendered. Authentication stays the `(protected)` boundary.
+- **ADMUI-L3 — Backend query semantics, one definition.** Roles, states and `q` bounds come from the backend domain module via `directory-contract.ts`; URL state is `role`, `accountState`, `q`, `page` (fixed order). **Strict, like #181's `.strict()` schema (review fix):** an unknown or repeated parameter, an unrecognised role/state, an invalid `q` and an invalid `page` are surfaced and nothing is sent; nothing is silently dropped or coerced, so a typo can never broaden the result (blank form values mean "not set"). The filter state type is a backend-derived union (`DirectoryAccountState`, test-pinned to `DIRECTORY_STATES`); filters restart pagination.
+- **ADMUI-L4 — Allowlist rendering.** Only the documented fields are read; private/excluded fields are never rendered (injection tests); history order is the API's.
+- **ADMUI-L5 — GOV-T9 honored.** Admin and self rows/detail show the operator-managed note; no governance controls exist for any row.
+- **ADMUI-L6 — Not done:** no browser smoke/e2e spec (unverifiable in the authoring sandbox); no live refresh; no directory affordance flag (ADR-0012 F5, optional); the back link from detail goes to the unfiltered directory.
