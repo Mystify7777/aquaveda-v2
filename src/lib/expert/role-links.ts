@@ -5,8 +5,10 @@
  * authoritative. The three roles stay distinct:
  *   USER   -> may apply for Expert status
  *   EXPERT -> reviews Knowledge and triages Issue attention queues
- *   ADMIN  -> governs Expert applications (never EXPERT queues)
+ *   ADMIN  -> governs Expert applications (never EXPERT queues) and browses accounts (read-only, #250)
  */
+import { ADMIN_ACCOUNTS_HREF } from "@/lib/accounts/directory";
+
 export type RoleLink = { href: string; label: string };
 
 export const EXPERT_APPLICATION_HREF = "/learn/expert-application";
@@ -24,7 +26,10 @@ export function getRoleLinks(role: string | null | undefined): RoleLink[] {
         { href: EXPERT_ATTENTION_HREF, label: "Needs attention" },
       ];
     case "ADMIN":
-      return [{ href: ADMIN_EXPERT_APPLICATIONS_HREF, label: "Expert applications" }];
+      return [
+        { href: ADMIN_EXPERT_APPLICATIONS_HREF, label: "Expert applications" },
+        { href: ADMIN_ACCOUNTS_HREF, label: "Accounts" },
+      ];
     default:
       return [];
   }
