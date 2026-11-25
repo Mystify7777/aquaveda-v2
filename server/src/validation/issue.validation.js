@@ -95,7 +95,7 @@ export const createIssueSchema = z.object({
 export const issueDispositionSchema = z.object({
   type: z.enum(["invalid", "duplicate", "withdrawn"]),
   note: z.string().optional(),
-  canonicalIssueId: z.string().regex(/^[a-f\\d]{24}$/i, "canonicalIssueId must be a valid ObjectId").optional(),
+  canonicalIssueId: z.string().regex(/^[a-f\d]{24}$/i, "canonicalIssueId must be a valid ObjectId").optional(),
 }).superRefine((value, ctx) => {
   if ((value.type === "invalid" || value.type === "duplicate") && !value.note?.trim()) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["note"], message: "A note is required." });
