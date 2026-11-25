@@ -50,16 +50,6 @@ function toDispositionDTO(disposition, actors) {
   };
 }
 
-function toDispositionHistoryDTO(history, actors) {
-  return (history ?? []).map((entry) => ({
-    type: entry.type,
-    actorProfile: profile(actors, entry.actor),
-    timestamp: entry.timestamp,
-    ...(entry.note !== undefined ? { note: entry.note } : {}),
-    ...(entry.canonicalIssueId ? { canonicalIssueId: String(entry.canonicalIssueId) } : {}),
-  }));
-}
-
 /** Fields shared by every public Issue shape (no actor references). */
 function toIssueCore(plain, actors) {
   return {
@@ -137,9 +127,6 @@ export function toPublicIssueDetailDTO(plain, actors, { assignee, activity } = {
     nextAction,
     waitingSince,
     resolutionDisputed,
-    ...(plain.dispositionHistory?.length
-      ? { dispositionHistory: toDispositionHistoryDTO(plain.dispositionHistory, actors) }
-      : {}),
     ...(activity ? { activity: activity.map(toActivityEntryDTO) } : {}),
   };
 }
