@@ -205,7 +205,8 @@ describe("agreement: privacy of the list", () => {
       const base = await build();
       for (const cls of ["reporter", "other"]) {
         const { actions } = await getIssueWorkflowView(asActor(base.w[cls]), base.id);
-        assert.deepEqual(actions, [], `${name} / ${cls}`);
+        const expected = name === "open" && cls === "reporter" ? ["disposition.withdraw"] : [];
+        assert.deepEqual(actions, expected, `${name} / ${cls}`);
       }
     }
   });
