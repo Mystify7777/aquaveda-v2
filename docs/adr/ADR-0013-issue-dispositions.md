@@ -42,6 +42,7 @@ ADMIN does not receive a generic override/reopen/dismiss capability. Existing AD
 - `withdrawn` accepts an optional note.
 - A duplicate cannot reference itself.
 - The canonical Issue must exist and must not itself be disposed.
+- Once an Issue is referenced as a canonical Issue, it cannot itself receive a terminal disposition.
 - Disposition does not mutate or delete the canonical Issue.
 
 ### Reopening
