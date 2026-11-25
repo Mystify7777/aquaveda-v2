@@ -288,6 +288,13 @@ const issueSchema = new Schema(
       type: [issueDispositionHistoryEntrySchema],
       default: [],
     },
+    // Internal write-lock token used by duplicate-disposition transactions to
+    // serialize against concurrent canonical disposal. Never exposed by DTOs.
+    dispositionGuard: {
+      type: Schema.Types.ObjectId,
+      default: undefined,
+      select: false,
+    },
     remediation: {
       type: remediationGrantSchema,
       default: undefined, // absent on unassigned and on all pre-existing Issues
