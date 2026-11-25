@@ -91,7 +91,7 @@ export function isKnownAction(action: string): action is WorkflowAction {
 export interface ActionInput {
   note: string;
   granteeId: string;
-  canonicalIssueId: string;
+  canonicalIssueId?: string;
 }
 
 const OBJECT_ID = /^[a-f\d]{24}$/i;
@@ -105,7 +105,7 @@ export function validateActionInput(
   if (spec.grantee && !OBJECT_ID.test(input.granteeId.trim())) {
     errors.granteeId = "Enter a valid user ID (24 hexadecimal characters).";
   }
-  if (spec.canonicalIssue && !OBJECT_ID.test(input.canonicalIssueId.trim())) {
+  if (spec.canonicalIssue && !OBJECT_ID.test((input.canonicalIssueId ?? "").trim())) {
     errors.canonicalIssueId = "Enter a valid Issue ID (24 hexadecimal characters).";
   }
   if (spec.note === "required") {
@@ -123,7 +123,7 @@ export function buildActionBody(action: WorkflowAction, input: ActionInput): Rec
   const spec = ACTION_SPECS[action];
   const body: Record<string, string> = {};
   if (spec.grantee) body.granteeId = input.granteeId.trim();
-  if (spec.canonicalIssue) body.canonicalIssueId = input.canonicalIssueId.trim();
+  if (spec.canonicalIssue) body.canonicalIssueId = (input.canonicalIssueId ?? "").trim();
   if (spec.path === "disposition") body.type = action === "disposition.invalid" ? "invalid" : action === "disposition.duplicate" ? "duplicate" : "withdrawn";
   if (spec.note !== "none") {
     const note = input.note.trim();
