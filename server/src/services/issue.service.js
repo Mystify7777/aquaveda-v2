@@ -1,4 +1,5 @@
 import { isGrantee } from "../domain/remediation.js";
+import { canAssignDisposition, ISSUE_DISPOSITIONS } from "../domain/issue-disposition.js";
 import { resolverOf } from "../domain/issue-lifecycle.js";
 import { Issue } from "../models/Issue.js";
 // Imported for its model-registration side effect only — not called
@@ -371,6 +372,84 @@ export async function changeStatus(actorContext, issueId, targetStatus, { note, 
     `Issue ${issueId} changed before this transition could be applied`,
     { expectedStatus, targetStatus },
   );
+}
+
+/**
+ * Assign a terminal triage disposition to an open Issue (ADR-0013).
+ *
+ * Dispositions are metadata, not lifecycle statuses. The write is conditional
+ * on the observed open/undisposed state so concurrent disposition attempts
+ * cannot both succeed.
+ */
+export async function disposeIssue(actorContext, issueId, type, { note, canonicalIssueId } = {}) {
+  requireActor(actorContext);
+
+  if (!ISSUE_DISPOSITIONS.includes(type)) {
+    throw invalidState(`"${type}" is not a recognized Issue disposition`);
+  }
+
+  let issue;
+  try {
+    issue = await Issue.findById(issueId);
+  } catch (err) {
+    throw wrapMongooseValidationError(err);
+  }
+  if (!issue) throw notFound(`Issue ${issueId} not found`);
+
+  if (!canAssignDisposition(issue, actorContext, type)) {
+    throw forbidden("This Issue cannot be assigned that disposition by this actor");
+  }
+
+  const parsedNote = parseNote(note, { required: type !== "withdrawn" });
+  if (!parsedNote.ok) {
+    throw validationFailed(parsedNote.problem, { field: "note" });
+  }
+
+  let canonicalId;
+  if (type === "duplicate") {
+    if (!canonicalIssueId) {
+      throw validationFailed("canonicalIssueId is required for duplicate disposition", { field: "canonicalIssueId" });
+    }
+    if (String(canonicalIssueId) === String(issueId)) {
+      throw validationFailed("canonicalIssueId must reference a different Issue", { field: "canonicalIssueId" });
+    }
+    let canonical;
+    try {
+      canonical = await Issue.findById(canonicalIssueId);
+    } catch (err) {
+      throw wrapMongooseValidationError(err);
+    }
+    if (!canonical) throw invalidState("The canonical Issue does not exist");
+    if (canonical.disposition?.type) {
+      throw invalidState("The canonical Issue is already disposed");
+    }
+    canonicalId = canonical._id;
+  } else if (canonicalIssueId !== undefined) {
+    throw validationFailed("canonicalIssueId is only valid for duplicate disposition", { field: "canonicalIssueId" });
+  }
+
+  const now = new Date();
+  const entry = {
+    type,
+    actor: actorContext.id,
+    timestamp: now,
+    ...(parsedNote.value !== undefined ? { note: parsedNote.value } : {}),
+    ...(canonicalId !== undefined ? { canonicalIssueId: canonicalId } : {}),
+  };
+
+  const updated = await Issue.findOneAndUpdate(
+    { _id: issueId, status: "open", disposition: { $exists: false } },
+    { $set: { disposition: entry }, $push: { dispositionHistory: entry } },
+    { new: true, runValidators: true },
+  );
+
+  if (updated) return updated;
+
+  const stillExists = await Issue.exists({ _id: issueId });
+  if (!stillExists) {
+    throw notFound(`Issue ${issueId} was deleted before disposition completed`);
+  }
+  throw stateRace(`Issue ${issueId} changed before this disposition could be applied`, { type });
 }
 
 /**
