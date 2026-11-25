@@ -450,8 +450,9 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
   const session = await Issue.startSession();
   try {
     let result;
-    await session.withTransaction(
-      async () => {
+    try {
+      await session.withTransaction(
+        async () => {
         // Lock the target before any cross-document read. This makes
         // canonical-disposition checks and duplicate creation serialize on the
         // same Issue document instead of relying on a snapshot read.
@@ -534,13 +535,14 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
           );
         }
       },
-      { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } },
-    );
-
-    return result;
-  } finally {
-    await session.endSession();
-  }
+        { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } },
+      );
+      return result;
+    } catch (err) {
+      throw wrapMongooseValidationError(err);
+    } finally {
+      await session.endSession();
+    }
 }
 /**
  * Extra radius (radians; ~0.1 degree) added to the index-assisted circle
