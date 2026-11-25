@@ -136,7 +136,7 @@ describe("IssueActionBar — input", () => {
     await user.type(screen.getByLabelText(/canonical issue id/i), "nope");
     await user.click(screen.getByRole("button", { name: "Confirm duplicate" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/valid Issue ID/i);
+    expect(screen.getByText(/valid Issue ID/i)).toBeVisible();
     expect(exec).not.toHaveBeenCalled();
   });
 
