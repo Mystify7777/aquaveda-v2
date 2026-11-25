@@ -61,7 +61,7 @@ function toDispositionHistoryDTO(history, actors) {
 }
 
 /** Fields shared by every public Issue shape (no actor references). */
-function toIssueCore(plain) {
+function toIssueCore(plain, actors) {
   return {
     _id: String(plain._id),
     title: plain.title,
@@ -83,7 +83,7 @@ function toIssueCore(plain) {
 /** List item: the pre-#142 public fields, explicitly allowlisted, plus `actorProfile` on history. */
 export function toPublicIssueSummaryDTO(plain, actors) {
   return {
-    ...toIssueCore(plain),
+    ...toIssueCore(plain, actors),
     reportedBy: profile(actors, plain.reportedBy),
     statusHistory: (plain.statusHistory ?? []).map((h) => ({
       ...toHistoryCore(h),
@@ -100,7 +100,7 @@ export function toPublicIssueSummaryDTO(plain, actors) {
  */
 export function toCreatedIssueDTO(plain) {
   return {
-    ...toIssueCore(plain),
+    ...toIssueCore(plain, new Map()),
     reportedBy: idOf(plain.reportedBy),
     statusHistory: (plain.statusHistory ?? []).map(toHistoryCore),
   };
