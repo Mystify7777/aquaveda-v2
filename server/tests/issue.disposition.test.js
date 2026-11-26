@@ -104,6 +104,9 @@ describe("Issue #199 — dispositions", () => {
       assert.equal(canonicalAfter.disposition?.type, "invalid");
       assert.equal(duplicateAfter.disposition, undefined);
     }
+
+    assert.equal(duplicateAfter.dispositionGuard, undefined);
+    assert.equal(canonicalAfter.dispositionGuard, undefined);
   });
 
   it("an Issue already serving as canonical cannot be disposed", async () => {
