@@ -495,8 +495,16 @@ check("8b. Issue has exactly the expected top-level fields", () => {
     "remediationHistory", // ADR-0007: append-only responsibility events (private)
     "disposition", // ADR-0013: terminal triage outcome
     "dispositionHistory", // ADR-0013: append-only disposition audit history
+    "dispositionGuard", // internal transaction write-lock token; never public
   ].sort();
   assert.deepEqual(topLevelFields(Issue.schema), expected);
+});
+
+check("8b-0a. Issue.dispositionGuard is an internal schema-backed write-lock token", () => {
+  const path = Issue.schema.path("dispositionGuard");
+  assert.equal(path.instance, "ObjectId");
+  assert.equal(path.options.select, false);
+  assert.equal(path.options.default, undefined);
 });
 
 check("8b-0. Issue disposition shape (ADR-0013): exact fields and terminal enum", () => {
