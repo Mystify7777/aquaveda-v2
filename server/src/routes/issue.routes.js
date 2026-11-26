@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import { createIssue, changeStatus, getPublicIssueDetail, listPublicIssues, getIssueWorkflowDTO, buildMutationResult } from "../services/issue.service.js";
+import { createIssue, changeStatus, disposeIssue, getPublicIssueDetail, listPublicIssues, getIssueWorkflowDTO, buildMutationResult } from "../services/issue.service.js";
 import {
   grantRemediation,
   acceptRemediation,
@@ -11,7 +11,7 @@ import {
 } from "../services/remediation.service.js";
 import { toCreatedIssueDTO } from "../services/issue.dto.js";
 import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
-import { attentionQueueQuerySchema, createIssueSchema, listIssuesQuerySchema } from "../validation/issue.validation.js";
+import { attentionQueueQuerySchema, createIssueSchema, listIssuesQuerySchema, issueDispositionSchema } from "../validation/issue.validation.js";
 import { listAttentionQueue } from "../services/issue-attention.service.js";
 import { getRecommendationsForIssue } from "../services/recommendation.service.js";
 import { grantRemediationSchema, noteBodySchema } from "../validation/remediation.validation.js";
@@ -139,6 +139,15 @@ function action(path, schema, message, perform, status = 200) {
 const transition = (target, expectedFrom) => (actor, id, { note }) =>
   changeStatus(actor, id, target, { note: note ?? undefined, expectedFrom });
 const withNote = (fn) => (actor, id, { note }) => fn(actor, id, { note: note ?? undefined });
+
+// Terminal Issue dispositions (ADR-0013). These are metadata outcomes, not lifecycle statuses.
+action(
+  "/:issueId/disposition",
+  issueDispositionSchema,
+  "Issue disposition recorded",
+  (actor, id, { type, note, canonicalIssueId }) =>
+    disposeIssue(actor, id, type, { note: note ?? undefined, canonicalIssueId }),
+);
 
 // Lifecycle transitions (ADR-0003 / ADR-0007 §3): each names its exact source edge.
 action("/:issueId/acknowledge", noteBodySchema, "Issue acknowledged", transition("acknowledged", "open"));

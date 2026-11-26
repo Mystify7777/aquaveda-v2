@@ -26,13 +26,15 @@ import { GovernanceEvent } from "../../src/models/GovernanceEvent.js";
  * reached via `npm test` or any other entry point.
  *
  * TEST_MONGO_URI is required and must differ from MONGO_URI — tests must
- * never run against the development database. This is enforced below,
- * not just documented.
+ * never run against the development database. The configured MongoDB must
+ * support transactions (replica set or sharded cluster). This is enforced
+ * by the CI/local fallback setup below.
  *
  * When TEST_MONGO_URI is not set in the environment (e.g. a developer
- * without a local MongoDB installation), MongoMemoryServer is used as a
+ * without a local MongoDB installation), MongoMemoryReplSet is used as a
  * transparent substitute: it downloads a real mongod binary on first run
- * (cached in ~/.cache/mongodb-binaries) and starts it in-process.
+ * (cached in ~/.cache/mongodb-binaries) and starts a single-node replica set
+ * in-process so transaction semantics are exercised locally.
  * TEST_MONGO_URI is then set to the ephemeral URI so the rest of this
  * module's logic is unchanged — no test file needs to know or care.
  */
@@ -45,8 +47,10 @@ export async function setupTestDb() {
     // No real MongoDB configured — start an in-process one.
     // Dynamic import keeps the dev-only package out of the production
     // bundle; mongodb-memory-server is listed in devDependencies only.
-    const { MongoMemoryServer } = await import("mongodb-memory-server");
-    _memoryServer = await MongoMemoryServer.create();
+    const { MongoMemoryReplSet } = await import("mongodb-memory-server");
+    _memoryServer = await MongoMemoryReplSet.create({
+      replSet: { count: 1 },
+    });
     process.env.TEST_MONGO_URI = _memoryServer.getUri();
   }
 

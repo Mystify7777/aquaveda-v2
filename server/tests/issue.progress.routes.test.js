@@ -84,6 +84,23 @@ describe("Issue detail: nextAction, waitingSince, resolutionDisputed", () => {
     for (const v of views) assert.deepEqual(pick(v), pick(views[0]));
   });
 
+  it("a disposed Issue has no active progress and is not exposed in attention queues", async () => {
+    const issue = await openIssue(w);
+    await app.request("POST", `/api/v1/issues/${issue._id}/disposition`, {
+      token: w.expert1.token,
+      body: { type: "invalid", note: "Not actionable." },
+    });
+
+    const d = (await detail(issue._id)).json.data;
+    assert.equal(d.nextAction, null);
+    assert.equal(d.waitingSince, null);
+
+    for (const q of ["unacknowledged", "unassigned", "awaiting_verification"]) {
+      const res = await queue(q, w.expert1.token);
+      assert.ok(!res.json.data.items.some((item) => item._id === String(issue._id)), q);
+    }
+  });
+
   it("a PENDING grant is indistinguishable from NO grant in the public detail, and the grantee is not exposed", async () => {
     const pending = await issueWithPendingGrant(w);
     const w2 = await makeHttpWorld();
@@ -110,6 +127,17 @@ describe("Issue detail: nextAction, waitingSince, resolutionDisputed", () => {
     const afterStart = (await detail(issue._id)).json.data;
     assert.equal(afterStart.nextAction, "work_in_progress");
     assert.notEqual(afterStart.waitingSince, before.waitingSince); // a status change moves it
+  });
+
+  it("does not expose disposition audit history in the public detail", async () => {
+    const issue = await openIssue(w);
+    await app.request("POST", `/api/v1/issues/${issue._id}/disposition`, {
+      token: w.expert1.token,
+      body: { type: "invalid", note: "Not actionable." },
+    });
+    const d = (await detail(issue._id)).json.data;
+    assert.ok("disposition" in d);
+    assert.ok(!("dispositionHistory" in d));
   });
 
   it("is additive: existing detail fields are unchanged and the three new fields are exactly these", async () => {

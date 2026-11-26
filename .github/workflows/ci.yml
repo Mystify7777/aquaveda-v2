@@ -57,6 +57,9 @@ jobs:
         image: mongo:7
         ports:
           - 27017:27017
+        command: >-
+          --replSet rs0
+          --bind_ip_all
         options: >-
           --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
           --health-interval 5s
@@ -64,7 +67,7 @@ jobs:
           --health-retries 12
     env:
       # Test-only values. TEST_MONGO_URI must differ from MONGO_URI (unset here).
-      TEST_MONGO_URI: mongodb://127.0.0.1:27017/aquaveda_v2_test
+      TEST_MONGO_URI: mongodb://127.0.0.1:27017/aquaveda_v2_test?replicaSet=rs0
       JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production-0001
       JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production-0002
     steps:
@@ -75,17 +78,38 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
       - run: npm ci --prefix server
+      # Service command supplies mongod flags; service options are Docker create options.
+      # Use the running service container's mongosh so the runner does not need mongosh installed.
+      - name: Initialize MongoDB replica set
+        run: |
+          MONGO_CONTAINER="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n1)"
+          test -n "$MONGO_CONTAINER"
+          docker exec "$MONGO_CONTAINER" mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+      - name: Wait for MongoDB primary
+        run: |
+          MONGO_CONTAINER="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n1)"
+          test -n "$MONGO_CONTAINER"
+          for i in {1..30}; do
+            docker exec "$MONGO_CONTAINER" mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
+            sleep 1
+          done
+          exit 1
       - run: npm --prefix server run verify
 
   e2e:
     name: Browser smoke (Playwright; MongoDB)
     runs-on: ubuntu-24.04
+    env:
+      E2E_MONGO_URI: mongodb://127.0.0.1:27017/aquaveda_v2_e2e?replicaSet=rs0
     timeout-minutes: 20
     services:
       mongo:
         image: mongo:7
         ports:
           - 27017:27017
+        command: >-
+          --replSet rs0
+          --bind_ip_all
         options: >-
           --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
           --health-interval 5s
@@ -102,6 +126,22 @@ jobs:
             server/package-lock.json
       - run: npm ci
       - run: npm ci --prefix server
+      # Service command supplies mongod flags; service options are Docker create options.
+      # Use the running service container's mongosh so the runner does not need mongosh installed.
+      - name: Initialize MongoDB replica set
+        run: |
+          MONGO_CONTAINER="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n1)"
+          test -n "$MONGO_CONTAINER"
+          docker exec "$MONGO_CONTAINER" mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+      - name: Wait for MongoDB primary
+        run: |
+          MONGO_CONTAINER="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n1)"
+          test -n "$MONGO_CONTAINER"
+          for i in {1..30}; do
+            docker exec "$MONGO_CONTAINER" mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
+            sleep 1
+          done
+          exit 1
       - run: npx playwright install --with-deps chromium
       # Playwright builds+starts the web app (with NEXT_PUBLIC_API_URL at build time)
       # and the backend, waits on their URLs, seeds fixtures, runs the suite

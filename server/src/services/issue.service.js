@@ -1,4 +1,7 @@
+import mongoose from "mongoose";
+
 import { isGrantee } from "../domain/remediation.js";
+import { canAssignDisposition, ISSUE_DISPOSITIONS } from "../domain/issue-disposition.js";
 import { resolverOf } from "../domain/issue-lifecycle.js";
 import { Issue } from "../models/Issue.js";
 // Imported for its model-registration side effect only — not called
@@ -292,6 +295,9 @@ export async function changeStatus(actorContext, issueId, targetStatus, { note, 
   if (!issue) {
     throw notFound(`Issue ${issueId} not found`);
   }
+  if (issue.disposition?.type) {
+    throw invalidState("A disposed Issue has no further lifecycle transitions");
+  }
 
   const expectedStatus = issue.status;
   const legalTargets = LEGAL_TRANSITIONS[expectedStatus] ?? [];
@@ -373,6 +379,190 @@ export async function changeStatus(actorContext, issueId, targetStatus, { note, 
   );
 }
 
+/**
+ * Assign a terminal triage disposition to an open Issue (ADR-0013).
+ *
+ * Dispositions are metadata, not lifecycle statuses. The write is conditional
+ * on the observed open/undisposed state so concurrent disposition attempts
+ * cannot both succeed.
+ */
+export async function disposeIssue(actorContext, issueId, type, { note, canonicalIssueId } = {}) {
+  requireActor(actorContext);
+
+  if (!ISSUE_DISPOSITIONS.includes(type)) {
+    throw invalidState(`"${type}" is not a recognized Issue disposition`);
+  }
+
+  let issue;
+  try {
+    issue = await Issue.findById(issueId);
+  } catch (err) {
+    throw wrapMongooseValidationError(err);
+  }
+  if (!issue) throw notFound(`Issue ${issueId} not found`);
+
+  if (!canAssignDisposition(issue, actorContext, type)) {
+    if (issue.status === "open" && issue.disposition?.type) {
+      throw stateRace(
+        `Issue ${issueId} was disposed before this disposition could be applied`,
+        { type },
+      );
+    }
+    throw forbidden("This Issue cannot be assigned that disposition by this actor");
+  }
+
+  const parsedNote = parseNote(note, { required: type !== "withdrawn" });
+  if (!parsedNote.ok) {
+    throw validationFailed(parsedNote.problem, { field: "note" });
+  }
+
+  if (type === "duplicate") {
+    if (!canonicalIssueId) {
+      throw validationFailed(
+        "canonicalIssueId is required for duplicate disposition",
+        { field: "canonicalIssueId" },
+      );
+    }
+    if (String(canonicalIssueId) === String(issueId)) {
+      throw validationFailed(
+        "canonicalIssueId must reference a different Issue",
+        { field: "canonicalIssueId" },
+      );
+    }
+  } else if (canonicalIssueId !== undefined) {
+    throw validationFailed(
+      "canonicalIssueId is only valid for duplicate disposition",
+      { field: "canonicalIssueId" },
+    );
+  }
+
+  // A duplicate disposition creates an invariant spanning two Issue documents:
+  // the target may point at a canonical only while that canonical is live.
+  // MongoDB snapshot reads alone are insufficient here because a transaction
+  // can observe a stale canonical document. The canonical is therefore
+  // deliberately write-locked inside the transaction before it is accepted.
+  //
+  // Every disposition also runs in the same transaction so an Issue already
+  // serving as a canonical cannot be disposed concurrently with creation of
+  // a duplicate reference. The canonical lock serializes those two operations:
+  // either the duplicate commits first, or the canonical disposition commits
+  // first and the duplicate is retried against the new state.
+  const session = await Issue.startSession();
+  try {
+    let result;
+
+    await session.withTransaction(
+      async () => {
+        // Lock the target before any cross-document read. This makes
+        // canonical-disposition checks and duplicate creation serialize on the
+        // same Issue document instead of relying on a snapshot read.
+        const txIssue = await Issue.findOneAndUpdate(
+          {
+            _id: issueId,
+            status: "open",
+            disposition: { $exists: false },
+          },
+          { $set: { dispositionGuard: new mongoose.Types.ObjectId() } },
+          {
+            new: true,
+            timestamps: false,
+            runValidators: false,
+            session,
+          },
+        );
+
+        if (!txIssue) {
+          throw stateRace(
+            `Issue ${issueId} changed before this disposition could be applied`,
+            { type },
+          );
+        }
+
+        let canonical;
+        if (type === "duplicate") {
+          canonical = await Issue.findOneAndUpdate(
+            { _id: canonicalIssueId, disposition: { $exists: false } },
+            { $set: { dispositionGuard: new mongoose.Types.ObjectId() } },
+            {
+              new: true,
+              timestamps: false,
+              runValidators: false,
+              session,
+            },
+          );
+
+          if (!canonical) {
+            const exists = await Issue.exists({ _id: canonicalIssueId }).session(session);
+            if (!exists) throw invalidState("The canonical Issue does not exist");
+            throw invalidState("The canonical Issue is already disposed");
+          }
+        } else {
+          // Once a duplicate points at an Issue, that Issue is no longer a
+          // valid terminal-disposition target. Lock the target before checking
+          // the cross-document reference so a concurrent duplicate creation
+          // cannot commit between the check and this disposition.
+          const duplicateReference = await Issue.exists({
+            "disposition.type": "duplicate",
+            "disposition.canonicalIssueId": issueId,
+          }).session(session);
+
+          if (duplicateReference) {
+            throw invalidState(
+              "An Issue referenced as canonical cannot itself be disposed",
+            );
+          }
+        }
+
+        const now = new Date();
+        const entry = {
+          type,
+          actor: actorContext.id,
+          timestamp: now,
+          ...(parsedNote.value !== undefined ? { note: parsedNote.value } : {}),
+          ...(canonical !== undefined ? { canonicalIssueId: canonical._id } : {}),
+        };
+
+        if (canonical) {
+          // Release the canonical guard inside the transaction. The earlier
+          // write still participates in MongoDB's write-conflict detection,
+          // while no lock token is persisted after commit.
+          await Issue.updateOne(
+            { _id: canonical._id },
+            { $unset: { dispositionGuard: 1 } },
+            { session },
+          );
+        }
+
+        result = await Issue.findOneAndUpdate(
+          { _id: issueId, status: "open", disposition: { $exists: false } },
+          {
+            $set: { disposition: entry },
+            $push: { dispositionHistory: entry },
+            $unset: { dispositionGuard: 1 },
+          },
+          { new: true, runValidators: true, session },
+        );
+
+        if (!result) {
+          throw stateRace(
+            `Issue ${issueId} changed before this disposition could be applied`,
+            { type },
+          );
+        }
+      },
+      {
+        readConcern: { level: "snapshot" },
+        writeConcern: { w: "majority" },
+      },
+    );
+
+    return result;
+  } catch (err) {
+    throw wrapMongooseValidationError(err);
+  } finally {
+    await session.endSession();
+  }
+}
 /**
  * Extra radius (radians; ~0.1 degree) added to the index-assisted circle
  * so every point of the box lies strictly inside it. The circle is only a
@@ -564,6 +754,7 @@ function collectActorIds(plain) {
   for (const h of plain.statusHistory ?? []) ids.push(h.actor);
   if (plain.remediation) ids.push(plain.remediation.actor, plain.remediation.grantedBy);
   for (const e of plain.remediationHistory ?? []) ids.push(e.actor, e.grantee);
+  if (plain.disposition) ids.push(plain.disposition.actor);
   return ids;
 }
 
@@ -629,7 +820,11 @@ export async function getPublicIssueDetail(issueId) {
 export async function listPublicIssues(query) {
   const page = await listIssues(query);
   const plains = page.items.map((doc) => doc.toObject());
-  const ids = plains.flatMap((p) => [p.reportedBy, ...(p.statusHistory ?? []).map((h) => h.actor)]);
+  const ids = plains.flatMap((p) => [
+    p.reportedBy,
+    ...(p.statusHistory ?? []).map((h) => h.actor),
+    ...(p.disposition ? [p.disposition.actor] : []),
+  ]);
   const actors = await loadActors(ids);
   return { ...page, items: plains.map((p) => toPublicIssueSummaryDTO(p, actors)) };
 }

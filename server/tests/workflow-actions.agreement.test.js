@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Issue } from "../src/models/Issue.js";
 import { User } from "../src/models/User.js";
 import { WORKFLOW_ACTIONS, evaluateWorkflowActions } from "../src/domain/workflow-actions.js";
-import { changeStatus, getIssueWorkflowView } from "../src/services/issue.service.js";
+import { changeStatus, createIssue, disposeIssue, getIssueWorkflowView } from "../src/services/issue.service.js";
 import {
   acceptRemediation,
   declineRemediation,
@@ -46,6 +46,10 @@ beforeEach(clearCollections);
 
 /** The operations exactly as the routes invoke them. */
 const OPS = {
+  "disposition.invalid": (a, id) => disposeIssue(a, id, "invalid", { note: "not valid" }),
+  "disposition.duplicate": (a, id, w) =>
+    disposeIssue(a, id, "duplicate", { note: "duplicate report", canonicalIssueId: w.canonical.id }),
+  "disposition.withdraw": (a, id) => disposeIssue(a, id, "withdrawn", { note: "withdrawing" }),
   acknowledge: (a, id) => changeStatus(a, id, "acknowledged", { expectedFrom: "open" }),
   "remediation.grant": (a, id, w) => grantRemediation(a, id, w.other.id, { note: "n" }),
   "remediation.withdraw": (a, id) => withdrawRemediation(a, id, { note: "n" }),
@@ -146,6 +150,11 @@ for (const [name, build] of Object.entries(SCENARIOS)) {
     for (const cls of CLASSES) {
       it(`${cls}: every listed action succeeds and every unlisted action is refused without effect`, async () => {
         const base = await build();
+        base.w.canonical = await createIssue(asActor(base.w.other), {
+          title: "Canonical issue",
+          description: "Canonical report",
+          location: { type: "Point", coordinates: [85, 25] },
+        });
         const actor = asActor(base.w[cls]);
         const { actions } = await getIssueWorkflowView(actor, base.id);
 
@@ -163,6 +172,11 @@ for (const [name, build] of Object.entries(SCENARIOS)) {
         // (2) each listed operation really succeeds (on a fresh copy)
         for (const op of actions) {
           const fresh = await build();
+          fresh.w.canonical = await createIssue(asActor(fresh.w.other), {
+            title: "Canonical issue",
+            description: "Canonical report",
+            location: { type: "Point", coordinates: [85, 25] },
+          });
           const result = await OPS[op](asActor(fresh.w[cls]), fresh.id, fresh.w);
           assert.ok(result, `${name} / ${cls}: "${op}" is listed, so it must succeed`);
         }
@@ -171,6 +185,11 @@ for (const [name, build] of Object.entries(SCENARIOS)) {
 
     it("anonymous: no actions, and every operation is refused as UNAUTHORIZED", async () => {
       const base = await build();
+      base.w.canonical = await createIssue(asActor(base.w.other), {
+        title: "Canonical issue",
+        description: "Canonical report",
+        location: { type: "Point", coordinates: [85, 25] },
+      });
       const doc = (await Issue.findById(base.id)).toObject();
       assert.deepEqual(evaluateWorkflowActions(doc, null), []);
       for (const op of WORKFLOW_ACTIONS) {
@@ -186,7 +205,8 @@ describe("agreement: privacy of the list", () => {
       const base = await build();
       for (const cls of ["reporter", "other"]) {
         const { actions } = await getIssueWorkflowView(asActor(base.w[cls]), base.id);
-        assert.deepEqual(actions, [], `${name} / ${cls}`);
+        const expected = name === "open" && cls === "reporter" ? ["disposition.withdraw"] : [];
+        assert.deepEqual(actions, expected, `${name} / ${cls}`);
       }
     }
   });

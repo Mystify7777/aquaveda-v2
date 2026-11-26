@@ -27,16 +27,20 @@ const validationFailed = (message, details) =>
 const UNKNOWN_AGE_LAST = new Date(8.64e15);
 
 const QUEUE_MATCH = {
-  unacknowledged: { status: "open" },
+  // Disposed Issues are terminal triage outcomes and must never appear in
+  // remediation attention queues, even though their stored lifecycle status
+  // remains unchanged for history/compatibility.
+  unacknowledged: { status: "open", disposition: { $exists: false } },
   // "unassigned" means NO ACCEPTED grant (none, or offered but not accepted).
   // It is the exact complement of `responsibilityOf(issue) === "accepted"`
   // (a grant id AND an acceptance time), so the query and the derivation
   // cannot disagree, including for malformed grants.
   unassigned: {
     status: { $in: ["acknowledged", "in_progress"] },
+    disposition: { $exists: false },
     $nor: [{ "remediation.grantId": { $nin: [null] }, "remediation.acceptedAt": { $nin: [null] } }],
   },
-  awaiting_verification: { status: "resolved" },
+  awaiting_verification: { status: "resolved", disposition: { $exists: false } },
 };
 
 /**

@@ -59,6 +59,9 @@ async function loadIssue(issueId) {
 }
 
 function assertGrantStatus(issue) {
+  if (issue.disposition?.type) {
+    throw invalidState("a disposed Issue cannot participate in remediation");
+  }
   if (!GRANT_OPERATION_STATUSES.includes(issue.status)) {
     throw invalidState(`remediation grants cannot be changed while the issue is ${issue.status}`, {
       status: issue.status,

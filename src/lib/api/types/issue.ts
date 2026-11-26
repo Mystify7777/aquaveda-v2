@@ -9,6 +9,16 @@ export type IssueStatus =
   | "resolved"
   | "verified";
 
+export type IssueDispositionType = "invalid" | "duplicate" | "withdrawn";
+
+export interface IssueDisposition {
+  type: IssueDispositionType;
+  actorProfile: PublicActor | null;
+  timestamp: string;
+  note?: string;
+  canonicalIssueId?: string;
+}
+
 export interface IssueLocation {
   type: "Point";
   coordinates: [number, number];
@@ -48,6 +58,7 @@ export interface Issue {
   statusHistory: IssueStatusHistoryEntry[];
   createdAt: string;
   updatedAt: string;
+  disposition?: IssueDisposition;
 }
 
 /**

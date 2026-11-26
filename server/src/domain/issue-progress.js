@@ -41,6 +41,7 @@ export function responsibilityOf(issue) {
  * status outside the lifecycle (never for a valid Issue).
  */
 export function deriveNextAction(issue) {
+  if (issue?.disposition?.type) return null;
   const accepted = responsibilityOf(issue) === "accepted";
   switch (issue?.status) {
     case "open":
@@ -67,6 +68,7 @@ export function deriveNextAction(issue) {
  * timestamp, no `createdAt`).
  */
 export function deriveWaitingSince(issue) {
+  if (issue?.disposition?.type) return null;
   const history = Array.isArray(issue?.statusHistory) ? issue.statusHistory : [];
   const latest = history.length > 0 ? history[history.length - 1] : null;
   return latest?.timestamp ?? issue?.createdAt ?? null;
