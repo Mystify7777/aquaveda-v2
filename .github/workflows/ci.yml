@@ -78,12 +78,19 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
       - run: npm ci --prefix server
+      # Service command supplies mongod flags; service options are Docker create options.
+      # Use the running service container's mongosh so the runner does not need mongosh installed.
       - name: Initialize MongoDB replica set
-        run: docker run --rm --network host mongo:7 mongosh --quiet --host 127.0.0.1:27017 --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+        run: |
+          MONGO_CONTAINER="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n1)"
+          test -n "$MONGO_CONTAINER"
+          docker exec "$MONGO_CONTAINER" mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
       - name: Wait for MongoDB primary
         run: |
+          MONGO_CONTAINER="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n1)"
+          test -n "$MONGO_CONTAINER"
           for i in {1..30}; do
-            docker run --rm --network host mongo:7 mongosh --quiet --host 127.0.0.1:27017 --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
+            docker exec "$MONGO_CONTAINER" mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
             sleep 1
           done
           exit 1
@@ -119,12 +126,19 @@ jobs:
             server/package-lock.json
       - run: npm ci
       - run: npm ci --prefix server
+      # Service command supplies mongod flags; service options are Docker create options.
+      # Use the running service container's mongosh so the runner does not need mongosh installed.
       - name: Initialize MongoDB replica set
-        run: docker run --rm --network host mongo:7 mongosh --quiet --host 127.0.0.1:27017 --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+        run: |
+          MONGO_CONTAINER="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n1)"
+          test -n "$MONGO_CONTAINER"
+          docker exec "$MONGO_CONTAINER" mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
       - name: Wait for MongoDB primary
         run: |
+          MONGO_CONTAINER="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n1)"
+          test -n "$MONGO_CONTAINER"
           for i in {1..30}; do
-            docker run --rm --network host mongo:7 mongosh --quiet --host 127.0.0.1:27017 --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
+            docker exec "$MONGO_CONTAINER" mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
             sleep 1
           done
           exit 1
