@@ -57,10 +57,11 @@ jobs:
         image: mongo:7
         ports:
           - 27017:27017
-        options: >-
+        command: >-
           --replSet rs0
           --bind_ip_all
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+        options: >-
+          --health-cmd/ "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
@@ -78,11 +79,11 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci --prefix server
       - name: Initialize MongoDB replica set
-        run: mongosh --quiet --host 127.0.0.1:27017 --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+        run: docker run --rm --network host mongo:7 mongosh --quiet --host 127.0.0.1:27017 --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
       - name: Wait for MongoDB primary
         run: |
           for i in {1..30}; do
-            mongosh --quiet --host 127.0.0.1:27017 --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
+            docker run --rm --network host mongo:7 mongosh --quiet --host 127.0.0.1:27017 --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
             sleep 1
           done
           exit 1
@@ -118,11 +119,11 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix server
       - name: Initialize MongoDB replica set
-        run: mongosh --quiet --host 127.0.0.1:27017 --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+        run: docker run --rm --network host mongo:7 mongosh --quiet --host 127.0.0.1:27017 --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
       - name: Wait for MongoDB primary
         run: |
           for i in {1..30}; do
-            mongosh --quiet --host 127.0.0.1:27017 --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
+            docker run --rm --network host mongo:7 mongosh --quiet --host 127.0.0.1:27017 --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
             sleep 1
           done
           exit 1
