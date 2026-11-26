@@ -100,8 +100,7 @@ const eventsFor = (target, action) =>
 /** Every write route that exists behind the guard, by Express route pattern. */
 const WRITE_ROUTES = [
   "POST /api/v1/issues/",
-  "POST /api/v1/issues/:issueId/disposition",
-            "POST /api/v1/issues/:issueId/acknowledge",
+  "POST /api/v1/issues/:issueId/acknowledge",
   "POST /api/v1/issues/:issueId/disposition",
   "POST /api/v1/issues/:issueId/start",
   "POST /api/v1/issues/:issueId/resolve",
