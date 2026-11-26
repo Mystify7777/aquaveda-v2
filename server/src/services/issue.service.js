@@ -522,9 +522,24 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
           ...(canonical !== undefined ? { canonicalIssueId: canonical._id } : {}),
         };
 
+        if (canonical) {
+          // Release the canonical guard inside the transaction. The earlier
+          // write still participates in MongoDB's write-conflict detection,
+          // while no lock token is persisted after commit.
+          await Issue.updateOne(
+            { _id: canonical._id },
+            { $unset: { dispositionGuard: 1 } },
+            { session },
+          );
+        }
+
         result = await Issue.findOneAndUpdate(
           { _id: issueId, status: "open", disposition: { $exists: false } },
-          { $set: { disposition: entry }, $push: { dispositionHistory: entry } },
+          {
+            $set: { disposition: entry },
+            $push: { dispositionHistory: entry },
+            $unset: { dispositionGuard: 1 },
+          },
           { new: true, runValidators: true, session },
         );
 
@@ -536,7 +551,7 @@ export async function disposeIssue(actorContext, issueId, type, { note, canonica
         }
       },
         { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } },
-      );
+        );
       return result;
     } catch (err) {
       throw wrapMongooseValidationError(err);
