@@ -815,7 +815,7 @@ describe("Region display label contract (LRN-L6)", () => {
     assert.equal(
       selectRegionDisplayLabel({
         key: "accented",
-        labels: ["Cafe\\u0301", "Café"],
+        labels: ["Cafe\u0301", "Café"],
         aliases: {},
       }),
       "Cafe\u0301",
