@@ -11,7 +11,12 @@ import {
   DomainErrorCode,
 } from "./errors.js";
 import { requireActor, requireRole } from "./authorization.js";
-import { getAssignableCategory, getAssignableTopic } from "../domain/knowledge-taxonomy.js";
+import {
+  getAssignableCategory,
+  getAssignableTopic,
+  getActiveCategories,
+  getActiveTopics,
+} from "../domain/knowledge-taxonomy.js";
 import { normalizeRegionKey } from "../domain/region-normalization.js";
 import { toWorkflowKnowledgeDTO, toWorkflowKnowledgeSummaryDTO } from "./knowledge.dto.js";
 
@@ -479,16 +484,107 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
  * that merely defaults to approved. No requireActor() call — genuinely
  * anonymous-accessible, matching Learn's public read boundary.
  */
-export async function listApprovedKnowledge({ page = 1, limit = 20 } = {}) {
+
+/**
+ * Resolve the public Learn query into a MongoDB filter.
+ *
+ * Query semantics are locked by ADR-0011:
+ * approved AND category AND topic facet AND region facet AND search.
+ * Topic/Region arrays are OR within their own facet. Category is single-select.
+ *
+ * Region values are already canonical normalized keys at the API boundary.
+ * The service repeats the canonical taxonomy check so direct service callers
+ * cannot bypass the public query contract.
+ */
+function buildApprovedKnowledgeFilter({ q, category, topic = [], region = [] } = {}) {
   const filter = { status: "approved" };
 
+  if (category !== undefined) {
+    const resolvedCategory = getAssignableCategory(category);
+    if (!resolvedCategory || resolvedCategory.slug !== category) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        "category must be an active canonical taxonomy slug",
+        { field: "category", value: category },
+      );
+    }
+    filter.category = category;
+  }
+
+  const topics = Array.isArray(topic) ? topic : [];
+  if (topics.length > 0) {
+    for (const value of topics) {
+      const resolvedTopic = getAssignableTopic(value);
+      if (!resolvedTopic || resolvedTopic.slug !== value) {
+        throw new DomainError(
+          DomainErrorCode.VALIDATION_FAILED,
+          "topic must contain only active canonical taxonomy slugs",
+          { field: "topic", value },
+        );
+      }
+    }
+    filter.topics = { $in: [...new Set(topics)] };
+  }
+
+  const regions = Array.isArray(region) ? region : [];
+  if (regions.length > 0) {
+    filter.regionKey = { $in: [...new Set(regions)] };
+  }
+
+  if (q !== undefined) {
+    const search = typeof q === "string" ? q.trim() : "";
+    if (!search) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        "search must not be empty",
+        { field: "q" },
+      );
+    }
+    filter.$text = {
+      $search: search,
+      $caseSensitive: false,
+      $diacriticSensitive: false,
+    };
+  }
+
+  return filter;
+}
+
+/**
+ * listApprovedKnowledge(query) — public Learn discovery, Issue #232.
+ *
+ * Search uses MongoDB's built-in title/body text index. This is deliberately
+ * bounded to the current self-managed MongoDB deployment rather than
+ * introducing an Atlas-only dependency. MongoDB text search is token-based,
+ * case-insensitive, and supports quoted exact phrases; relevance is sorted
+ * first when search is present, followed by updatedAt/_id deterministic
+ * tie-breakers.
+ *
+ * The status predicate is unconditional and caller-controlled status is never
+ * accepted. Metadata facets and search are all part of the same MongoDB query.
+ */
+export async function listApprovedKnowledge({
+  page = 1,
+  limit = 20,
+  q,
+  category,
+  topic = [],
+  region = [],
+} = {}) {
+  const filter = buildApprovedKnowledgeFilter({ q, category, topic, region });
   const skip = (page - 1) * limit;
+
+  const baseQuery = Knowledge.find(filter).populate("author", PUBLIC_ACTOR_FIELDS);
+  const query = q !== undefined
+    ? baseQuery.sort({
+        score: { $meta: "textScore" },
+        updatedAt: -1,
+        _id: 1,
+      })
+    : baseQuery.sort({ updatedAt: -1, _id: 1 });
+
   const [items, total] = await Promise.all([
-    Knowledge.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate("author", PUBLIC_ACTOR_FIELDS),
+    query.skip(skip).limit(limit),
     Knowledge.countDocuments(filter),
   ]);
 
@@ -498,6 +594,86 @@ export async function listApprovedKnowledge({ page = 1, limit = 20 } = {}) {
     limit,
     total,
     totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
+  };
+}
+
+/**
+ * Deterministically choose the display label for one canonical Region key.
+ *
+ * The matching key is authoritative for grouping. The original display
+ * values are preserved on articles and are never rewritten by this read.
+ * Candidate labels are compared after the same NFKC + Unicode White_Space
+ * normalization used by ADR-0011, then by the original UTF-8 bytes.
+ */
+function compareRegionDisplayLabels(a, b) {
+  const normalizedA = a
+    .normalize("NFKC")
+    .replace(/\\s+/gu, " ")
+    .trim();
+  const normalizedB = b
+    .normalize("NFKC")
+    .replace(/\\s+/gu, " ")
+    .trim();
+
+  const normalizedComparison =
+    normalizedA < normalizedB ? -1 : normalizedA > normalizedB ? 1 : 0;
+  if (normalizedComparison !== 0) return normalizedComparison;
+
+  const bytesA = Buffer.from(a, "utf8");
+  const bytesB = Buffer.from(b, "utf8");
+  const length = Math.min(bytesA.length, bytesB.length);
+  for (let i = 0; i < length; i += 1) {
+    if (bytesA[i] !== bytesB[i]) return bytesA[i] - bytesB[i];
+  }
+  return bytesA.length - bytesB.length;
+}
+
+/**
+ * getKnowledgeTaxonomyMetadata() — public, read-only taxonomy contract,
+ * Issue #233.
+ *
+ * Category/Topic terms come only from the application-owned vocabulary.
+ * Region options come from approved articles and are deduplicated by the
+ * canonical regionKey. No runtime taxonomy mutation is exposed.
+ */
+export async function getKnowledgeTaxonomyMetadata() {
+  const approvedRegions = await Knowledge.find({
+    status: "approved",
+    regionKey: { $exists: true, $nin: [""] },
+  })
+    .select("region regionKey")
+    .lean();
+
+  const regionGroups = new Map();
+  for (const article of approvedRegions) {
+    const key = article.regionKey;
+    if (!key) continue;
+    const labels = regionGroups.get(key) ?? [];
+    if (typeof article.region === "string" && article.region.trim().length > 0) {
+      labels.push(article.region);
+    }
+    regionGroups.set(key, labels);
+  }
+
+  const regions = [...regionGroups.entries()]
+    .map(([key, labels]) => ({
+      key,
+      displayName: [...new Set(labels)].sort(compareRegionDisplayLabels)[0] ?? key,
+    }))
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+
+  return {
+    categories: getActiveCategories().map(({ slug, displayName }) => ({ slug, displayName })),
+    topics: getActiveTopics().map(({ slug, displayName }) => ({ slug, displayName })),
+    regions,
+    query: {
+      search: "q",
+      category: "category",
+      topic: "topic",
+      region: "region",
+      pagination: { page: "page", limit: "limit" },
+      repeatedValues: "topic=slug&topic=slug&region=key&region=key",
+    },
   };
 }
 
