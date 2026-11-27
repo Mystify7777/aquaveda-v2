@@ -14,6 +14,8 @@ vi.mock("@/lib/api/accounts", () => ({
   getAccountHistory: (...a: unknown[]) => mockHistory(...a),
 }));
 vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => mockUseAuth() }));
+const mockReplace = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: mockReplace }) }));
 
 type Env = { body: { data: Record<string, unknown> } };
 const data = (name: keyof typeof envelopes) => (envelopes[name] as unknown as Env).body.data;
@@ -24,6 +26,8 @@ beforeEach(() => {
   mockEntry.mockReset();
   mockHistory.mockReset();
   mockUseAuth.mockReset();
+  mockReplace.mockReset();
+  mockHistory.mockReturnValue(new Promise(() => {})); // history loads alongside the account; tests override as needed
 });
 
 describe("authorization", () => {
@@ -157,16 +161,24 @@ describe("entry rendering (privacy-safe)", () => {
     expect(screen.queryByText(/managed by operators/)).not.toBeInTheDocument();
   });
 
-  it("introduces no mutation capability", async () => {
-    asAdmin();
-    mockEntry.mockResolvedValue(data("detailMuted"));
+  it("Admin targets and the viewer's own account offer no governance controls and no forms (ADR-0012)", async () => {
     mockHistory.mockResolvedValue(data("history"));
-    render(<AccountDetail userId={ids.muted} historyPage={1} />);
+    asAdmin("someone-else");
+    mockEntry.mockResolvedValue(data("detailAdmin"));
+    const peer = render(<AccountDetail userId={ids.admin} historyPage={1} />);
     await screen.findByRole("list", { name: "Governance history" });
+    expect(screen.queryByRole("region", { name: "Governance actions" })).not.toBeInTheDocument();
     expect(document.querySelectorAll("form")).toHaveLength(0);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
-    const controls = [...screen.queryAllByRole("button"), ...screen.queryAllByRole("link")].map((e) => e.textContent ?? "");
-    expect(controls.join("|")).not.toMatch(/\b(mute|suspend|lift|delete|revoke|restore|ban)\b/i);
+    peer.unmount();
+
+    const own = data("detailMuted"); // a USER-role record viewed by that same account
+    asAdmin(String(own.id));
+    mockEntry.mockResolvedValue(own);
+    render(<AccountDetail userId={String(own.id)} historyPage={1} />);
+    await screen.findByRole("heading", { name: "Mira Muted" });
+    expect(screen.queryByRole("region", { name: "Governance actions" })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 });
 

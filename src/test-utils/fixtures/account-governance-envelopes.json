@@ -1,0 +1,237 @@
+{
+  "_provenance": "Recorded from the real Express app (createApp) on real MongoDB 7 by calling the real governance endpoints; do not hand-edit. Regenerate if the mutation envelopes change.",
+  "ids": {
+    "user": "6b06ad0321f903c8cdbf686b",
+    "expert": "6b06ad0321f903c8cdbf6871",
+    "admin": "6b06ad0321f903c8cdbf685d",
+    "peer": "6b06ad0321f903c8cdbf6864"
+  },
+  "muteOk": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "id": "6b06ad0321f903c8cdbf686b",
+        "accountState": "MUTED",
+        "accountStateVersion": 1,
+        "restriction": {
+          "kind": "TEMPORARY",
+          "expiresAt": "2026-11-25T11:40:19.598Z",
+          "safeReason": "Please keep discussion civil"
+        },
+        "eventId": "6b06ad0321f903c8cdbf6886"
+      },
+      "message": "Account muted"
+    }
+  },
+  "muteAgainInvalidState": {
+    "status": 409,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Only an ACTIVE account can be muted",
+      "code": "INVALID_STATE"
+    }
+  },
+  "liftMuteOk": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "id": "6b06ad0321f903c8cdbf686b",
+        "accountState": "ACTIVE",
+        "accountStateVersion": 2,
+        "restriction": null,
+        "eventId": "6b06ad0321f903c8cdbf688d"
+      },
+      "message": "Mute lifted"
+    }
+  },
+  "suspendTemporaryOk": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "id": "6b06ad0321f903c8cdbf6871",
+        "accountState": "HARD_SUSPENDED",
+        "accountStateVersion": 1,
+        "restriction": {
+          "kind": "TEMPORARY",
+          "expiresAt": "2026-11-25T12:40:19.657Z",
+          "safeReason": null
+        },
+        "eventId": "6b06ad0321f903c8cdbf6893"
+      },
+      "message": "Account suspended"
+    }
+  },
+  "liftSuspensionOk": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "id": "6b06ad0321f903c8cdbf6871",
+        "accountState": "ACTIVE",
+        "accountStateVersion": 2,
+        "restriction": null,
+        "eventId": "6b06ad0321f903c8cdbf6899"
+      },
+      "message": "Suspension lifted"
+    }
+  },
+  "suspendIndefiniteOk": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "id": "6b06ad0321f903c8cdbf6871",
+        "accountState": "HARD_SUSPENDED",
+        "accountStateVersion": 3,
+        "restriction": {
+          "kind": "INDEFINITE",
+          "expiresAt": null,
+          "safeReason": null
+        },
+        "eventId": "6b06ad0321f903c8cdbf689f"
+      },
+      "message": "Account suspended"
+    }
+  },
+  "liftNotMutedInvalidState": {
+    "status": 409,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Only a MUTED account can have its mute lifted",
+      "code": "INVALID_STATE"
+    }
+  },
+  "validationMissingReason": {
+    "status": 400,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Required",
+      "code": "VALIDATION_FAILED"
+    }
+  },
+  "validationPastExpiry": {
+    "status": 400,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Invalid account governance request",
+      "code": "VALIDATION_FAILED"
+    }
+  },
+  "selfTarget": {
+    "status": 403,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "An administrator cannot apply governance operations to their own account",
+      "code": "FORBIDDEN",
+      "reason": "SELF_TARGET_PROHIBITED"
+    }
+  },
+  "adminTarget": {
+    "status": 403,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Administrator accounts cannot be restricted or restored through this operation",
+      "code": "FORBIDDEN",
+      "reason": "ADMIN_TARGET_PROTECTED"
+    }
+  },
+  "notFound": {
+    "status": 404,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Account not found",
+      "code": "NOT_FOUND"
+    }
+  },
+  "unauthorized": {
+    "status": 401,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "an authenticated actor is required",
+      "code": "UNAUTHORIZED"
+    }
+  },
+  "forbiddenUserActor": {
+    "status": 403,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Forbidden: insufficient role privileges",
+      "code": "FORBIDDEN"
+    }
+  },
+  "stateRace": {
+    "status": 409,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "The account changed before the operation completed; reload and retry",
+      "code": "STATE_RACE"
+    }
+  },
+  "historyAfter": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "items": [
+          {
+            "id": "6b06ad0321f903c8cdbf689f",
+            "action": "HARD_SUSPEND",
+            "actorType": "USER",
+            "actor": {
+              "id": "6b06ad0321f903c8cdbf685d",
+              "name": "Asha Admin"
+            },
+            "previousState": "ACTIVE",
+            "resultingState": "HARD_SUSPENDED",
+            "safeReason": null,
+            "occurredAt": "2026-11-25T09:40:19.684Z"
+          },
+          {
+            "id": "6b06ad0321f903c8cdbf6899",
+            "action": "SUSPENSION_LIFTED",
+            "actorType": "USER",
+            "actor": {
+              "id": "6b06ad0321f903c8cdbf685d",
+              "name": "Asha Admin"
+            },
+            "previousState": "HARD_SUSPENDED",
+            "resultingState": "ACTIVE",
+            "safeReason": null,
+            "occurredAt": "2026-11-25T09:40:19.675Z"
+          },
+          {
+            "id": "6b06ad0321f903c8cdbf6893",
+            "action": "HARD_SUSPEND",
+            "actorType": "USER",
+            "actor": {
+              "id": "6b06ad0321f903c8cdbf685d",
+              "name": "Asha Admin"
+            },
+            "previousState": "ACTIVE",
+            "resultingState": "HARD_SUSPENDED",
+            "safeReason": null,
+            "occurredAt": "2026-11-25T09:40:19.661Z"
+          }
+        ],
+        "page": 1,
+        "limit": 20,
+        "total": 3,
+        "totalPages": 1
+      },
+      "message": "Governance history retrieved"
+    }
+  }
+}

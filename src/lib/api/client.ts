@@ -21,6 +21,12 @@ export class ApiError extends Error {
     public readonly status?: number,
     public readonly code?: string,
     public readonly reason?: ApiErrorReason,
+    /**
+     * The backend's allowlisted, client-safe failure `reason` (e.g.
+     * `SELF_TARGET_PROHIBITED`), when the error body carries one. Distinct from
+     * `reason` above, which is only the client-side "timeout" marker.
+     */
+    public readonly serverReason?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -210,11 +216,14 @@ export async function apiRequest<T>(
   }
 
   if (!body.success) {
+    const serverReason = (body as { reason?: unknown }).reason;
     throw new ApiError(
       body.message || "Request failed",
       "http",
       response.status,
       body.code,
+      undefined,
+      typeof serverReason === "string" ? serverReason : undefined,
     );
   }
 
