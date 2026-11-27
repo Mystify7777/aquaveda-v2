@@ -11,6 +11,7 @@ import {
   revise,
   listApprovedKnowledge,
   getApprovedKnowledgeById,
+  getKnowledgeTaxonomyMetadata,
 } from "../src/services/knowledge.service.js";
 import { DomainErrorCode } from "../src/services/errors.js";
 import {
@@ -630,6 +631,153 @@ describe("listApprovedKnowledge (Issue #48 — public read)", () => {
     assert.equal(result.total, 3);
     assert.equal(result.totalPages, 2);
   });
+});
+
+describe("listApprovedKnowledge — Learn discovery (Issue #232)", () => {
+  async function makeApproved({
+    title,
+    body,
+    category = "other",
+    topics = [],
+    region = "",
+  }) {
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const knowledge = await createKnowledge(author, {
+      title,
+      body,
+      category,
+      topics,
+      region,
+    });
+    await submitForReview(author, knowledge._id);
+    return approve(expert, knowledge._id);
+  }
+
+  it("composes Category, Topic OR, Region OR, search, and pagination while remaining approved-only", async () => {
+    await makeApproved({
+      title: "Rainwater harvesting for farms",
+      body: "Efficient irrigation can reduce water use.",
+      category: "agriculture_irrigation",
+      topics: ["rainwater_harvesting", "efficient_irrigation"],
+      region: "Bihar",
+    });
+    await makeApproved({
+      title: "Rainwater harvesting in cities",
+      body: "Storage and reuse reduce demand.",
+      category: "water_conservation",
+      topics: ["rainwater_harvesting", "water_reuse"],
+      region: "Jharkhand",
+    });
+    await makeApproved({
+      title: "Groundwater recharge",
+      body: "Recharge wells improve groundwater levels.",
+      category: "groundwater",
+      topics: ["groundwater_recharge"],
+      region: "Bihar, India",
+    });
+
+    const result = await listApprovedKnowledge({
+      q: "RAINWATER",
+      category: "agriculture_irrigation",
+      topic: ["water_reuse", "efficient_irrigation"],
+      region: ["bihar", "jharkhand"],
+      page: 1,
+      limit: 20,
+    });
+
+    assert.equal(result.total, 1);
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].title, "Rainwater harvesting for farms");
+  });
+
+  it("search is case-insensitive and searches title OR body", async () => {
+    await makeApproved({
+      title: "Water quality monitoring",
+      body: "Sensor calibration matters.",
+    });
+    await makeApproved({
+      title: "Community wells",
+      body: "Monitoring WATER QUALITY protects public health.",
+    });
+
+    const result = await listApprovedKnowledge({ q: "water quality" });
+    assert.equal(result.total, 2);
+  });
+
+  it("never relaxes approved-only visibility even when filters are supplied", async () => {
+    const author = fakeActor("USER");
+    const draft = await createKnowledge(author, {
+      title: "Draft irrigation",
+      body: "efficient irrigation",
+      category: "agriculture_irrigation",
+      topics: ["efficient_irrigation"],
+      region: "Bihar",
+    });
+
+    const result = await listApprovedKnowledge({
+      q: "irrigation",
+      category: "agriculture_irrigation",
+      topic: ["efficient_irrigation"],
+      region: ["bihar"],
+    });
+
+    assert.equal(result.total, 0);
+    assert.equal(result.items.some((item) => String(item._id) === String(draft._id)), false);
+  });
+
+  it("rejects unknown and non-canonical taxonomy filters", async () => {
+    await assert.rejects(
+      () => listApprovedKnowledge({ category: "water conservation" }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+    await assert.rejects(
+      () => listApprovedKnowledge({ topic: ["rain water harvesting"] }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+});
+
+describe("getKnowledgeTaxonomyMetadata — Learn taxonomy metadata (Issue #233)", () => {
+  it("returns active Category/Topic terms and one deterministic Region option per canonical key", async () => {
+    await makeApprovedForMetadata("Bihar", "bihar");
+    await makeApprovedForMetadata("  BIHAR  ", "bihar");
+    await makeApprovedForMetadata("Jharkhand", "jharkhand");
+
+    const metadata = await getKnowledgeTaxonomyMetadata();
+
+    assert.ok(metadata.categories.some((term) => term.slug === "water_conservation"));
+    assert.ok(metadata.topics.some((term) => term.slug === "rainwater_harvesting"));
+    assert.deepEqual(metadata.regions, [
+      { key: "bihar", displayName: "Bihar" },
+      { key: "jharkhand", displayName: "Jharkhand" },
+    ]);
+    assert.deepEqual(metadata.query, {
+      search: "q",
+      category: "category",
+      topic: "topic",
+      region: "region",
+      pagination: { page: "page", limit: "limit" },
+      repeatedValues: "topic=slug&topic=slug&region=key&region=key",
+    });
+  });
+
+  async function makeApprovedForMetadata(region, regionKey) {
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const knowledge = await Knowledge.create({
+      title: `Metadata ${region}`,
+      body: "Region facet fixture",
+      category: "other",
+      topics: [],
+      region,
+      regionKey,
+      author: author.id,
+      status: "pending_review",
+      reviewHistory: [],
+    });
+    return approve(expert, knowledge._id);
+  }
 });
 
 describe("getApprovedKnowledgeById (Issue #48 — public read)", () => {
