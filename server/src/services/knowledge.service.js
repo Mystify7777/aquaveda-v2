@@ -17,7 +17,7 @@ import {
   getActiveCategories,
   getActiveTopics,
 } from "../domain/knowledge-taxonomy.js";
-import { normalizeRegionKey } from "../domain/region-normalization.js";
+import { normalizeRegionBase, normalizeRegionKey } from "../domain/region-normalization.js";
 import { toWorkflowKnowledgeDTO, toWorkflowKnowledgeSummaryDTO } from "./knowledge.dto.js";
 
 /**
