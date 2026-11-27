@@ -12,6 +12,8 @@ import {
   listApprovedKnowledge,
   getApprovedKnowledgeById,
   getKnowledgeTaxonomyMetadata,
+  selectRegionDisplayLabel,
+  buildApprovedKnowledgeSort,
 } from "../src/services/knowledge.service.js";
 import { DomainErrorCode } from "../src/services/errors.js";
 import {
@@ -734,6 +736,94 @@ describe("listApprovedKnowledge — Learn discovery (Issue #232)", () => {
     await assert.rejects(
       () => listApprovedKnowledge({ topic: ["rain water harvesting"] }),
       (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+
+  it("supports quoted phrases, punctuation-bearing terms, and punctuation-only input", async () => {
+    await makeApproved({
+      title: "Rainwater harvesting guide",
+      body: "A practical field manual.",
+    });
+    await makeApproved({
+      title: "Water harvesting",
+      body: "Rainwater: collection and storage.",
+    });
+
+    const phrase = await listApprovedKnowledge({ q: '"rainwater harvesting"' });
+    assert.equal(phrase.total, 1);
+    assert.equal(phrase.items[0].title, "Rainwater harvesting guide");
+
+    const punctuation = await listApprovedKnowledge({ q: "rainwater!" });
+    assert.equal(punctuation.total, 2);
+
+    await assert.rejects(
+      () => listApprovedKnowledge({ q: '"!!!"' }),
+      (error) => error.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+
+  it("uses updatedAt then _id for stable pagination when timestamps are equal", async () => {
+    const created = await Promise.all([
+      makeApproved({ title: "Tie alpha", body: "stable order" }),
+      makeApproved({ title: "Tie beta", body: "stable order" }),
+      makeApproved({ title: "Tie gamma", body: "stable order" }),
+    ]);
+    const fixedTimestamp = new Date("2026-01-01T00:00:00.000Z");
+    await Knowledge.updateMany(
+      { _id: { $in: created.map((item) => item._id) } },
+      { $set: { updatedAt: fixedTimestamp } },
+    );
+
+    const ordered = await Knowledge.find({ _id: { $in: created.map((item) => item._id) } })
+      .sort({ _id: 1 })
+      .select("_id")
+      .lean();
+    const firstPage = await listApprovedKnowledge({ page: 1, limit: 2 });
+    const secondPage = await listApprovedKnowledge({ page: 2, limit: 2 });
+    const returnedIds = [...firstPage.items, ...secondPage.items]
+      .filter((item) => created.some((entry) => String(entry._id) === String(item._id)))
+      .map((item) => String(item._id));
+
+    assert.deepEqual(returnedIds, ordered.map((item) => String(item._id)));
+  });
+
+  it("uses relevance, updatedAt, and _id as the search order", () => {
+    assert.deepEqual(buildApprovedKnowledgeSort({ q: "rainwater" }), {
+      score: { $meta: "textScore" },
+      updatedAt: -1,
+      _id: 1,
+    });
+  });
+
+});
+describe("Region display label contract (LRN-L6)", () => {
+  it("prefers an explicit alias canonical label over observed display variants", () => {
+    assert.equal(
+      selectRegionDisplayLabel({
+        key: "canonical-region",
+        labels: ["Zulu variant", "Alpha variant"],
+        aliases: { "official region": "canonical-region" },
+      }),
+      "official region",
+    );
+  });
+
+  it("uses Unicode code-point order and the original UTF-8 byte tie-breaker", () => {
+    assert.equal(
+      selectRegionDisplayLabel({
+        key: "unicode",
+        labels: ["😀land", "Ωmega", "éclair"],
+        aliases: {},
+      }),
+      "éclair",
+    );
+    assert.equal(
+      selectRegionDisplayLabel({
+        key: "accented",
+        labels: ["Cafe\\u0301", "Café"],
+        aliases: {},
+      }),
+      "Café",
     );
   });
 });
