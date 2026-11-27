@@ -640,9 +640,22 @@ check("8c-2. Knowledge.topics is an array of strings defaulting to an empty arra
   assert.deepEqual(doc.topics, []);
 });
 
-check("8c-3. Taxonomy persistence adds no speculative indexes", () => {
-  const indexes = Knowledge.schema.indexes().map(([fields]) => Object.keys(fields).sort().join(","));
-  assert.deepEqual(indexes.sort(), ["author", "status"]);
+check("8c-3. Knowledge declares only the approved persistence and Learn discovery indexes", () => {
+  const indexes = Knowledge.schema.indexes();
+  const indexKeys = indexes.map(([fields]) => fields);
+
+  const expected = [
+    { author: 1 },
+    { status: 1 },
+    { title: "text", body: "text" },
+    { status: 1, category: 1, regionKey: 1, updatedAt: -1, _id: 1 },
+    { status: 1, topics: 1, updatedAt: -1, _id: 1 },
+  ];
+
+  assert.deepEqual(
+    indexKeys.map((fields) => JSON.stringify(fields)).sort(),
+    expected.map((fields) => JSON.stringify(fields)).sort(),
+  );
 });
 
 check("8d. Comment has exactly the expected top-level fields", () => {
