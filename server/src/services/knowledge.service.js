@@ -608,7 +608,7 @@ export async function listApprovedKnowledge({
 function compareRegionDisplayLabels(a, b) {
   const normalizedA = a
     .normalize("NFKC")
-    .replace(/\\s+/gu, " ")
+    .replace(/\s+/gu, " ")
     .trim();
   const normalizedB = b
     .normalize("NFKC")
