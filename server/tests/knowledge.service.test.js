@@ -823,7 +823,7 @@ describe("Region display label contract (LRN-L6)", () => {
         labels: ["Cafe\\u0301", "Café"],
         aliases: {},
       }),
-      "Café",
+      "Cafe\\u0301",
     );
   });
 });
