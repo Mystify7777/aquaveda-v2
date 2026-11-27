@@ -71,7 +71,7 @@ function request(method, path, { body, cookies } = {}) {
         } catch {
           // non-JSON body
         }
-        resolve({ status: res.statusCode, json });
+        resolve({ status: res.statusCode, headers: res.headers, json });
       });
     });
     req.on("error", reject);
