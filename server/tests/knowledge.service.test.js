@@ -739,7 +739,7 @@ describe("listApprovedKnowledge — Learn discovery (Issue #232)", () => {
 });
 
 describe("getKnowledgeTaxonomyMetadata — Learn taxonomy metadata (Issue #233)", () => {
-  it("returns active Category/Topic terms and one deterministic Region option per canonical key", async () => {
+  it("returns active Category/Topic terms and deterministic Region options per canonical key", async () => {
     await makeApprovedForMetadata("Bihar", "bihar");
     await makeApprovedForMetadata("  BIHAR  ", "bihar");
     await makeApprovedForMetadata("Jharkhand", "jharkhand");
@@ -749,7 +749,7 @@ describe("getKnowledgeTaxonomyMetadata — Learn taxonomy metadata (Issue #233)"
     assert.ok(metadata.categories.some((term) => term.slug === "water_conservation"));
     assert.ok(metadata.topics.some((term) => term.slug === "rainwater_harvesting"));
     assert.deepEqual(metadata.regions, [
-      { key: "bihar", displayName: "Bihar" },
+      { key: "bihar", displayName: "  BIHAR  " },
       { key: "jharkhand", displayName: "Jharkhand" },
     ]);
     assert.deepEqual(metadata.query, {
@@ -760,6 +760,46 @@ describe("getKnowledgeTaxonomyMetadata — Learn taxonomy metadata (Issue #233)"
       pagination: { page: "page", limit: "limit" },
       repeatedValues: "topic=slug&topic=slug&region=key&region=key",
     });
+  });
+
+  it("normalizes NFKC and Unicode White_Space only for comparison, preserving source strings", async () => {
+    await makeApprovedForMetadata("Ｂｉｈａｒ", "bihar");
+    await makeApprovedForMetadata("Bihar", "bihar");
+    await makeApprovedForMetadata("  BIHAR  ", "bihar");
+
+    const metadata = await getKnowledgeTaxonomyMetadata();
+    assert.equal(metadata.regions.find((region) => region.key === "bihar").displayName, "  BIHAR  ");
+
+    const stored = await Knowledge.find({ regionKey: "bihar" }).distinct("region");
+    assert.deepEqual(new Set(stored), new Set(["Ｂｉｈａｒ", "Bihar", "  BIHAR  "]));
+  });
+
+  it("uses Unicode code-point ordering for display labels and canonical Region keys", async () => {
+    await makeApprovedForMetadata("éclair", "unicode");
+    await makeApprovedForMetadata("😀land", "unicode");
+    await makeApprovedForMetadata("Ωmega", "unicode");
+
+    const metadata = await getKnowledgeTaxonomyMetadata();
+    assert.equal(metadata.regions.find((region) => region.key === "unicode").displayName, "éclair");
+
+    const actualKeys = metadata.regions.map((region) => region.key);
+    const expectedKeys = [...actualKeys].sort((a, b) => {
+      const left = Array.from(a, (character) => character.codePointAt(0));
+      const right = Array.from(b, (character) => character.codePointAt(0));
+      for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
+        if (left[index] !== right[index]) return left[index] - right[index];
+      }
+      return left.length - right.length;
+    });
+    assert.deepEqual(actualKeys, expectedKeys);
+  });
+
+  it("uses original UTF-8 bytes as the exact normalized-label tie-breaker", async () => {
+    await makeApprovedForMetadata("Cafe\u0301", "accented");
+    await makeApprovedForMetadata("Café", "accented");
+
+    const metadata = await getKnowledgeTaxonomyMetadata();
+    assert.equal(metadata.regions.find((region) => region.key === "accented").displayName, "Café");
   });
 
   async function makeApprovedForMetadata(region, regionKey) {
