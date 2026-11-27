@@ -17,7 +17,12 @@ import {
   getActiveCategories,
   getActiveTopics,
 } from "../domain/knowledge-taxonomy.js";
-import { REGION_ALIASES, normalizeRegionBase, normalizeRegionKey } from "../domain/region-normalization.js";
+import {
+  REGION_ALIASES,
+  normalizeRegionBase,
+  normalizeRegionDisplayVariant,
+  normalizeRegionKey,
+} from "../domain/region-normalization.js";
 import { toWorkflowKnowledgeDTO, toWorkflowKnowledgeSummaryDTO } from "./knowledge.dto.js";
 
 /**
@@ -622,13 +627,6 @@ function compareUtf8Bytes(a, b) {
     if (left[index] !== right[index]) return left[index] - right[index];
   }
   return left.length - right.length;
-}
-
-function normalizeRegionDisplayVariant(value) {
-  return value
-    .normalize("NFKC")
-    .replace(/[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]+/gu, " ")
-    .trim();
 }
 
 function compareRegionDisplayLabels(a, b) {
