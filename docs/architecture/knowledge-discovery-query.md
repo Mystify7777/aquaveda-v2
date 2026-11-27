@@ -59,19 +59,21 @@ No speculative taxonomy index or Region-only index is introduced.
 
 ## Performance evidence
 
-The implementation exposes the query shape in a form that can be inspected with MongoDB `explain("executionStats")`. Before closing #232, run the discovery benchmark against a representative staging/fixture dataset and record:
+`npm run verify:knowledge-discovery` imports the same `buildApprovedKnowledgeFilter()` and `buildApprovedKnowledgeSort()` functions used by `listApprovedKnowledge()`, applies the service page limit, and runs MongoDB `explain("executionStats")`. It measures:
 
 - dataset size;
-- selective Category/Topic/Region query;
-- broad search query;
-- `winningPlan`;
+- selective approved + Category + Topic + Region facets;
+- approved + broad `$text` search;
+- combined approved + `$text` + Category + Topic + Region;
+- approved-only unfiltered pagination;
+- full `winningPlan` tree, stage inventory, index names and blocking sort stages;
 - `totalKeysExamined`;
 - `totalDocsExamined`;
 - `nReturned`;
 - measured latency;
 - scale boundary at which the text-index strategy should be revisited.
 
-The benchmark must also confirm that approved-only filtering remains part of the same query and that no COLLSCAN-based case-insensitive regex is introduced.
+The benchmark emits the exact production filter and sort definitions and verifies that approved-only filtering remains part of every query. Empty/small local datasets provide query-plan smoke evidence only, not representative performance evidence. No case-insensitive regex scan is introduced.
 
 ## Scale boundary
 
@@ -93,3 +95,8 @@ It returns:
 - canonical query-key/serialization metadata.
 
 The endpoint is cacheable for 60 seconds. Taxonomy terms remain source-controlled; there is no runtime taxonomy mutation endpoint.
+
+
+## Region label determinism (LRN-L6)
+
+Region options are grouped by canonical `regionKey` from approved Knowledge only. If a canonical key has an explicit source-controlled alias in `REGION_ALIASES`, the alias is the preferred display label. Otherwise, NFKC + Unicode White_Space-normalized source labels are ordered by Unicode code point, then original UTF-8 bytes break exact normalized ties. Canonical keys are sorted by code-point order. Stored `region` values remain unchanged. The current alias registry is empty, so precedence is wired but no alias presently activates it.
