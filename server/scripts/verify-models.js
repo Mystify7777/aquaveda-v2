@@ -94,10 +94,35 @@ check("2b. Issue has 2dsphere/status/reportedBy indexes", () => {
   assert.ok(hasReportedBy, "missing index on reportedBy");
 });
 
-check("2c. Knowledge has status/author indexes", () => {
+check("2c. Knowledge has status/author indexes plus Learn discovery indexes", () => {
   const idx = Knowledge.schema.indexes();
   assert.ok(idx.some(([f]) => f.status === 1), "missing index on status");
   assert.ok(idx.some(([f]) => f.author === 1), "missing index on author");
+  assert.ok(
+    idx.some(([f]) => f.title === "text" && f.body === "text"),
+    "missing title/body text index for Learn search",
+  );
+  assert.ok(
+    idx.some(
+      ([f]) =>
+        f.status === 1 &&
+        f.category === 1 &&
+        f.regionKey === 1 &&
+        f.updatedAt === -1 &&
+        f._id === 1,
+    ),
+    "missing approved Category/Region pagination index",
+  );
+  assert.ok(
+    idx.some(
+      ([f]) =>
+        f.status === 1 &&
+        f.topics === 1 &&
+        f.updatedAt === -1 &&
+        f._id === 1,
+    ),
+    "missing approved Topic pagination index",
+  );
 });
 
 check("2d. Comment has compound (refType, refId) index", () => {
