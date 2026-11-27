@@ -639,6 +639,17 @@ function compareRegionDisplayLabels(a, b) {
   return normalizedComparison || compareUtf8Bytes(a, b);
 }
 
+export function selectRegionDisplayLabel({ key, labels, aliases = REGION_ALIASES }) {
+  const explicitAliases = Object.entries(aliases)
+    .filter(([, canonicalKey]) => canonicalKey === key)
+    .map(([alias]) => alias);
+
+  if (explicitAliases.length > 0) {
+    return [...explicitAliases].sort(compareRegionDisplayLabels)[0];
+  }
+  return [...new Set(labels)].sort(compareRegionDisplayLabels)[0] ?? key;
+}
+
 /**
  * getKnowledgeTaxonomyMetadata() — public, read-only taxonomy contract,
  * Issue #233.
@@ -666,21 +677,11 @@ export async function getKnowledgeTaxonomyMetadata() {
     regionGroups.set(key, labels);
   }
 
-  const aliasLabelsByCanonicalKey = new Map();
-  for (const [alias, canonicalKey] of Object.entries(REGION_ALIASES)) {
-    const labels = aliasLabelsByCanonicalKey.get(canonicalKey) ?? [];
-    labels.push(alias);
-    aliasLabelsByCanonicalKey.set(canonicalKey, labels);
-  }
-
   const regions = [...regionGroups.entries()]
-    .map(([key, labels]) => {
-      const canonicalAliasLabels = aliasLabelsByCanonicalKey.get(key) ?? [];
-      const displayName = canonicalAliasLabels.length > 0
-        ? [...canonicalAliasLabels].sort(compareRegionDisplayLabels)[0]
-        : [...new Set(labels)].sort(compareRegionDisplayLabels)[0] ?? key;
-      return { key, displayName };
-    })
+    .map(([key, labels]) => ({
+      key,
+      displayName: selectRegionDisplayLabel({ key, labels }),
+    }))
     .sort((a, b) => compareCodePointStrings(a.key, b.key));
 
   return {
