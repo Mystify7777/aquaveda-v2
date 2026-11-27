@@ -138,9 +138,22 @@ const knowledgeSchema = new Schema(
   { timestamps: true },
 );
 
-// Approved indexes only (persistence-design.md §6 / ADR-0005):
+// Approved indexes only (persistence-design.md §6 / ADR-0005), plus the
+// evidence-backed Learn discovery indexes owned by Issue #232.
+// The text index supports title/body search. The filter indexes support the
+// approved-only Category/Topic/Region query shapes and stable updatedAt/_id
+// pagination ordering without introducing speculative indexes.
 knowledgeSchema.index({ status: 1 });
 knowledgeSchema.index({ author: 1 });
+knowledgeSchema.index({ title: "text", body: "text" }, { name: "knowledge_title_body_text" });
+knowledgeSchema.index(
+  { status: 1, category: 1, regionKey: 1, updatedAt: -1, _id: 1 },
+  { name: "knowledge_approved_category_region_page" },
+);
+knowledgeSchema.index(
+  { status: 1, topics: 1, updatedAt: -1, _id: 1 },
+  { name: "knowledge_approved_topic_page" },
+);
 
 export const Knowledge = mongoose.model("Knowledge", knowledgeSchema);
 export default Knowledge;
