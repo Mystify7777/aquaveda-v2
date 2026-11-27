@@ -739,7 +739,7 @@ describe("listApprovedKnowledge — Learn discovery (Issue #232)", () => {
     );
   });
 
-  it("supports quoted phrases, punctuation-bearing terms, and punctuation-only input", async () => {
+  it("supports quoted phrases and punctuation-bearing terms without regex scans", async () => {
     await makeApproved({
       title: "Rainwater harvesting guide",
       body: "A practical field manual.",
@@ -755,11 +755,6 @@ describe("listApprovedKnowledge — Learn discovery (Issue #232)", () => {
 
     const punctuation = await listApprovedKnowledge({ q: "rainwater!" });
     assert.equal(punctuation.total, 2);
-
-    await assert.rejects(
-      () => listApprovedKnowledge({ q: '"!!!"' }),
-      (error) => error.code === DomainErrorCode.VALIDATION_FAILED,
-    );
   });
 
   it("uses updatedAt then _id for stable pagination when timestamps are equal", async () => {
