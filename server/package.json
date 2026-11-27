@@ -16,6 +16,7 @@
     "verify:models": "node scripts/verify-models.js",
     "verify:validation": "node scripts/verify-validation.js",
     "verify:cookie-config": "node scripts/verify-cookie-config.js",
+    "verify:knowledge-discovery": "node scripts/verify-knowledge-discovery.js",
     "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\"",
     "verify": "npm test && npm run verify:models && npm run verify:validation && npm run verify:cookie-config"
   },
