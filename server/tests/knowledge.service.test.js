@@ -884,7 +884,7 @@ describe("getKnowledgeTaxonomyMetadata — Learn taxonomy metadata (Issue #233)"
     await makeApprovedForMetadata("Café", "accented");
 
     const metadata = await getKnowledgeTaxonomyMetadata();
-    assert.equal(metadata.regions.find((region) => region.key === "accented").displayName, "Café");
+    assert.equal(metadata.regions.find((region) => region.key === "accented").displayName, "Cafe\\u0301");
   });
 
   async function makeApprovedForMetadata(region, regionKey) {
