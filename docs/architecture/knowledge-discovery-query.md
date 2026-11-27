@@ -59,7 +59,7 @@ No speculative taxonomy index or Region-only index is introduced.
 
 ## Performance evidence
 
-`npm run verify:knowledge-discovery` imports the same `buildApprovedKnowledgeFilter()` and `buildApprovedKnowledgeSort()` functions used by `listApprovedKnowledge()`, applies the service page limit, and runs MongoDB `explain("executionStats")`. It measures:
+`npm run verify:knowledge-discovery` imports the same `buildApprovedKnowledgeFilter()` and `buildApprovedKnowledgeSort()` functions used by `listApprovedKnowledge()`, applies the service page limit, and runs MongoDB `explain("executionStats")`. Its four scenarios are:
 
 - dataset size;
 - selective approved + Category + Topic + Region facets;
