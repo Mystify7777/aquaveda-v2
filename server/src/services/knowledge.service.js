@@ -17,7 +17,7 @@ import {
   getActiveCategories,
   getActiveTopics,
 } from "../domain/knowledge-taxonomy.js";
-import { normalizeRegionBase, normalizeRegionKey } from "../domain/region-normalization.js";
+import { REGION_ALIASES, normalizeRegionBase, normalizeRegionKey } from "../domain/region-normalization.js";
 import { toWorkflowKnowledgeDTO, toWorkflowKnowledgeSummaryDTO } from "./knowledge.dto.js";
 
 /**
@@ -496,7 +496,7 @@ export async function revise(actorContext, knowledgeId, updatedContent) {
  * The service repeats the canonical taxonomy check so direct service callers
  * cannot bypass the public query contract.
  */
-function buildApprovedKnowledgeFilter({ q, category, topic = [], region = [] } = {}) {
+export function buildApprovedKnowledgeFilter({ q, category, topic = [], region = [] } = {}) {
   const filter = { status: "approved" };
 
   if (category !== undefined) {
@@ -563,6 +563,13 @@ function buildApprovedKnowledgeFilter({ q, category, topic = [], region = [] } =
  * The status predicate is unconditional and caller-controlled status is never
  * accepted. Metadata facets and search are all part of the same MongoDB query.
  */
+/** Keep pagination ordering identical for the service and plan benchmark. */
+export function buildApprovedKnowledgeSort({ q } = {}) {
+  return q !== undefined
+    ? { score: { $meta: "textScore" }, updatedAt: -1, _id: 1 }
+    : { updatedAt: -1, _id: 1 };
+}
+
 export async function listApprovedKnowledge({
   page = 1,
   limit = 20,
@@ -575,13 +582,7 @@ export async function listApprovedKnowledge({
   const skip = (page - 1) * limit;
 
   const baseQuery = Knowledge.find(filter).populate("author", PUBLIC_ACTOR_FIELDS);
-  const query = q !== undefined
-    ? baseQuery.sort({
-        score: { $meta: "textScore" },
-        updatedAt: -1,
-        _id: 1,
-      })
-    : baseQuery.sort({ updatedAt: -1, _id: 1 });
+  const query = baseQuery.sort(buildApprovedKnowledgeSort({ q }));
 
   const [items, total] = await Promise.all([
     query.skip(skip).limit(limit),
@@ -598,34 +599,44 @@ export async function listApprovedKnowledge({
 }
 
 /**
- * Deterministically choose the display label for one canonical Region key.
- *
- * The matching key is authoritative for grouping. The original display
- * values are preserved on articles and are never rewritten by this read.
- * Candidate labels are compared after the same NFKC + Unicode White_Space
- * normalization used by ADR-0011, then by the original UTF-8 bytes.
+ * Compare values by Unicode code point, not locale collation or UTF-16 code
+ * unit order. This is the LRN-L6 lexical contract.
  */
-function compareRegionDisplayLabels(a, b) {
-  const normalizedA = a
-    .normalize("NFKC")
-    .replace(/\s+/gu, " ")
-    .trim();
-  const normalizedB = b
-    .normalize("NFKC")
-    .replace(/\\s+/gu, " ")
-    .trim();
+function compareCodePointStrings(a, b) {
+  const left = Array.from(a, (character) => character.codePointAt(0));
+  const right = Array.from(b, (character) => character.codePointAt(0));
+  const length = Math.min(left.length, right.length);
 
-  const normalizedComparison =
-    normalizedA < normalizedB ? -1 : normalizedA > normalizedB ? 1 : 0;
-  if (normalizedComparison !== 0) return normalizedComparison;
-
-  const bytesA = Buffer.from(a, "utf8");
-  const bytesB = Buffer.from(b, "utf8");
-  const length = Math.min(bytesA.length, bytesB.length);
-  for (let i = 0; i < length; i += 1) {
-    if (bytesA[i] !== bytesB[i]) return bytesA[i] - bytesB[i];
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return left[index] - right[index];
   }
-  return bytesA.length - bytesB.length;
+  return left.length - right.length;
+}
+
+function compareUtf8Bytes(a, b) {
+  const left = Buffer.from(a, "utf8");
+  const right = Buffer.from(b, "utf8");
+  const length = Math.min(left.length, right.length);
+
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return left[index] - right[index];
+  }
+  return left.length - right.length;
+}
+
+function normalizeRegionDisplayVariant(value) {
+  return value
+    .normalize("NFKC")
+    .replace(/[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]+/gu, " ")
+    .trim();
+}
+
+function compareRegionDisplayLabels(a, b) {
+  const normalizedComparison = compareCodePointStrings(
+    normalizeRegionDisplayVariant(a),
+    normalizeRegionDisplayVariant(b),
+  );
+  return normalizedComparison || compareUtf8Bytes(a, b);
 }
 
 /**
@@ -649,18 +660,28 @@ export async function getKnowledgeTaxonomyMetadata() {
     const key = article.regionKey;
     if (!key) continue;
     const labels = regionGroups.get(key) ?? [];
-    if (typeof article.region === "string" && article.region.trim().length > 0) {
+    if (typeof article.region === "string" && normalizeRegionBase(article.region).length > 0) {
       labels.push(article.region);
     }
     regionGroups.set(key, labels);
   }
 
+  const aliasLabelsByCanonicalKey = new Map();
+  for (const [alias, canonicalKey] of Object.entries(REGION_ALIASES)) {
+    const labels = aliasLabelsByCanonicalKey.get(canonicalKey) ?? [];
+    labels.push(alias);
+    aliasLabelsByCanonicalKey.set(canonicalKey, labels);
+  }
+
   const regions = [...regionGroups.entries()]
-    .map(([key, labels]) => ({
-      key,
-      displayName: [...new Set(labels)].sort(compareRegionDisplayLabels)[0] ?? key,
-    }))
-    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    .map(([key, labels]) => {
+      const canonicalAliasLabels = aliasLabelsByCanonicalKey.get(key) ?? [];
+      const displayName = canonicalAliasLabels.length > 0
+        ? [...canonicalAliasLabels].sort(compareRegionDisplayLabels)[0]
+        : [...new Set(labels)].sort(compareRegionDisplayLabels)[0] ?? key;
+      return { key, displayName };
+    })
+    .sort((a, b) => compareCodePointStrings(a.key, b.key));
 
   return {
     categories: getActiveCategories().map(({ slug, displayName }) => ({ slug, displayName })),
