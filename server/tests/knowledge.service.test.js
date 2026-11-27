@@ -818,7 +818,7 @@ describe("Region display label contract (LRN-L6)", () => {
         labels: ["Cafe\\u0301", "Café"],
         aliases: {},
       }),
-      "Cafe\\u0301",
+      "Cafe\u0301",
     );
   });
 });
