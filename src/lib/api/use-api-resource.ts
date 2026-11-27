@@ -41,9 +41,18 @@ export function useApiResource<T>(fetcher: (signal: AbortSignal) => Promise<T>, 
   const [settled, setSettled] = React.useState<Settled<T> | null>(null);
   const token = `${key}#${nonce}`;
 
+  // `refresh` (see below): a re-fetch that keeps the data on screen.
+  const [refreshRequested, setRefreshRequested] = React.useState(0);
+  const [refreshDone, setRefreshDone] = React.useState<{ n: number; error: ApiError | null }>({ n: 0, error: null });
+  const succeededToken = React.useRef<string | null>(null);
+
   React.useEffect(() => {
     let active = true;
     const controller = new AbortController();
+    // Background = data for THIS token is already shown and the fetch was asked
+    // for by `refresh()`. A new `key` / `reload` is always a foreground load.
+    const background = refreshRequested > 0 && succeededToken.current === token;
+    const requested = refreshRequested;
     fetcherRef
       .current(controller.signal)
       .then(
@@ -54,15 +63,33 @@ export function useApiResource<T>(fetcher: (signal: AbortSignal) => Promise<T>, 
       )
       .then((outcome) => {
         if ("error" in outcome && isApiAbort(outcome.error)) return;
-        if (active) setSettled({ token, outcome });
+        if (!active) return;
+        if ("data" in outcome) {
+          succeededToken.current = token;
+          setSettled({ token, outcome });
+          setRefreshDone({ n: requested, error: null });
+        } else if (background) {
+          // A failed background refresh never replaces data that is still on screen.
+          setRefreshDone({ n: requested, error: outcome.error });
+        } else {
+          setSettled({ token, outcome });
+          setRefreshDone({ n: requested, error: null });
+        }
       });
     return () => {
       active = false;
       controller.abort();
     };
-  }, [token]);
+  }, [token, refreshRequested]);
 
   const reload = React.useCallback(() => setNonce((n) => n + 1), []);
+  /**
+   * Re-fetch WITHOUT turning the resource back into `loading`: the current data
+   * stays rendered, `refreshing` is true meanwhile, and on failure the data is
+   * kept and `refreshError` is set (the owner decides how to tell the user).
+   * `reload` keeps its original semantics (a full foreground load).
+   */
+  const refresh = React.useCallback(() => setRefreshRequested((n) => n + 1), []);
 
   let resource: ApiResource<T> = { status: "loading" };
   if (settled && settled.token === token) {
@@ -71,5 +98,7 @@ export function useApiResource<T>(fetcher: (signal: AbortSignal) => Promise<T>, 
         ? { status: "success", data: settled.outcome.data }
         : { status: "error", error: settled.outcome.error };
   }
-  return { resource, reload };
+  const refreshing = refreshRequested > refreshDone.n;
+  const refreshError = refreshing ? null : refreshDone.error;
+  return { resource, reload, refresh, refreshing, refreshError };
 }
