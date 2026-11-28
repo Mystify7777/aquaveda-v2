@@ -15,11 +15,18 @@ export function PaginationNav({
   basePath: string;
   label: string;
   /** Extra query params (e.g. an active filter) preserved on every link. */
-  params?: Record<string, string>;
+  params?: Record<string, string | readonly string[]>;
 }) {
   if (totalPages <= 1) return null;
   const href = (p: number) => {
-    const search = new URLSearchParams(params);
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params ?? {})) {
+      if (Array.isArray(value)) {
+        for (const item of value) search.append(key, item);
+      } else {
+        search.set(key, value);
+      }
+    }
     if (p !== 1) search.set("page", String(p));
     const qs = search.toString();
     return qs ? `${basePath}?${qs}` : basePath;
