@@ -12,11 +12,12 @@ import type {
   WorkflowKnowledge,
   WorkflowKnowledgeSummary,
   KnowledgeLifecycleResult,
+  KnowledgeTaxonomyMetadata,
 } from "./types/knowledge";
 
 export function getKnowledgeList(query?: KnowledgeListQuery) {
   return apiRequest<PaginatedResponse<KnowledgeArticle>>(
-    buildApiUrl("/api/v1/knowledge", query as Record<string, string | number | undefined>),
+    buildApiUrl("/api/v1/knowledge", query as Record<string, string | number | readonly string[] | undefined>),
     { cache: "no-store" },
   );
 }
@@ -90,4 +91,12 @@ export function getKnowledgeWorkflow(knowledgeId: string, init?: { signal?: Abor
     cache: "no-store",
     signal: init?.signal,
   });
+}
+
+
+export function getKnowledgeTaxonomyMetadata() {
+  return apiRequest<KnowledgeTaxonomyMetadata>(
+    buildApiUrl("/api/v1/knowledge/taxonomy"),
+    { cache: "no-store" },
+  );
 }

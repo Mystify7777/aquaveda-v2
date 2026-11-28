@@ -7,7 +7,7 @@ export function getApiBaseUrl(): string {
 
 export function buildApiUrl(
   path: string,
-  query?: Record<string, string | number | undefined | null>,
+  query?: Record<string, string | number | readonly string[] | undefined | null>,
 ): string {
   const url = new URL(
     path.startsWith("/") ? path : `/${path}`,
@@ -17,7 +17,11 @@ export function buildApiUrl(
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined && value !== null) {
-        url.searchParams.set(key, String(value));
+        if (Array.isArray(value)) {
+          for (const item of value) url.searchParams.append(key, item);
+        } else {
+          url.searchParams.set(key, String(value));
+        }
       }
     }
   }
