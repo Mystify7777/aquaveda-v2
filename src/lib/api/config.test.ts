@@ -44,6 +44,16 @@ describe("buildApiUrl", () => {
     expect(url).toBe("https://api.aquaveda.com/api/v1/issues?status=open&page=2");
   });
 
+  it("serializes repeated values as repeated query keys", () => {
+    const url = buildApiUrl("/api/v1/knowledge", {
+      topic: ["water_reuse", "rainwater_harvesting"],
+      region: ["bihar", "jharkhand"],
+    });
+    expect(url).toBe(
+      "https://api.aquaveda.com/api/v1/knowledge?topic=water_reuse&topic=rainwater_harvesting&region=bihar&region=jharkhand",
+    );
+  });
+
   it("omits undefined and null query values rather than serializing them as strings", () => {
     const url = buildApiUrl("/api/v1/issues", { status: undefined, page: 1, limit: null });
     expect(url).toBe("https://api.aquaveda.com/api/v1/issues?page=1");
