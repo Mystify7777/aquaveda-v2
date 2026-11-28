@@ -91,7 +91,12 @@ describe("parseLearnQuery", () => {
       "water_reuse",
     ]);
     expect(url.searchParams.getAll("region")).toEqual(["bihar", "jharkhand"]);
-    expect(parseLearnQuery(Object.fromEntries(url.searchParams.entries())).state).toEqual(state);
+    const raw: Record<string, string | string[]> = {};
+    for (const [key, value] of url.searchParams.entries()) {
+      const current = raw[key];
+      raw[key] = current === undefined ? value : Array.isArray(current) ? [...current, value] : [current, value];
+    }
+    expect(parseLearnQuery(raw).state).toEqual(state);
   });
 
   it("serializes canonical parameter order and omits defaults", () => {
