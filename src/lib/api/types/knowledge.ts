@@ -41,9 +41,9 @@ export interface KnowledgeRegionOption {
 }
 
 export interface KnowledgeTaxonomyMetadata {
-  categories: KnowledgeTaxonomyTerm[];
-  topics: KnowledgeTaxonomyTerm[];
-  regions: KnowledgeRegionOption[];
+  categories: readonly KnowledgeTaxonomyTerm[];
+  topics: readonly KnowledgeTaxonomyTerm[];
+  regions: readonly KnowledgeRegionOption[];
   query: {
     search: "q";
     category: "category";
