@@ -116,12 +116,7 @@ function validateRepeated(
       invalid.push({ key, value, message: `${key} must not contain empty values` });
       continue;
     }
-    // Region is intentionally checked for exact preservation. No trim,
-    // case-folding, Unicode normalization, or aliasing happens here.
-    if (key === "region" && value !== value) {
-      invalid.push({ key, value, message: "region must be preserved exactly" });
-      continue;
-    }
+    // Region is intentionally not normalized or aliased here.
     if (value !== value.trim()) {
       invalid.push({ key, value, message: `${key} values must be canonical and must not contain surrounding whitespace` });
       continue;
@@ -198,6 +193,12 @@ export function learnQueryParams(filters: LearnFilters): Record<string, string |
   if (filters.category !== undefined) params.category = filters.category;
   if (filters.topic?.length) params.topic = canonicalRepeated(filters.topic);
   if (filters.region?.length) params.region = canonicalRepeated(filters.region);
+  return params;
+}
+
+export function learnPaginationParams(state: LearnQueryState): Record<string, string | string[]> {
+  const params = learnQueryParams(state.filters);
+  if (state.limit !== DEFAULT_LIMIT) params.limit = String(state.limit);
   return params;
 }
 
