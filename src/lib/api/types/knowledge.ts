@@ -23,7 +23,39 @@ export interface KnowledgeArticle {
   updatedAt: string;
 }
 
-export type KnowledgeListQuery = PaginationQuery;
+export interface KnowledgeListQuery extends PaginationQuery {
+  q?: string;
+  category?: string;
+  topic?: string[];
+  region?: string[];
+}
+
+export interface KnowledgeTaxonomyTerm {
+  slug: string;
+  displayName: string;
+}
+
+export interface KnowledgeRegionOption {
+  key: string;
+  displayName: string;
+}
+
+export interface KnowledgeTaxonomyMetadata {
+  categories: KnowledgeTaxonomyTerm[];
+  topics: KnowledgeTaxonomyTerm[];
+  regions: KnowledgeRegionOption[];
+  query: {
+    search: "q";
+    category: "category";
+    topic: "topic";
+    region: "region";
+    pagination: {
+      page: "page";
+      limit: "limit";
+    };
+    repeatedValues: string;
+  };
+}
 
 /** Body of POST /api/v1/knowledge. Region is optional display text. */
 export interface CreateKnowledgePayload {
