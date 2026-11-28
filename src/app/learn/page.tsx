@@ -47,22 +47,24 @@ export default async function LearnPage({
   const raw = await searchParams;
   const parsed = parseLearnQuery(raw);
 
-  let metadata;
-  try {
-    metadata = await getKnowledgeTaxonomyMetadata();
-  } catch (error) {
-    if (!(error instanceof ApiError)) throw error;
-    return (
-      <Shell>
-        <LoadError
-          message={loadErrorMessage(error, "Learn filters")}
-          retryHref={learnHref(parsed.state)}
-        />
-      </Shell>
-    );
-  }
+  let invalid = [...parsed.invalid];
 
-  const invalid = [...parsed.invalid, ...validateLearnTaxonomy(parsed.state.filters, metadata)];
+  if (parsed.state.filters.category !== undefined || parsed.state.filters.topic?.length) {
+    try {
+      const metadata = await getKnowledgeTaxonomyMetadata();
+      invalid = [...invalid, ...validateLearnTaxonomy(parsed.state.filters, metadata)];
+    } catch (error) {
+      if (!(error instanceof ApiError)) throw error;
+      return (
+        <Shell>
+          <LoadError
+            message={loadErrorMessage(error, "Learn filters")}
+            retryHref={learnHref(parsed.state)}
+          />
+        </Shell>
+      );
+    }
+  }
   if (invalid.length > 0) {
     return (
       <Shell>
