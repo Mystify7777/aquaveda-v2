@@ -65,7 +65,7 @@ export default async function LearnPage({
   const invalid = [...parsed.invalid, ...validateLearnTaxonomy(parsed.state.filters, metadata)];
   if (invalid.length > 0) {
     return (
-      <Shell state={parsed.state}>
+      <Shell>
         <EmptyState
           title="Invalid Learn filters"
           description={invalid.map(({ key, message }) => `${key}: ${message}`).join(" · ")}
@@ -85,7 +85,7 @@ export default async function LearnPage({
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     return (
-      <Shell state={parsed.state}>
+      <Shell>
         <LoadError
           message={loadErrorMessage(error, "articles")}
           retryHref={learnHref(parsed.state)}
@@ -97,7 +97,7 @@ export default async function LearnPage({
   const params = learnPaginationParams(parsed.state);
 
   return (
-    <Shell state={parsed.state}>
+    <Shell>
       {result.items.length === 0 ? (
         result.total > 0 ? (
           <EmptyState
