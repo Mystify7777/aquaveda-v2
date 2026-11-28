@@ -33,6 +33,7 @@ import {
   reviewKnowledgeSchema,
   rejectKnowledgeSchema,
   reviseKnowledgeSchema,
+  listApprovedKnowledgeQuerySchema,
   myKnowledgeQuerySchema,
   reviewQueueQuerySchema,
 } from "../src/validation/knowledge.validation.js";
@@ -587,6 +588,47 @@ check("11g. Revise with only title passes (all fields independently optional)", 
 
 check("11h. Revise with an empty-string title fails (not empty, just absent, is what's allowed)", () => {
   assert.equal(reviseKnowledgeSchema.safeParse({ title: "" }).success, false);
+});
+
+// ---------------------------------------------------------------------
+// 11b. Public Learn discovery query (Issue #232)
+// ---------------------------------------------------------------------
+check("11i. Learn query accepts canonical single Category and repeated Topic/Region values", () => {
+  const result = listApprovedKnowledgeQuerySchema.safeParse({
+    q: "  rainwater  ",
+    category: "water_conservation",
+    topic: ["rainwater_harvesting", "water_reuse"],
+    region: ["bihar", "jharkhand"],
+    page: "2",
+    limit: "10",
+  });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.data, {
+    q: "rainwater",
+    category: "water_conservation",
+    topic: ["rainwater_harvesting", "water_reuse"],
+    region: ["bihar", "jharkhand"],
+    page: 2,
+    limit: 10,
+  });
+});
+
+check("11j. Learn query rejects unknown or alias Category/Topic values", () => {
+  assert.equal(
+    listApprovedKnowledgeQuerySchema.safeParse({ category: "water conservation" }).success,
+    false,
+  );
+  assert.equal(
+    listApprovedKnowledgeQuerySchema.safeParse({ topic: ["rain water harvesting"] }).success,
+    false,
+  );
+});
+
+check("11k. Learn query accepts unknown Region keys as exact filters", () => {
+  assert.equal(
+    listApprovedKnowledgeQuerySchema.safeParse({ region: ["never-seen-region"] }).success,
+    true,
+  );
 });
 
 // ---------------------------------------------------------------------

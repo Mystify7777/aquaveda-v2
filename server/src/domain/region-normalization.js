@@ -19,14 +19,21 @@ const UNICODE_WHITE_SPACE =
 
 export const REGION_ALIASES = Object.freeze({});
 
-export function normalizeRegionBase(value) {
+/**
+ * NFKC + Unicode White_Space normalization for display-value comparison.
+ * This intentionally does not lowercase or resolve aliases.
+ */
+export function normalizeRegionDisplayVariant(value) {
   if (typeof value !== "string") return "";
 
   return value
     .normalize("NFKC")
     .replace(UNICODE_WHITE_SPACE, " ")
-    .trim()
-    .toLowerCase();
+    .trim();
+}
+
+export function normalizeRegionBase(value) {
+  return normalizeRegionDisplayVariant(value).toLowerCase();
 }
 
 function assertAliasRegistry(aliases) {

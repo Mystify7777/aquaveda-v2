@@ -11,6 +11,9 @@ import {
   revise,
   listApprovedKnowledge,
   getApprovedKnowledgeById,
+  getKnowledgeTaxonomyMetadata,
+  selectRegionDisplayLabel,
+  buildApprovedKnowledgeSort,
 } from "../src/services/knowledge.service.js";
 import { DomainErrorCode } from "../src/services/errors.js";
 import {
@@ -630,6 +633,276 @@ describe("listApprovedKnowledge (Issue #48 — public read)", () => {
     assert.equal(result.total, 3);
     assert.equal(result.totalPages, 2);
   });
+});
+
+describe("listApprovedKnowledge — Learn discovery (Issue #232)", () => {
+  async function makeApproved({
+    title,
+    body,
+    category = "other",
+    topics = [],
+    region = "",
+  }) {
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const knowledge = await createKnowledge(author, {
+      title,
+      body,
+      category,
+      topics,
+      region,
+    });
+    await submitForReview(author, knowledge._id);
+    return approve(expert, knowledge._id);
+  }
+
+  it("composes Category, Topic OR, Region OR, search, and pagination while remaining approved-only", async () => {
+    await makeApproved({
+      title: "Rainwater harvesting for farms",
+      body: "Efficient irrigation can reduce water use.",
+      category: "agriculture_irrigation",
+      topics: ["rainwater_harvesting", "efficient_irrigation"],
+      region: "Bihar",
+    });
+    await makeApproved({
+      title: "Rainwater harvesting in cities",
+      body: "Storage and reuse reduce demand.",
+      category: "water_conservation",
+      topics: ["rainwater_harvesting", "water_reuse"],
+      region: "Jharkhand",
+    });
+    await makeApproved({
+      title: "Groundwater recharge",
+      body: "Recharge wells improve groundwater levels.",
+      category: "groundwater",
+      topics: ["groundwater_recharge"],
+      region: "Bihar, India",
+    });
+
+    const result = await listApprovedKnowledge({
+      q: "RAINWATER",
+      category: "agriculture_irrigation",
+      topic: ["water_reuse", "efficient_irrigation"],
+      region: ["bihar", "jharkhand"],
+      page: 1,
+      limit: 20,
+    });
+
+    assert.equal(result.total, 1);
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].title, "Rainwater harvesting for farms");
+  });
+
+  it("search is case-insensitive and searches title OR body", async () => {
+    await makeApproved({
+      title: "Water quality monitoring",
+      body: "Sensor calibration matters.",
+    });
+    await makeApproved({
+      title: "Community wells",
+      body: "Monitoring WATER QUALITY protects public health.",
+    });
+
+    const result = await listApprovedKnowledge({ q: "water quality" });
+    assert.equal(result.total, 2);
+  });
+
+  it("never relaxes approved-only visibility even when filters are supplied", async () => {
+    const author = fakeActor("USER");
+    const draft = await createKnowledge(author, {
+      title: "Draft irrigation",
+      body: "efficient irrigation",
+      category: "agriculture_irrigation",
+      topics: ["efficient_irrigation"],
+      region: "Bihar",
+    });
+
+    const result = await listApprovedKnowledge({
+      q: "irrigation",
+      category: "agriculture_irrigation",
+      topic: ["efficient_irrigation"],
+      region: ["bihar"],
+    });
+
+    assert.equal(result.total, 0);
+    assert.equal(result.items.some((item) => String(item._id) === String(draft._id)), false);
+  });
+
+  it("rejects unknown and non-canonical taxonomy filters", async () => {
+    await assert.rejects(
+      () => listApprovedKnowledge({ category: "water conservation" }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+    await assert.rejects(
+      () => listApprovedKnowledge({ topic: ["rain water harvesting"] }),
+      (err) => err.code === DomainErrorCode.VALIDATION_FAILED,
+    );
+  });
+
+  it("supports quoted phrases and punctuation-bearing terms without regex scans", async () => {
+    await makeApproved({
+      title: "Rainwater harvesting guide",
+      body: "A practical field manual.",
+    });
+    await makeApproved({
+      title: "Water harvesting",
+      body: "Rainwater: collection and storage.",
+    });
+
+    const phrase = await listApprovedKnowledge({ q: '"rainwater harvesting"' });
+    assert.equal(phrase.total, 1);
+    assert.equal(phrase.items[0].title, "Rainwater harvesting guide");
+
+    const punctuation = await listApprovedKnowledge({ q: "rainwater!" });
+    assert.equal(punctuation.total, 2);
+  });
+
+  it("uses updatedAt then _id for stable pagination when timestamps are equal", async () => {
+    const created = await Promise.all([
+      makeApproved({ title: "Tie alpha", body: "stable order" }),
+      makeApproved({ title: "Tie beta", body: "stable order" }),
+      makeApproved({ title: "Tie gamma", body: "stable order" }),
+    ]);
+    const fixedTimestamp = new Date("2026-01-01T00:00:00.000Z");
+    await Knowledge.updateMany(
+      { _id: { $in: created.map((item) => item._id) } },
+      { $set: { updatedAt: fixedTimestamp } },
+    );
+
+    const ordered = await Knowledge.find({ _id: { $in: created.map((item) => item._id) } })
+      .sort({ _id: 1 })
+      .select("_id")
+      .lean();
+    const firstPage = await listApprovedKnowledge({ page: 1, limit: 2 });
+    const secondPage = await listApprovedKnowledge({ page: 2, limit: 2 });
+    const returnedIds = [...firstPage.items, ...secondPage.items]
+      .filter((item) => created.some((entry) => String(entry._id) === String(item._id)))
+      .map((item) => String(item._id));
+
+    assert.deepEqual(returnedIds, ordered.map((item) => String(item._id)));
+  });
+
+  it("uses relevance, updatedAt, and _id as the search order", () => {
+    assert.deepEqual(buildApprovedKnowledgeSort({ q: "rainwater" }), {
+      score: { $meta: "textScore" },
+      updatedAt: -1,
+      _id: 1,
+    });
+  });
+
+});
+describe("Region display label contract (LRN-L6)", () => {
+  it("prefers an explicit alias canonical label over observed display variants", () => {
+    assert.equal(
+      selectRegionDisplayLabel({
+        key: "canonical-region",
+        labels: ["Zulu variant", "Alpha variant"],
+        aliases: { "official region": "canonical-region" },
+      }),
+      "official region",
+    );
+  });
+
+  it("uses Unicode code-point order and the original UTF-8 byte tie-breaker", () => {
+    assert.equal(
+      selectRegionDisplayLabel({
+        key: "unicode",
+        labels: ["😀land", "Ωmega", "éclair"],
+        aliases: {},
+      }),
+      "éclair",
+    );
+    assert.equal(
+      selectRegionDisplayLabel({
+        key: "accented",
+        labels: ["Cafe\u0301", "Café"],
+        aliases: {},
+      }),
+      "Cafe\u0301",
+    );
+  });
+});
+
+describe("getKnowledgeTaxonomyMetadata — Learn taxonomy metadata (Issue #233)", () => {
+  it("returns active Category/Topic terms and deterministic Region options per canonical key", async () => {
+    await makeApprovedForMetadata("Bihar", "bihar");
+    await makeApprovedForMetadata("  BIHAR  ", "bihar");
+    await makeApprovedForMetadata("Jharkhand", "jharkhand");
+
+    const metadata = await getKnowledgeTaxonomyMetadata();
+
+    assert.ok(metadata.categories.some((term) => term.slug === "water_conservation"));
+    assert.ok(metadata.topics.some((term) => term.slug === "rainwater_harvesting"));
+    assert.deepEqual(metadata.regions, [
+      { key: "bihar", displayName: "  BIHAR  " },
+      { key: "jharkhand", displayName: "Jharkhand" },
+    ]);
+    assert.deepEqual(metadata.query, {
+      search: "q",
+      category: "category",
+      topic: "topic",
+      region: "region",
+      pagination: { page: "page", limit: "limit" },
+      repeatedValues: "topic=slug&topic=slug&region=key&region=key",
+    });
+  });
+
+  it("normalizes NFKC and Unicode White_Space only for comparison, preserving source strings", async () => {
+    await makeApprovedForMetadata("Ｂｉｈａｒ", "bihar");
+    await makeApprovedForMetadata("Bihar", "bihar");
+    await makeApprovedForMetadata("  BIHAR  ", "bihar");
+
+    const metadata = await getKnowledgeTaxonomyMetadata();
+    assert.equal(metadata.regions.find((region) => region.key === "bihar").displayName, "  BIHAR  ");
+
+    const stored = await Knowledge.find({ regionKey: "bihar" }).distinct("region");
+    assert.deepEqual(new Set(stored), new Set(["Ｂｉｈａｒ", "Bihar", "  BIHAR  "]));
+  });
+
+  it("uses Unicode code-point ordering for display labels and canonical Region keys", async () => {
+    await makeApprovedForMetadata("éclair", "unicode");
+    await makeApprovedForMetadata("😀land", "unicode");
+    await makeApprovedForMetadata("Ωmega", "unicode");
+
+    const metadata = await getKnowledgeTaxonomyMetadata();
+    assert.equal(metadata.regions.find((region) => region.key === "unicode").displayName, "éclair");
+
+    const actualKeys = metadata.regions.map((region) => region.key);
+    const expectedKeys = [...actualKeys].sort((a, b) => {
+      const left = Array.from(a, (character) => character.codePointAt(0));
+      const right = Array.from(b, (character) => character.codePointAt(0));
+      for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
+        if (left[index] !== right[index]) return left[index] - right[index];
+      }
+      return left.length - right.length;
+    });
+    assert.deepEqual(actualKeys, expectedKeys);
+  });
+
+  it("uses original UTF-8 bytes as the exact normalized-label tie-breaker", async () => {
+    await makeApprovedForMetadata("Cafe\u0301", "accented");
+    await makeApprovedForMetadata("Café", "accented");
+
+    const metadata = await getKnowledgeTaxonomyMetadata();
+    assert.equal(metadata.regions.find((region) => region.key === "accented").displayName, "Café");
+  });
+
+  async function makeApprovedForMetadata(region, regionKey) {
+    const author = fakeActor("USER");
+    const expert = fakeActor("EXPERT");
+    const knowledge = await Knowledge.create({
+      title: `Metadata ${region}`,
+      body: "Region facet fixture",
+      category: "other",
+      topics: [],
+      region,
+      regionKey,
+      author: author.id,
+      status: "pending_review",
+      reviewHistory: [],
+    });
+    return approve(expert, knowledge._id);
+  }
 });
 
 describe("getApprovedKnowledgeById (Issue #48 — public read)", () => {

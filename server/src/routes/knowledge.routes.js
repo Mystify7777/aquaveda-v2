@@ -11,6 +11,7 @@ import {
   listMyKnowledge,
   listReviewQueue,
   getKnowledgeForWorkflow,
+  getKnowledgeTaxonomyMetadata,
 } from "../services/knowledge.service.js";
 import { toPublicKnowledgeDTO } from "../services/knowledge.dto.js";
 import { sendSuccess, sendError, sendValidationError } from "../http/respond.js";
@@ -79,6 +80,20 @@ knowledgeRouter.get("/", async (req, res) => {
  * GET /mine — the caller's own Knowledge, every status (Issue #74).
  * MUST stay above GET /:knowledgeId.
  */
+/**
+ * GET /taxonomy — public, read-only Learn taxonomy metadata (Issue #233).
+ * MUST stay above GET /:knowledgeId.
+ */
+knowledgeRouter.get("/taxonomy", async (req, res) => {
+  try {
+    const metadata = await getKnowledgeTaxonomyMetadata();
+    res.set("Cache-Control", "public, max-age=60");
+    sendSuccess(res, metadata, "Knowledge taxonomy metadata retrieved");
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 knowledgeRouter.get("/mine", async (req, res) => {
   const parsed = myKnowledgeQuerySchema.safeParse(req.query ?? {});
   if (!parsed.success) {

@@ -71,7 +71,7 @@ function request(method, path, { body, cookies } = {}) {
         } catch {
           // non-JSON body
         }
-        resolve({ status: res.statusCode, json });
+        resolve({ status: res.statusCode, headers: res.headers, json });
       });
     });
     req.on("error", reject);
@@ -424,6 +424,71 @@ describe("GET /api/v1/knowledge (Issue #48 — public read, no auth required)", 
     const res = await request("GET", "/api/v1/knowledge?limit=999");
     assert.equal(res.status, 400);
     assert.equal(res.json.code, "VALIDATION_FAILED");
+  });
+});
+
+describe("GET /api/v1/knowledge/taxonomy (Issue #233)", () => {
+  it("returns active taxonomy metadata anonymously with deterministic query keys", async () => {
+    const res = await request("GET", "/api/v1/knowledge/taxonomy");
+    assert.equal(res.status, 200);
+    assert.equal(res.json.success, true);
+    assert.ok(Array.isArray(res.json.data.categories));
+    assert.ok(Array.isArray(res.json.data.topics));
+    assert.ok(Array.isArray(res.json.data.regions));
+    assert.equal(res.json.data.query.search, "q");
+    assert.equal(res.json.data.query.category, "category");
+    assert.equal(res.json.data.query.topic, "topic");
+    assert.equal(res.json.data.query.region, "region");
+    assert.match(res.json.data.query.repeatedValues, /topic=slug/);
+    assert.match(res.json.data.query.repeatedValues, /region=key/);
+    assert.match(res.headers["cache-control"], /max-age=60/);
+  });
+});
+
+describe("GET /api/v1/knowledge discovery filters (Issue #232)", () => {
+  it("accepts repeated Topic/Region values and composes them with search", async () => {
+    const author = await makeAuthedUser("USER");
+    const expert = await makeAuthedUser("EXPERT");
+
+    const createAndApprove = async (body) => {
+      const draft = await request("POST", "/api/v1/knowledge", {
+        cookies: authCookie(author.accessToken),
+        body,
+      });
+      await request("POST", `/api/v1/knowledge/${draft.json.data._id}/submit`, {
+        cookies: authCookie(author.accessToken),
+      });
+      await request("POST", `/api/v1/knowledge/${draft.json.data._id}/approve`, {
+        cookies: authCookie(expert.accessToken),
+      });
+    };
+
+    await createAndApprove({
+      title: "Rainwater irrigation",
+      body: "Efficient field watering",
+      category: "agriculture_irrigation",
+      topics: ["rainwater_harvesting", "efficient_irrigation"],
+      region: "Bihar",
+    });
+
+    const res = await request(
+      "GET",
+      "/api/v1/knowledge?q=RAINWATER&category=agriculture_irrigation&topic=rainwater_harvesting&topic=water_reuse&region=bihar&region=jharkhand",
+    );
+
+    assert.equal(res.status, 200);
+    assert.equal(res.json.data.total, 1);
+    assert.equal(res.json.data.items[0].title, "Rainwater irrigation");
+  });
+
+  it("rejects unknown Category and Topic filters", async () => {
+    const category = await request("GET", "/api/v1/knowledge?category=water%20conservation");
+    assert.equal(category.status, 400);
+    assert.equal(category.json.code, "VALIDATION_FAILED");
+
+    const topic = await request("GET", "/api/v1/knowledge?topic=rain%20water%20harvesting");
+    assert.equal(topic.status, 400);
+    assert.equal(topic.json.code, "VALIDATION_FAILED");
   });
 });
 

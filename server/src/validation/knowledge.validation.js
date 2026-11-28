@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import { paginationQuerySchema } from "./shared/pagination.js";
+import {
+  getAssignableCategory,
+  getAssignableTopic,
+} from "../domain/knowledge-taxonomy.js";
 
 /**
  * Knowledge request-shape validation.
@@ -106,7 +110,54 @@ export const reviseKnowledgeSchema = z.object({
   region: z.string().trim().optional(),
 });
 
-export const listApprovedKnowledgeQuerySchema = paginationQuerySchema;
+const multiValueQueryParam = z.preprocess(
+  (value) => {
+    if (value === undefined) return undefined;
+    return Array.isArray(value) ? value : [value];
+  },
+  z.array(z.string().trim().min(1)).optional(),
+);
+
+/**
+ * Public Learn discovery query contract (Issue #232 / ADR-0011).
+ *
+ * URL keys are intentionally stable and explicit:
+ * - q: title/body search term
+ * - category: one canonical active Category slug
+ * - topic: repeated canonical active Topic slugs (OR)
+ * - region: repeated canonical normalized Region keys (OR)
+ * - page/limit: existing pagination contract
+ */
+export const listApprovedKnowledgeQuerySchema = paginationQuerySchema
+  .extend({
+    q: z.string().trim().min(1, "search must not be empty").max(200).optional(),
+    category: z.string().trim().min(1).optional(),
+    topic: multiValueQueryParam,
+    region: multiValueQueryParam,
+  })
+  .superRefine((data, ctx) => {
+    if (data.category !== undefined) {
+      const category = getAssignableCategory(data.category);
+      if (!category || category.slug !== data.category) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["category"],
+          message: "category must be an active canonical taxonomy slug",
+        });
+      }
+    }
+
+    for (const [index, topic] of (data.topic ?? []).entries()) {
+      const resolved = getAssignableTopic(topic);
+      if (!resolved || resolved.slug !== topic) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["topic", index],
+          message: "topic must contain only active canonical taxonomy slugs",
+        });
+      }
+    }
+  });
 
 /**
  * Authenticated workflow read queries (Issue #74).
