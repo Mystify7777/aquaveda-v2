@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   learnHref,
+  learnPaginationParams,
   learnQueryParams,
   parseLearnQuery,
   toKnowledgeListQuery,
@@ -159,6 +160,16 @@ describe("parseLearnQuery", () => {
       page: 2,
       limit: 10,
     });
+  });
+
+  it("preserves a non-default page size through pagination links", () => {
+    expect(
+      learnPaginationParams({
+        filters: { topic: ["b", "a"] },
+        page: 3,
+        limit: 10,
+      }),
+    ).toEqual({ topic: ["a", "b"], limit: "10" });
   });
 
   it("exposes repeated query metadata without inventing another URL contract", () => {
