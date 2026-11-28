@@ -9,7 +9,13 @@ import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { PaginationNav } from "@/components/ui/pagination-nav";
 import { ApiError } from "@/lib/api/client";
 import { getKnowledgeList, getKnowledgeTaxonomyMetadata } from "@/lib/api/knowledge";
-import { learnHref, learnQueryParams, parseLearnQuery, toKnowledgeListQuery, validateLearnTaxonomy } from "@/lib/knowledge/discovery";
+import {
+  learnHref,
+  learnPaginationParams,
+  parseLearnQuery,
+  toKnowledgeListQuery,
+  validateLearnTaxonomy,
+} from "@/lib/knowledge/discovery";
 import { publicPageMetadata } from "@/lib/seo";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
@@ -47,7 +53,7 @@ export default async function LearnPage({
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     return (
-      <Shell state={parsed.state}>
+      <Shell>
         <LoadError
           message={loadErrorMessage(error, "Learn filters")}
           retryHref={learnHref(parsed.state)}
@@ -88,7 +94,7 @@ export default async function LearnPage({
     );
   }
 
-  const params = learnQueryParams(parsed.state.filters);
+  const params = learnPaginationParams(parsed.state);
 
   return (
     <Shell state={parsed.state}>
@@ -136,13 +142,7 @@ export default async function LearnPage({
   );
 }
 
-function Shell({
-  state,
-  children,
-}: {
-  state: ReturnType<typeof parseLearnQuery>["state"];
-  children?: React.ReactNode;
-}) {
+function Shell({ children }: { children?: React.ReactNode }) {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-16 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
