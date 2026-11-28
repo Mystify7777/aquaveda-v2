@@ -8,59 +8,90 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LoadError, loadErrorMessage } from "@/components/ui/load-error";
 import { PaginationNav } from "@/components/ui/pagination-nav";
 import { ApiError } from "@/lib/api/client";
-import { getKnowledgeList } from "@/lib/api/knowledge";
+import { getKnowledgeList, getKnowledgeTaxonomyMetadata } from "@/lib/api/knowledge";
+import { learnHref, learnQueryParams, parseLearnQuery, toKnowledgeListQuery, validateLearnTaxonomy } from "@/lib/knowledge/discovery";
 import { publicPageMetadata } from "@/lib/seo";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string | string[] }>;
+  searchParams: Promise<SearchParams>;
 }): Promise<Metadata> {
-  const raw = (await searchParams).page;
-  const n = Number(Array.isArray(raw) ? raw[0] : raw);
-  const page = Number.isInteger(n) && n >= 1 ? n : 1;
+  const { state } = parseLearnQuery(await searchParams);
 
   return publicPageMetadata({
     title: "Learn",
     description: "Read reviewed environmental knowledge published through AquaVeda.",
-    canonical: page === 1 ? "/learn" : `/learn?page=${page}`,
+    canonical: learnHref(state),
   });
 }
 
-function parsePage(raw: string | string[] | undefined): number {
-  const n = Number(Array.isArray(raw) ? raw[0] : raw);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
-
 /**
- * Public Knowledge list (#51). The backend list endpoint is approved-only
- * and takes no status parameter, so none is sent. Loading UI: ./loading.tsx.
- * Authoring entry point is a public link; the target route gates on auth.
+ * Public Knowledge discovery (#234). URL query parameters are the durable
+ * filter state; the page never keeps a second transient interpretation.
+ * #235 owns the visual filter controls and must consume this same state layer.
  */
 export default async function LearnPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string | string[] }>;
+  searchParams: Promise<SearchParams>;
 }) {
-  const page = parsePage((await searchParams).page);
+  const raw = await searchParams;
+  const parsed = parseLearnQuery(raw);
 
-  let result;
+  let metadata;
   try {
-    result = await getKnowledgeList({ page });
+    metadata = await getKnowledgeTaxonomyMetadata();
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     return (
-      <Shell>
+      <Shell state={parsed.state}>
         <LoadError
-          message={loadErrorMessage(error, "articles")}
-          retryHref={page === 1 ? "/learn" : `/learn?page=${page}`}
+          message={loadErrorMessage(error, "Learn filters")}
+          retryHref={learnHref(parsed.state)}
         />
       </Shell>
     );
   }
 
+  const invalid = [...parsed.invalid, ...validateLearnTaxonomy(parsed.state.filters, metadata)];
+  if (invalid.length > 0) {
+    return (
+      <Shell state={parsed.state}>
+        <EmptyState
+          title="Invalid Learn filters"
+          description={invalid.map(({ key, message }) => `${key}: ${message}`).join(" · ")}
+          action={
+            <Button asChild variant="outline">
+              <Link href="/learn">Clear filters</Link>
+            </Button>
+          }
+        />
+      </Shell>
+    );
+  }
+
+  let result;
+  try {
+    result = await getKnowledgeList(toKnowledgeListQuery(parsed.state));
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    return (
+      <Shell state={parsed.state}>
+        <LoadError
+          message={loadErrorMessage(error, "articles")}
+          retryHref={learnHref(parsed.state)}
+        />
+      </Shell>
+    );
+  }
+
+  const params = learnQueryParams(parsed.state.filters);
+
   return (
-    <Shell>
+    <Shell state={parsed.state}>
       {result.items.length === 0 ? (
         result.total > 0 ? (
           <EmptyState
@@ -68,14 +99,19 @@ export default async function LearnPage({
             description="This page is past the last page of articles."
             action={
               <Button asChild variant="outline">
-                <Link href="/learn">Back to first page</Link>
+                <Link href={learnHref({ ...parsed.state, page: 1 })}>Back to first page</Link>
               </Button>
             }
           />
         ) : (
           <EmptyState
-            title="No published articles yet"
-            description="Articles appear here once they have been reviewed and approved."
+            title="No articles match these filters"
+            description="Try fewer or different filters, or clear the current Learn filters."
+            action={
+              <Button asChild variant="outline">
+                <Link href="/learn">Clear filters</Link>
+              </Button>
+            }
           />
         )
       ) : (
@@ -92,6 +128,7 @@ export default async function LearnPage({
             totalPages={result.totalPages}
             basePath="/learn"
             label="Article pages"
+            params={Object.keys(params).length ? params : undefined}
           />
         </>
       )}
@@ -99,7 +136,13 @@ export default async function LearnPage({
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({
+  state,
+  children,
+}: {
+  state: ReturnType<typeof parseLearnQuery>["state"];
+  children?: React.ReactNode;
+}) {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-16 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
